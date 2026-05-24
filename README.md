@@ -9,6 +9,7 @@ two formats can be compared and adapted.
 | Skill | Description | Folder |
 |-------|-------------|--------|
 | [`itsalt:creative-mode`](./itsalt-creative-mode/) | Distribution-faithful sampling and diverse generation via self-seeded randomness. | [`itsalt-creative-mode/`](./itsalt-creative-mode/) |
+| [`itsalt:prompt-builder`](./itsalt-prompt-builder/) | CRAFT+ prompt engineer: turns task descriptions into production-ready, target-model-specific prompts. | [`itsalt-prompt-builder/`](./itsalt-prompt-builder/) |
 
 ## Layout
 
