@@ -1,0 +1,47 @@
+name: Skill request
+description: Propose a new portable prompt-engineering skill for the library.
+title: "[skill] "
+labels: ["skill-request"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Proposed name
+      description: Namespace-slug, e.g. `itsalt:creative-mode`.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What model behavior or task does this skill address?
+    validations:
+      required: true
+  - type: textarea
+    id: technique
+    attributes:
+      label: Technique
+      description: How does the skill solve it? Mechanism in 3–6 sentences.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source / paper / reference
+      description: Citation, arXiv link, or pattern source. Required — this library does not accept undocumented techniques.
+    validations:
+      required: true
+  - type: textarea
+    id: portability
+    attributes:
+      label: Portability
+      description: Confirm the technique works on both Anthropic and OpenAI stacks with prompt-only changes. Note any platform-specific caveats.
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples
+      description: One or two example prompts you intend to ship with the skill.
+    validations:
+      required: false

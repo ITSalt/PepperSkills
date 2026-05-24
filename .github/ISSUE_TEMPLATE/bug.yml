@@ -1,0 +1,50 @@
+name: Bug report
+description: Report something wrong in an existing skill (incorrect instruction, broken link, example that no longer behaves as documented).
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: skill
+    attributes:
+      label: Skill
+      description: Which skill folder is affected?
+      placeholder: itsalt-creative-mode
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform / variant
+      description: Anthropic, OpenAI, or both?
+      placeholder: anthropic/SKILL.md
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Exact model name and version where you observed the issue.
+      placeholder: claude-opus-4-7, gpt-5-thinking, ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What the skill's documentation says should happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What you observed instead. Paste the exact prompt and the model's response if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context
+      description: Anything else relevant (frequency, conditions, links).
+    validations:
+      required: false
