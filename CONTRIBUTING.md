@@ -51,7 +51,7 @@ any chat UI (Claude.ai / ChatGPT / Gemini / DeepSeek) without per-vendor
 adaptation, you may ship a top-level `chat-prompt.md` at the skill root **in
 place of** the `openai/` folder. The Anthropic `anthropic/SKILL.md` variant is
 still required so the skill remains installable inside Claude Code. See
-`itsalt-prompt-builder/` for a worked example.
+`pepper-prompt-engineer/` for a worked example.
 
 When you add a skill, also add a row to the **Skills** table in the root
 `README.md` (and `README.ru.md` if you maintain a Russian translation).

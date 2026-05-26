@@ -1,9 +1,9 @@
 ---
-name: itsalt:creative-mode
+name: pepper-creative-mode
 description: "This skill instructs Claude to perform distribution-faithful sampling and diverse generation by seeding randomness from a self-generated string rather than relying on token-completion patterns. Apply it when the task requires genuine stochasticity or meaningful variation across runs: creative writing, brainstorming, variant generation, probabilistic sampling, mixed-strategy games, and agent simulation. Trigger phrases include: \"write 5 different\", \"brainstorm\", \"flip a coin\", \"pick randomly\", \"generate variants\", \"surprise me\", \"diverse\", \"different versions\". Do not apply for math, factual lookup, code debugging, translation, classification, extraction, or any single-answer task where variability reduces correctness."
 ---
 
-# itsalt:creative-mode
+# pepper-creative-mode
 
 Provenance: see `../README.md`. Technique: String Seed of Thought, Misaki & Akiba, arXiv:2510.21150, accepted ICLR 2026.
 
@@ -11,7 +11,7 @@ Provenance: see `../README.md`. Technique: String Seed of Thought, Misaki & Akib
 
 ## Background
 
-Frontier LLMs show systematic bias when they must produce stochastic output. Left to their own token-completion patterns, models produce "heads" ~78% of the time on a nominal 50/50 coin flip, collapse creative prompts to a narrow set of recurring outputs (fables default to tortoise-and-hare variants), and play exploitable strategies in mixed-strategy games. The root causes are RLHF-induced mode collapse, typicality bias in preference data, and tokenization asymmetries (e.g. "heads" is one token, "tails" is two). `itsalt:creative-mode` addresses this by inserting a self-generated random string before the decision step. The model commits to the string first, then derives the answer deterministically via arithmetic on that string. This breaks the path that leads to biased pattern completion without requiring any external tool.
+Frontier LLMs show systematic bias when they must produce stochastic output. Left to their own token-completion patterns, models produce "heads" ~78% of the time on a nominal 50/50 coin flip, collapse creative prompts to a narrow set of recurring outputs (fables default to tortoise-and-hare variants), and play exploitable strategies in mixed-strategy games. The root causes are RLHF-induced mode collapse, typicality bias in preference data, and tokenization asymmetries (e.g. "heads" is one token, "tails" is two). `pepper-creative-mode` addresses this by inserting a self-generated random string before the decision step. The model commits to the string first, then derives the answer deterministically via arithmetic on that string. This breaks the path that leads to biased pattern completion without requiring any external tool.
 
 ---
 
@@ -63,15 +63,15 @@ See [`references/when-not-to-use.md`](references/when-not-to-use.md) for edge ca
 
 ## The two modes
 
-**PIF — Probabilistic Instruction Following.** The user specifies a target distribution and the model must sample from it faithfully across many runs. Correctness is measurable: run the same prompt 1000 times and measure empirical frequency against the target. Frontier models without `itsalt:creative-mode` fail badly — producing "heads" at ~78% on a nominal 50/50 coin due to RLHF-induced mode collapse and tokenization asymmetries. `itsalt:creative-mode` fixes this by committing the model to a string before the decision step; the string serves as an internal seed that the model then maps deterministically to an outcome via modular arithmetic.
+**PIF — Probabilistic Instruction Following.** The user specifies a target distribution and the model must sample from it faithfully across many runs. Correctness is measurable: run the same prompt 1000 times and measure empirical frequency against the target. Frontier models without `pepper-creative-mode` fail badly — producing "heads" at ~78% on a nominal 50/50 coin due to RLHF-induced mode collapse and tokenization asymmetries. `pepper-creative-mode` fixes this by committing the model to a string before the decision step; the string serves as an internal seed that the model then maps deterministically to an outcome via modular arithmetic.
 
-**DAG — Diversity-Aware Generation.** The user asks for creative output with no fixed distribution, but meaningful variation across runs is desired. `itsalt:creative-mode` achieves diversity via the Decision Cascade pattern: the output is decomposed into 2–5 independent components (e.g. setting, tone, twist), each component is resolved deterministically from a distinct segment of the random string using Sum-Mod, and the components are assembled into the final answer. Because the string differs each run, the assembled output differs meaningfully each run. The candidate space (product of candidate-list lengths per component) bounds the number of distinct possible outputs.
+**DAG — Diversity-Aware Generation.** The user asks for creative output with no fixed distribution, but meaningful variation across runs is desired. `pepper-creative-mode` achieves diversity via the Decision Cascade pattern: the output is decomposed into 2–5 independent components (e.g. setting, tone, twist), each component is resolved deterministically from a distinct segment of the random string using Sum-Mod, and the components are assembled into the final answer. Because the string differs each run, the assembled output differs meaningfully each run. The candidate space (product of candidate-list lengths per component) bounds the number of distinct possible outputs.
 
 ---
 
 ## Core protocol
 
-Every `itsalt:creative-mode` response uses exactly three tagged sections in this order:
+Every `pepper-creative-mode` response uses exactly three tagged sections in this order:
 
 ```text
 <random_string>
@@ -133,7 +133,7 @@ Follow all of these without exception:
 - Show the arithmetic in `<thinking>` in full. Do not skip steps, do not write pseudo-arithmetic, perform the actual computation.
 - Put only the final answer in `<answer>`. No reasoning, no hedging, no explanation, no qualifiers.
 - Do not skip the `<random_string>` section even if the task feels trivial.
-- For mixed tasks (part deterministic, part stochastic), apply `itsalt:creative-mode` only to the stochastic sub-parts. Answer the deterministic parts normally before or after the `itsalt:creative-mode` block.
+- For mixed tasks (part deterministic, part stochastic), apply `pepper-creative-mode` only to the stochastic sub-parts. Answer the deterministic parts normally before or after the `pepper-creative-mode` block.
 - Do not adjust the string or the arithmetic after seeing the result. Commit and proceed.
 
 ---

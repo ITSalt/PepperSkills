@@ -8,8 +8,8 @@ two formats can be compared and adapted.
 
 | Skill | Description | Folder |
 |-------|-------------|--------|
-| [`itsalt:creative-mode`](./itsalt-creative-mode/) | Distribution-faithful sampling and diverse generation via self-seeded randomness. | [`itsalt-creative-mode/`](./itsalt-creative-mode/) |
-| [`itsalt:prompt-builder`](./itsalt-prompt-builder/) | CRAFT+ prompt engineer: turns task descriptions into production-ready, target-model-specific prompts. | [`itsalt-prompt-builder/`](./itsalt-prompt-builder/) |
+| [`pepper-creative-mode`](./pepper-creative-mode/) | Distribution-faithful sampling and diverse generation via self-seeded randomness. | [`pepper-creative-mode/`](./pepper-creative-mode/) |
+| [`pepper-prompt-engineer`](./pepper-prompt-engineer/) | CRAFT+ prompt engineer: turns task descriptions into production-ready, target-model-specific prompts. | [`pepper-prompt-engineer/`](./pepper-prompt-engineer/) |
 
 ## Layout
 

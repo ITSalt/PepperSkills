@@ -1,4 +1,4 @@
-# `itsalt:prompt-builder` — CRAFT+ Prompt Engineer
+# `pepper-prompt-engineer` — CRAFT+ Prompt Engineer
 
 Портативный скилл по промпт-инжинирингу: превращает любое описание задачи в production-ready промпт под конкретную модель по методологии **CRAFT+** (классический CRAFT, расширенный лучшими практиками 2026 года: success criteria, conditional modules, verification, polish под целевую модель).
 
@@ -28,7 +28,7 @@
 | Платформа | Файл |
 |-----------|------|
 | Любой чат (Claude.ai / ChatGPT / Gemini / DeepSeek) — вставить как system-сообщение | [`chat-prompt.md`](./chat-prompt.md) |
-| Claude Code — установить как скилл (один файл) | [`craft-plus-prompt-engineer.skill`](./craft-plus-prompt-engineer.skill) |
+| Claude Code — установить как скилл (один файл) | [`pepper-prompt-engineer.skill`](./pepper-prompt-engineer.skill) |
 | Claude Code — установить как скилл (предварительно посмотреть файлы) | [`anthropic/SKILL.md`](./anthropic/SKILL.md) + [`anthropic/INSTALL.md`](./anthropic/INSTALL.md) |
 
 ## Как пользоваться chat-промптом
@@ -45,7 +45,7 @@
 
 Два пути — выбери удобный:
 
-- **Один файл:** скачай [`craft-plus-prompt-engineer.skill`](./craft-plus-prompt-engineer.skill) и установи как Claude Code скилл.
+- **Один файл:** скачай [`pepper-prompt-engineer.skill`](./pepper-prompt-engineer.skill) и установи как Claude Code скилл.
 - **Сначала посмотреть:** прочитай [`anthropic/SKILL.md`](./anthropic/SKILL.md) и сопровождающие файлы в [`anthropic/`](./anthropic/), потом следуй пошаговой инструкции в [`anthropic/INSTALL.md`](./anthropic/INSTALL.md).
 
 В обоих случаях получаешь те же 23 файла (SKILL.md, INSTALL.md, 7 references, 6 примеров, валидатор + README к скриптам, evals-набор).

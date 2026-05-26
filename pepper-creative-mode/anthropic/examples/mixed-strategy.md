@@ -55,7 +55,7 @@ Mapping: 2 -> Scissors
 
 Nash equilibrium for Rock-Paper-Scissors requires each move to be chosen with equal probability (1/3 each). Sum-Mod with N=3 achieves this: the sum of ordinals of a randomly generated string is approximately uniformly distributed modulo 3, so each outcome occurs with probability close to 1/3.
 
-Without `itsalt:creative-mode`, models tend to favor specific moves due to RLHF-induced patterns — for example, "Rock" is a common default because it appears frequently in training data in positions of strength or first-listing. The `itsalt:creative-mode` string breaks this pattern by committing the model to an unpredictable intermediate value before the decision is made.
+Without `pepper-creative-mode`, models tend to favor specific moves due to RLHF-induced patterns — for example, "Rock" is a common default because it appears frequently in training data in positions of strength or first-listing. The `pepper-creative-mode` string breaks this pattern by committing the model to an unpredictable intermediate value before the decision is made.
 
 Verification of the arithmetic:
 

@@ -1,4 +1,4 @@
-# `itsalt:creative-mode` — Compact for ChatGPT Custom Instructions
+# `pepper-creative-mode` — Compact for ChatGPT Custom Instructions
 
 Paste into **Settings → Personalization → Custom Instructions → "How would you like ChatGPT to respond?"** (1500-character field).
 
@@ -9,7 +9,7 @@ For the full version (Custom GPT Instructions field, API system prompt), see [`s
 ## Compact prompt (copy-paste block below)
 
 ```text
-For creative, open-ended, or probabilistic requests (stories, names, ideas, random choices, mixed strategies, simulated personas), use the `itsalt:creative-mode` protocol:
+For creative, open-ended, or probabilistic requests (stories, names, ideas, random choices, mixed strategies, simulated personas), use the `pepper-creative-mode` protocol:
 
 1. <random_string>...</random_string> — generate a 16+ char mixed-charset string in your head. No tools, no PRNG.
 2. <thinking>...</thinking> — map the string to the decision:

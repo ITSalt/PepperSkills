@@ -8,8 +8,8 @@
 
 | Скилл | Описание | Папка |
 |-------|----------|-------|
-| [`itsalt:creative-mode`](./itsalt-creative-mode/) | Честное сэмплирование из распределения и разнообразная генерация через self-seeded randomness. | [`itsalt-creative-mode/`](./itsalt-creative-mode/) |
-| [`itsalt:prompt-builder`](./itsalt-prompt-builder/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`itsalt-prompt-builder/`](./itsalt-prompt-builder/) |
+| [`pepper-creative-mode`](./pepper-creative-mode/) | Честное сэмплирование из распределения и разнообразная генерация через self-seeded randomness. | [`pepper-creative-mode/`](./pepper-creative-mode/) |
+| [`pepper-prompt-engineer`](./pepper-prompt-engineer/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`pepper-prompt-engineer/`](./pepper-prompt-engineer/) |
 
 ## Структура
 

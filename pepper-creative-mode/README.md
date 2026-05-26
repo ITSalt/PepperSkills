@@ -1,4 +1,4 @@
-# `itsalt:creative-mode`
+# `pepper-creative-mode`
 
 A portable skill that unlocks **distribution-faithful sampling** and **diverse generation** in LLMs by instructing them to seed their own decisions with a self-generated random string.
 
@@ -32,7 +32,7 @@ This skill makes the model generate a random string in its head, then determinis
 
 ## When NOT to use
 
-Do not apply `itsalt:creative-mode` to tasks with a single correct answer: math, factual lookup, code debugging, classification, translation. It adds noise without benefit and can distract the model.
+Do not apply `pepper-creative-mode` to tasks with a single correct answer: math, factual lookup, code debugging, classification, translation. It adds noise without benefit and can distract the model.
 
 ## Effectiveness
 

@@ -1,5 +1,5 @@
 ---
-name: craft-plus-prompt-engineer
+name: pepper-prompt-engineer
 description: Transforms unstructured user task descriptions into production-ready prompts following the CRAFT+ methodology (classical CRAFT framework extended with 2026 best practices), with model-specific formatting for Claude, GPT, Gemini, DeepSeek, and Universal targets. Use this skill ONLY when the user explicitly asks to build, compose, write, generate, or improve a prompt for an AI model. Trigger phrases include "build a prompt", "compose a prompt", "write a prompt", "create a prompt", "improve this prompt", "fix this prompt", "make a prompt for [Claude/GPT/Gemini/DeepSeek]", "собери промпт", "составь промпт", "напиши промпт", "улучши промпт", "перепиши промпт", "сделай промпт", "промпт под [Claude/ChatGPT/Gemini/DeepSeek]". Do not activate for direct task execution — only for prompt construction.
 ---
 

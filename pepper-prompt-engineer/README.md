@@ -1,4 +1,4 @@
-# `itsalt:prompt-builder` — CRAFT+ Prompt Engineer
+# `pepper-prompt-engineer` — CRAFT+ Prompt Engineer
 
 A portable prompt-engineering skill that turns any task description into a production-ready, target-model-specific prompt using the **CRAFT+ methodology** (CRAFT extended with 2026 best practices: success criteria, conditional modules, verification, target-model polish).
 
@@ -28,7 +28,7 @@ Both modes share the same CRAFT+ methodology. Pick chat for the lowest-friction 
 | Platform | File |
 |----------|------|
 | Any chat (Claude.ai / ChatGPT / Gemini / DeepSeek) — paste as system message | [`chat-prompt.md`](./chat-prompt.md) |
-| Claude Code — install as a skill (single-file download) | [`craft-plus-prompt-engineer.skill`](./craft-plus-prompt-engineer.skill) |
+| Claude Code — install as a skill (single-file download) | [`pepper-prompt-engineer.skill`](./pepper-prompt-engineer.skill) |
 | Claude Code — install as a skill (browse files first) | [`anthropic/SKILL.md`](./anthropic/SKILL.md) + [`anthropic/INSTALL.md`](./anthropic/INSTALL.md) |
 
 ## Using the chat prompt
@@ -45,7 +45,7 @@ Both modes share the same CRAFT+ methodology. Pick chat for the lowest-friction 
 
 Two paths — pick the one you prefer:
 
-- **One-file download:** grab [`craft-plus-prompt-engineer.skill`](./craft-plus-prompt-engineer.skill) and install it as a Claude Code skill.
+- **One-file download:** grab [`pepper-prompt-engineer.skill`](./pepper-prompt-engineer.skill) and install it as a Claude Code skill.
 - **Browse first:** read [`anthropic/SKILL.md`](./anthropic/SKILL.md) and the supporting files under [`anthropic/`](./anthropic/), then follow the step-by-step setup in [`anthropic/INSTALL.md`](./anthropic/INSTALL.md).
 
 Both deliver the same 23 files (SKILL.md, INSTALL.md, 7 references, 6 examples, validator + script README, and an evals suite).
