@@ -11,6 +11,21 @@
 | [`pepper-creative-mode`](./pepper-creative-mode/) | Честное сэмплирование из распределения и разнообразная генерация через self-seeded randomness. | [`pepper-creative-mode/`](./pepper-creative-mode/) |
 | [`pepper-prompt-engineer`](./pepper-prompt-engineer/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`pepper-prompt-engineer/`](./pepper-prompt-engineer/) |
 
+## Установка
+
+- **Claude Desktop / claude.ai** — скачай нужный `.skill`-архив из
+  [последнего релиза](https://github.com/ITSalt/PepperSkills/releases/latest)
+  и загрузи через *Settings → Capabilities → Skills → Upload*.
+- **Claude Code** — скопируй распакованную папку `<skill>/anthropic/`
+  (переименованную под `name:` из `SKILL.md`) в `~/.claude/skills/`
+  (личный скилл) или `<project>/.claude/skills/` (проектный). Подробности —
+  в `anthropic/INSTALL.md` соответствующего скилла.
+- **OpenAI / ChatGPT / GPT API** — содержимое `openai/system-prompt.md`
+  (полная версия) или `openai/custom-instructions.md` (компактная, <1500
+  символов) копируется в соответствующее поле.
+
+Собрать `.skill`-архивы из исходников: `scripts/build-skills.sh`.
+
 ## Структура
 
 Каждая группа скиллов — самодостаточная папка:
