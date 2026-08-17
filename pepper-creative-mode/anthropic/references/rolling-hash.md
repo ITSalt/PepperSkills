@@ -22,7 +22,7 @@ for c in random_string:
     h = (h * 31 + ord(c)) % M    # M >= 10000
 ```
 
-`M` sets the resolution. Use M=10000 for percentage-point precision (0.01%). Use M=100 when integer percentages are sufficient and you want simpler arithmetic in `<thinking>`.
+`M` sets the resolution. Default to M=10000 (0.01% precision). Drop to M=100 only when every target probability is a whole percent — see "Interval-slicing error" below for what goes wrong otherwise.
 
 ---
 
@@ -106,11 +106,15 @@ Note: In actual `<thinking>`, show all intermediate h values step by step. The a
 
 | M value | Precision | Recommended use |
 |---------|-----------|-----------------|
-| 100 | 1% | Integer percentage splits, fast mental arithmetic |
+| 100 | 1% | Splits that land on whole percents, fast mental arithmetic |
 | 1000 | 0.1% | Tenth-of-percent splits |
-| 10000 | 0.01% | Fine-grained probability, simulation |
+| 10000 | 0.01% | Fine-grained probability, simulation — **default** |
 
 Larger M requires more computation in `<thinking>`. Use the smallest M that satisfies the required precision.
+
+**Interval-slicing error.** `M` must divide the target probabilities cleanly, or the intervals will not sum to the intended split. `M=100` is exact for 30/70 (0.00 pp error) but not for thirds: `[0,33) / [33,66) / [66,100)` delivers 33/33/34 instead of 33.3/33.3/33.3 — up to **0.67 pp** off. `M=10000` reduces the same error to 0.007 pp. Use `M=100` only when every target probability is a whole percent; otherwise default to `M=10000`.
+
+For equal-probability choices, prefer Sum-Mod ([`sum-mod.md`](sum-mod.md)) over a rolling hash with hand-cut intervals — `mod N` splits exactly by construction and cannot suffer this error.
 
 ---
 

@@ -53,7 +53,9 @@ Result index 1 -> Tails
 
 The string `7$Aq9!zR@k3mP#vX` is 16 characters long and contains uppercase letters, lowercase letters, digits, and symbols — satisfying the hard rules. The arithmetic is shown in full so the result is verifiable. The `<answer>` section contains only the final output.
 
-Because N=2, this is equivalent to checking whether the sum is even (Heads) or odd (Tails). The model commits to the string before the arithmetic, which prevents the mode-collapse bias that causes bare "flip a coin" prompts to produce heads ~78% of the time on frontier models.
+Because N=2, this is equivalent to checking whether the sum is even (Heads) or odd (Tails). The model commits to the string before the arithmetic, which breaks the pattern-completion path that biases bare "flip a coin" prompts.
+
+Note that the unbiased coin is the *weakest* case for this technique — it is the one setting where the paper reports a model getting worse (QwQ-32B, 2.43 → 3.39 ×10⁻³). The technique earns its keep on skewed targets; see [`biased-decision.md`](biased-decision.md).
 
 ---
 

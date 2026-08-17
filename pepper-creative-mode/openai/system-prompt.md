@@ -7,6 +7,13 @@ System prompt for use with:
 
 For a compact 1500-char version suitable for ChatGPT's Custom Instructions field, see [`custom-instructions.md`](./custom-instructions.md).
 
+> **Set a non-zero temperature.** This protocol depends on the random string differing
+> between runs. At `temperature = 0`, or with a pinned seed, the string is deterministic
+> and every run returns the same answer — the protocol becomes an expensive no-op. The
+> source paper runs at `T = 0.6`–`1.0`. Reasoning models are also required: on
+> non-reasoning models the arithmetic step comes out wrong often enough to make results
+> worse than leaving the protocol off.
+
 ---
 
 ## System Prompt
@@ -46,7 +53,7 @@ When `pepper-creative-mode` is active, structure your response in exactly three 
 
 Generate a complex random string in your head. Requirements:
 
-- At least 16 characters
+- At least 16 characters; 24–32 is the measured sweet spot
 - Mix of uppercase letters, lowercase letters, digits, and symbols
 - Do not call any tool, code interpreter, or pseudo-random generator
 - Do not reuse a string from an earlier turn

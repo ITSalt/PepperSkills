@@ -11,7 +11,7 @@ For the full version (Custom GPT Instructions field, API system prompt), see [`s
 ```text
 For creative, open-ended, or probabilistic requests (stories, names, ideas, random choices, mixed strategies, simulated personas), use the `pepper-creative-mode` protocol:
 
-1. <random_string>...</random_string> — generate a 16+ char mixed-charset string in your head. No tools, no PRNG.
+1. <random_string>...</random_string> — generate a 24-32 char mixed-charset string in your head. No tools, no PRNG.
 2. <thinking>...</thinking> — map the string to the decision:
    • Equal choice of N options: sum(ord(c)) mod N
    • Biased split (e.g. 30/70): rolling hash h = (h*31 + ord(c)) mod 10000, then interval split
@@ -23,7 +23,12 @@ Never reuse a string. Never fall back to Math.random. For multiple samples, use 
 SKIP this protocol entirely for: math, factual questions, code debugging, translation, classification — any task with a single correct answer. When in doubt, skip it.
 ```
 
-**Character count:** ~870 / 1500.
+**Character count:** 919 / 1500.
+
+> **Use a reasoning model.** The protocol depends on the model executing modulo
+> arithmetic correctly. On non-reasoning models the arithmetic misfires often enough that
+> results come out worse than with the protocol off. It also needs non-zero temperature —
+> not adjustable in the ChatGPT UI, but relevant if you reuse this text via the API.
 
 ---
 

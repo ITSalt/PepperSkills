@@ -11,7 +11,9 @@ Provenance: see `../README.md`. Technique: String Seed of Thought, Misaki & Akib
 
 ## Background
 
-Frontier LLMs show systematic bias when they must produce stochastic output. Left to their own token-completion patterns, models produce "heads" ~78% of the time on a nominal 50/50 coin flip, collapse creative prompts to a narrow set of recurring outputs (fables default to tortoise-and-hare variants), and play exploitable strategies in mixed-strategy games. The root causes are RLHF-induced mode collapse, typicality bias in preference data, and tokenization asymmetries (e.g. "heads" is one token, "tails" is two). `pepper-creative-mode` addresses this by inserting a self-generated random string before the decision step. The model commits to the string first, then derives the answer deterministically via arithmetic on that string. This breaks the path that leads to biased pattern completion without requiring any external tool.
+Frontier LLMs show systematic bias when they must produce stochastic output. Measured on a nominal 50/50 coin flip, JS divergence from the target distribution ranges from 2.43 to 36.09 across five frontier models, against 1.85 for a real PRNG (all values ×10⁻³, paper Table 1). On skewed targets the gap widens by an order of magnitude — deepseek-v3 scores 111.45 on a 30/70 split. Creative prompts likewise collapse to a narrow set of recurring outputs, and mixed-strategy play becomes exploitable.
+
+The paper documents this failure without committing to a single root cause; related work attributes the loss of diversity to typicality bias in preference data (Verbalized Sampling, [arXiv:2510.01171](https://arxiv.org/abs/2510.01171)). `pepper-creative-mode` addresses the symptom by inserting a self-generated random string before the decision step. The model commits to the string first, then derives the answer deterministically via arithmetic on that string. This breaks the path that leads to biased pattern completion without requiring any external tool.
 
 ---
 
@@ -63,7 +65,7 @@ See [`references/when-not-to-use.md`](references/when-not-to-use.md) for edge ca
 
 ## The two modes
 
-**PIF — Probabilistic Instruction Following.** The user specifies a target distribution and the model must sample from it faithfully across many runs. Correctness is measurable: run the same prompt 1000 times and measure empirical frequency against the target. Frontier models without `pepper-creative-mode` fail badly — producing "heads" at ~78% on a nominal 50/50 coin due to RLHF-induced mode collapse and tokenization asymmetries. `pepper-creative-mode` fixes this by committing the model to a string before the decision step; the string serves as an internal seed that the model then maps deterministically to an outcome via modular arithmetic.
+**PIF — Probabilistic Instruction Following.** The user specifies a target distribution and the model must sample from it faithfully across many runs. Correctness is measurable: run the same prompt many times and compare empirical frequency against the target. The gains are largest where the target is skewed — across five frontier models the paper reports 85–99% reductions in JS divergence on biased distributions, versus a mixed picture on an unbiased coin (from −92% on deepseek-r1 to +40% on QwQ-32B). `pepper-creative-mode` works by committing the model to a string before the decision step; the string serves as an internal seed that the model then maps deterministically to an outcome via modular arithmetic.
 
 **DAG — Diversity-Aware Generation.** The user asks for creative output with no fixed distribution, but meaningful variation across runs is desired. `pepper-creative-mode` achieves diversity via the Decision Cascade pattern: the output is decomposed into 2–5 independent components (e.g. setting, tone, twist), each component is resolved deterministically from a distinct segment of the random string using Sum-Mod, and the components are assembled into the final answer. Because the string differs each run, the assembled output differs meaningfully each run. The candidate space (product of candidate-list lengths per component) bounds the number of distinct possible outputs.
 
@@ -128,7 +130,8 @@ Quick selection guide:
 Follow all of these without exception:
 
 - Generate the random string internally. Do not call any external tool, API, or function to obtain it. No mention of "random number generator", "PRNG", "Math.random()", or any external source.
-- The string must be at least 16 characters and include all four character classes: uppercase letters, lowercase letters, digits, and symbols.
+- **Requires stochastic decoding.** At `temperature = 0`, or with a pinned decoding seed, the "random" string is itself deterministic and every run returns the same answer — the technique silently becomes an expensive no-op. The paper's experiments run at `T = 0.6`–`1.0`. If the caller has pinned the temperature to 0 for reproducibility, say so rather than emitting a `<random_string>` block that cannot vary.
+- The string must be at least 16 characters. 24–32 is the measured sweet spot: JS divergence bottoms out around n≈24 and climbs again past ~48 (paper Table 7). Include all four character classes — uppercase, lowercase, digits, symbols — to keep the character distribution wide.
 - Generate a fresh string for each independent decision. Reusing the same string across decisions destroys statistical independence.
 - Show the arithmetic in `<thinking>` in full. Do not skip steps, do not write pseudo-arithmetic, perform the actual computation.
 - Put only the final answer in `<answer>`. No reasoning, no hedging, no explanation, no qualifiers.

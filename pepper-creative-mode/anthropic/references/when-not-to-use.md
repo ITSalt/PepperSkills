@@ -25,7 +25,8 @@ Do not use `pepper-creative-mode` for any of the following:
 
 Consider skipping `pepper-creative-mode` in these situations even if the task looks probabilistic:
 
-- **Small or non-reasoning models (e.g. Haiku, small instruct models without CoT):** These models cannot reliably perform modulo arithmetic or rolling hash in a single forward pass. The string will be generated but the arithmetic in `<thinking>` may be incorrect, producing a biased result that is worse than skipping entirely. Effectiveness scales with model reasoning quality; apply to Sonnet-class and above.
+- **Non-reasoning models:** These cannot reliably perform modulo arithmetic or rolling hash. The string gets generated but the arithmetic in `<thinking>` comes out wrong, producing a result *worse* than skipping entirely. The paper's small-model table makes the size-vs-reasoning distinction sharp: on the unbiased 2-choice task Qwen3-4B degrades by **436%** and Qwen3-1.7B by **413%**, while the *thinking* variant of that same 4B model improves by **88%**. The dividing line is reasoning capability, not parameter count. Apply to Sonnet-class and above.
+- **Diversity-Aware Generation on non-reasoning models specifically:** an independent 2026 evaluation ([arXiv:2606.10302](https://arxiv.org/abs/2606.10302)) measured how much of the injected randomness actually reaches the output and found it near zero for this technique on four non-reasoning backbones — the random string is generated and then largely ignored. That study did not test reasoning models, where the original results were obtained. Treat the DAG half of this skill as reasoning-model-dependent, and prefer raising temperature if you are on a non-reasoning model.
 - **Tasks requiring only a single creative response with no diversity requirement:** If the user asks for "a haiku" (one, no diversity specified), `pepper-creative-mode` is unnecessary overhead. Apply it when the user signals they want variety ("write three different haiku", "surprise me each time").
 - **Very long-form creative outputs (multi-thousand-word stories):** A Decision Cascade can seed the high-level structure, but paragraph-level prose variation will naturally emerge from the model. Limit the cascade to top-level components (genre, protagonist archetype, setting, ending type) rather than trying to cascade every sentence.
 
@@ -33,12 +34,16 @@ Consider skipping `pepper-creative-mode` in these situations even if the task lo
 
 ## Known anomaly: QwQ-32B on unbiased 2-choice tasks
 
-The paper (arXiv:2510.21150, failure analysis section) reports that **QwQ-32B** is an exception to the general pattern:
+The paper (arXiv:2510.21150, Table 1) reports that **QwQ-32B** is the one exception to the general pattern:
 
-- Baseline JS divergence on unbiased 2-choice tasks: **2.43** (already near-PRNG quality).
-- With `pepper-creative-mode`: **3.39** (slightly worse).
+- Baseline JS divergence on unbiased 2-choice tasks: **2.43 ×10⁻³** (already near-PRNG quality — the PRNG reference is 1.85 ×10⁻³).
+- With `pepper-creative-mode`: **3.39 ×10⁻³** (slightly worse).
 
-QwQ-32B's native token distribution happens to be nearly uniform for binary choices, and the arithmetic step introduces a small bias. For QwQ-32B and similarly well-calibrated models, skip `pepper-creative-mode` on unbiased binary tasks and apply it only for biased or multi-way distributions where it shows clear improvement.
+All JS divergences in the paper are reported in units of 10⁻³. Read bare figures like "2.43" accordingly: JS divergence is bounded above by ln 2 ≈ 0.693, so an unscaled 2.43 would be impossible.
+
+On the *biased* tasks the same model improves by 96–99%, which is the pattern to remember: the anomaly is confined to the unbiased binary case.
+
+The likely reading — the paper reports the result without attributing a cause — is that QwQ-32B's native output distribution is already close to uniform for binary choices, leaving nothing to fix while the arithmetic step adds its own small error. The operational rule generalises beyond this one model: **if the baseline is already near-uniform, skip the technique.** Apply it to biased or multi-way distributions, where it shows clear and consistent improvement.
 
 ---
 
