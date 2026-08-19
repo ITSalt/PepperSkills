@@ -1,27 +1,29 @@
 # `pepper-prompt-engineer` — CRAFT+ Prompt Engineer
 
-A portable prompt-engineering skill that turns any task description into a production-ready, target-model-specific prompt using the **CRAFT+ methodology** (CRAFT extended with 2026 best practices: success criteria, conditional modules, verification, target-model polish).
+A portable prompt-engineering skill that turns any task description into a production-ready, target-model-specific prompt using the **CRAFT+ methodology** (CRAFT extended with success criteria, conditional modules, verification, and target-model polish).
 
-Methodology sources: Anthropic Prompt Engineering Best Practices (Apr 2026), OpenAI GPT-5 Prompting Guide (Mar 2026), Google Gemini API System Instructions (Mar 2026), DeepSeek V4 Docs (Apr 2026), Misaki & Akiba — [String Seed of Thought](https://arxiv.org/abs/2510.21150) (ICLR 2026).
+Methodology sources: Anthropic *Prompting best practices* and *Skill authoring best practices*, OpenAI *Prompt engineering* guide and the GPT-5 prompting guide, Google *Gemini 3 Developer Guide*, DeepSeek API docs, and Misaki & Akiba — [String Seed of Thought](https://arxiv.org/abs/2510.21150) (ICLR 2026). Which model generation each covers is recorded in [`anthropic/references/target-models.md`](./anthropic/references/target-models.md), the skill's single source of truth for version-dependent facts.
 
 ## What it solves
 
-Ad-hoc prompts under-specify success criteria, miss target-model formatting (Claude XML / GPT Markdown / Gemini tables / DeepSeek CoT), and forget conditional modules (fact-checking, code execution, SSoT diversity, multi-modal). This skill packages a senior-prompt-engineer workflow into one agent that:
+Ad-hoc prompts under-specify success criteria, miss target-model formatting (Claude XML / GPT Markdown-plus-XML / Gemini terse Markdown / DeepSeek either), and forget conditional modules (fact-checking, code execution, SSoT diversity, multi-modal). This skill packages a senior-prompt-engineer workflow into one agent that:
 
 - detects target model, classifies the task, asks at most 3 critical clarifications;
 - assembles the 10 CRAFT+ blocks (role, task, context, success criteria, actions, constraints, reasoning mode, output format, examples, verification);
 - conditionally embeds fact-checking / code-execution / SSoT / multi-modal modules based on bilingual (RU+EN) triggers;
 - polishes formatting for the chosen target model;
-- self-checks the result against a 13-item checklist before returning it.
+- surfaces the target's reasoning-depth setting, which is the strongest quality lever the user controls and lives outside the prompt text;
+- self-checks the result against a 14-item checklist, with an optional programmatic validator.
 
 ## Two delivery modes
 
 | Mode | Use case | Where |
 |------|----------|-------|
 | **Universal chat prompt** | Paste-once system prompt for Claude.ai Projects, ChatGPT Custom GPT, Gemini Gem, DeepSeek chat | [`chat-prompt.md`](./chat-prompt.md) |
+
 | **Claude Code skill** | Full toolset: references, examples, programmatic validator, evals | [`anthropic/SKILL.md`](./anthropic/SKILL.md) |
 
-Both modes share the same CRAFT+ methodology. Pick chat for the lowest-friction path (one paste, works in any chat UI); pick the skill for repeatable use inside Claude Code with auto-loaded references.
+Both modes share the same CRAFT+ methodology — literally: `chat-prompt.md` is generated from the skill's own sources by `scripts/build-chat-prompt.py`, so the two editions cannot drift apart. Pick chat for the lowest-friction path (one paste, works in any chat UI); pick the skill for repeatable use inside Claude Code with auto-loaded references.
 
 ## Pick your platform
 
@@ -48,7 +50,7 @@ Two paths — pick the one you prefer:
 - **One-file download:** grab [`pepper-prompt-engineer.skill`](./pepper-prompt-engineer.skill) and install it as a Claude Code skill.
 - **Browse first:** read [`anthropic/SKILL.md`](./anthropic/SKILL.md) and the supporting files under [`anthropic/`](./anthropic/), then follow the step-by-step setup in [`anthropic/INSTALL.md`](./anthropic/INSTALL.md).
 
-Both deliver the same 23 files (SKILL.md, INSTALL.md, 7 references, 6 examples, validator + script README, and an evals suite).
+Both deliver the same files: SKILL.md, INSTALL.md, 7 references, 6 examples, the validator and eval harness with their README, and the evals suite.
 
 ## When NOT to use
 
