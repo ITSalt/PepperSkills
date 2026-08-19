@@ -10,7 +10,7 @@
 | `pepper-prompt-engineer.skill` | `../pepper-prompt-engineer.skill` (рядом с `anthropic/`) | ZIP-архив для Claude Desktop и claude.ai (web). Внутри одна корневая папка `pepper-prompt-engineer/` со всей структурой скилла. |
 | `pepper-prompt-engineer/` (распакованная папка) | Эта папка — `pepper-prompt-engineer/anthropic/` и всё, что в ней | Для Claude Code: копируется целиком в `~/.claude/skills/` либо в `<project>/.claude/skills/`. |
 
-Anthropic Skills spec (май 2026) требует, чтобы относительные пути из
+Anthropic Skills spec требует, чтобы относительные пути из
 `SKILL.md` к `references/…`, `examples/…`, `scripts/…` всегда резолвились.
 Поэтому **«закинуть один SKILL.md без окружающих папок» — не работает**:
 в обоих официальных сценариях нужна либо полная папка, либо ZIP с такой
@@ -113,10 +113,11 @@ pepper-prompt-engineer/
 │   ├── improve-mode.md
 │   └── injection-attempt.md
 ├── scripts/
-│   ├── validate.py                   # Программный валидатор (18 чеков)
+│   ├── validate.py                   # Программный валидатор (16 чеков + до 2 условных)
+│   ├── run_evals.py                  # Схема-чек и run sheet для evals
 │   └── README.md
 └── evals/
-    └── evals.json                    # 10 тест-кейсов для регрессии
+    └── evals.json                    # 11 сценариев для регрессии
 ```
 
 ## Использование скилла
@@ -145,12 +146,21 @@ pepper-prompt-engineer/
 Прогон тестовых кейсов из `evals/evals.json`:
 
 ```bash
-# Если установлен skill-creator:
-claude skills test pepper-prompt-engineer
+cd ~/.claude/skills/pepper-prompt-engineer   # или путь к распакованной папке
 
-# Иначе вручную: открой evals/evals.json, прогони каждый prompt
-# через Claude-with-skill, сравни с expected_output.
+# Проверить, что файл сценариев корректен:
+python scripts/run_evals.py --check-only
+
+# Получить run sheet — запросы и чек-листы ожидаемого поведения:
+python scripts/run_evals.py
+
+# Один сценарий:
+python scripts/run_evals.py --id creative-gpt-ssot
 ```
+
+Раннер намеренно не вызывает модель: оценка промпт-конструктора требует
+суждения о том, какой промпт получился. Раннер это суждение структурирует —
+прогоняешь запрос через Claude со скиллом и отмечаешь пункты чек-листа.
 
 Программный валидатор на готовом промпте:
 
@@ -198,7 +208,7 @@ short) или не отсёк подробности (для long).
 (раздел «Skill structure»).
 
 **Имя `name:` в `SKILL.md` содержит двоеточие или пробел.**
-Anthropic спека (май 2026) разрешает в `name:` только `[a-z0-9-]`, до 64
+Anthropic спека разрешает в `name:` только `[a-z0-9-]`, до 64
 символов, и запрещает зарезервированные слова `anthropic`, `claude`. Любое
 другое имя будет либо отвергнуто, либо «приклеено» в UI (Claude Desktop
 молча удаляет двоеточия — поэтому, например, старое имя

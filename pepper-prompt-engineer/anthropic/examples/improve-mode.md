@@ -88,6 +88,7 @@ Before outputting, verify:
 ```
 
 ## ⚙️ Setup before use
+- Raise `reasoning_effort` to `high` (or switch to a thinking mode) — the post needs a non-obvious angle, which is where the extra reasoning pays off
 - Paste this prompt into a ChatGPT chat
 - In the next message, specify the AI topic (e.g., "fine-tuning vs RAG tradeoffs", "the cost curve of frontier models", "what 2026 multimodal means for product teams")
 - No Web Search or Code Interpreter needed unless the topic involves recent events

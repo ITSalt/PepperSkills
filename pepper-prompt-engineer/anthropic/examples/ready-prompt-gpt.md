@@ -61,6 +61,7 @@ Before outputting, verify:
 ```
 
 ## ⚙️ Setup before use
+- Standard mode is enough here; raise `reasoning_effort` only if the positioning is genuinely contested
 - Paste this prompt into a ChatGPT chat
 - In the next message, provide your product details: name, what it does, key differentiator, launch date, target customer
 - No Web Search or Code Interpreter needed for this task
@@ -68,7 +69,7 @@ Before outputting, verify:
 ## 💡 Decisions I made for you
 - Took role "senior LinkedIn content strategist for B2B SaaS"
 - Length target: 1200-1800 chars — matches 2026 LinkedIn algorithm sweet spot
-- Added "# Persistence" header (OpenAI Cookbook recommendation for GPT-5+) to prevent the model from stopping mid-task
+- Added a "# Persistence" header (the vendor guide's recommended wording) to prevent the model from stopping mid-task
 - Tone: concrete and specific, anti-cliché — appropriate for the B2B SaaS audience
 - Banned 7 specific clichés explicitly because they tank engagement on LinkedIn
 
@@ -79,9 +80,9 @@ Before outputting, verify:
 ## Why this works
 
 - All 10 CRAFT+ blocks present, formatted with `#` Markdown headers per GPT convention
-- "# Persistence" section added at the start (GPT-5+ best practice for agentic-feeling tasks)
+- "# Persistence" section added at the start (vendor recommendation for agentic-feeling tasks)
 - Success criteria measurable (character counts, banned phrases, structural counts)
 - Verification mirrors success criteria
-- No "think step by step" injection (GPT-5+ handles CoT internally)
+- No "think step by step" injection — the reasoning-depth control does that job
 - Constraints include specific banned cliché phrases — measurable test
 - Inner prompt in English (matches USER_LANG); section headers in English (USER_LANG = en)
