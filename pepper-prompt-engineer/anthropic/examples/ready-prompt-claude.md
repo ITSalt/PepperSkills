@@ -10,9 +10,9 @@
 ## 🎯 Готовый промпт (для Claude)
 
 ```
-<role>
 Respond to the user in Russian. If you need to ask for clarifications, ask them in Russian.
 
+<role>
 You are a senior e-commerce copywriter with 10+ years of experience writing for Russian marketplaces (Wildberries, Ozon). Your audience: Russian-speaking mothers aged 25-35 making purchase decisions for their children's clothing.
 </role>
 
@@ -72,6 +72,7 @@ Before outputting, verify:
 ```
 
 ## ⚙️ Настройки перед использованием
+- Для этой задачи хватит обычного режима; если товар сложный — включи расширенное мышление
 - Вставь промпт в чат с Claude и приложи описание конкретного товара одним сообщением
 
 ## 💡 Что я решил за тебя

@@ -2,6 +2,16 @@
 
 Some user requests describe deliverables that cannot fit in a single prompt — multi-subsystem projects, vague "make it like Google's", or content volumes exceeding model output limits. The skill warns the user and lets them choose how to proceed.
 
+## Contents
+
+- Triggers
+- On trigger → output clarification (RU / EN templates)
+- User response handling
+- Why this matters
+- Out of scope
+
+---
+
 ## Triggers (any one)
 
 1. **Multiple unrelated subsystems** named in the same request

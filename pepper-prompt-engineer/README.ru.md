@@ -1,18 +1,19 @@
 # `pepper-prompt-engineer` — CRAFT+ Prompt Engineer
 
-Портативный скилл по промпт-инжинирингу: превращает любое описание задачи в production-ready промпт под конкретную модель по методологии **CRAFT+** (классический CRAFT, расширенный лучшими практиками 2026 года: success criteria, conditional modules, verification, polish под целевую модель).
+Портативный скилл по промпт-инжинирингу: превращает любое описание задачи в production-ready промпт под конкретную модель по методологии **CRAFT+** (классический CRAFT, расширенный блоками success criteria, conditional modules, verification и полировкой под целевую модель).
 
-Источники методологии: Anthropic Prompt Engineering Best Practices (апр. 2026), OpenAI GPT-5 Prompting Guide (март 2026), Google Gemini API System Instructions (март 2026), DeepSeek V4 Docs (апр. 2026), Misaki & Akiba — [String Seed of Thought](https://arxiv.org/abs/2510.21150) (ICLR 2026).
+Источники методологии: Anthropic *Prompting best practices* и *Skill authoring best practices*, OpenAI *Prompt engineering* guide и GPT-5 prompting guide, Google *Gemini 3 Developer Guide*, документация DeepSeek API, Misaki & Akiba — [String Seed of Thought](https://arxiv.org/abs/2510.21150) (ICLR 2026). Какое поколение моделей покрывает каждый источник — записано в [`anthropic/references/target-models.md`](./anthropic/references/target-models.md), единственном файле скилла с версионно-зависимыми фактами.
 
 ## Какую проблему решает
 
-Промпты «на коленке» недоформулируют критерии успеха, забывают форматирование под целевую модель (Claude → XML / GPT → Markdown / Gemini → таблицы / DeepSeek → CoT) и пропускают conditional modules (факт-чекинг, исполнение кода, SSoT-разнообразие, мульти-модальность). Скилл упаковывает рабочий процесс senior prompt engineer в одного агента, который:
+Промпты «на коленке» недоформулируют критерии успеха, забывают форматирование под целевую модель (Claude → XML / GPT → Markdown плюс XML / Gemini → лаконичный Markdown / DeepSeek → любой) и пропускают conditional modules (факт-чекинг, исполнение кода, SSoT-разнообразие, мульти-модальность). Скилл упаковывает рабочий процесс senior prompt engineer в одного агента, который:
 
 - определяет целевую модель, классифицирует задачу, задаёт максимум 3 критичных уточнения;
 - собирает 10 CRAFT+ блоков (role, task, context, success criteria, actions, constraints, reasoning mode, output format, examples, verification);
 - по двуязычным (RU+EN) триггерам встраивает модули факт-чекинга / исполнения кода / SSoT / мульти-модального ввода;
 - полирует форматирование под выбранную модель;
-- прогоняет результат через 13-пунктный self-check перед отдачей.
+- выдаёт настройку глубины размышления под выбранную модель — самый сильный рычаг качества, который живёт вне текста промпта;
+- прогоняет результат через 14-пунктный self-check, плюс опциональный программный валидатор.
 
 ## Два режима поставки
 
@@ -21,7 +22,7 @@
 | **Универсальный chat-промпт** | Один раз вставил — работает в Claude.ai Projects, ChatGPT Custom GPT, Gemini Gem, DeepSeek chat | [`chat-prompt.md`](./chat-prompt.md) |
 | **Claude Code скилл** | Полный набор: references, примеры, программный валидатор, evals | [`anthropic/SKILL.md`](./anthropic/SKILL.md) |
 
-Под капотом — одна и та же CRAFT+ методология. Chat-режим даёт минимальное трение (одна вставка, работает в любом chat UI); скилл — повторяемое использование внутри Claude Code с авто-подгрузкой references.
+Под капотом — одна и та же CRAFT+ методология, причём буквально: `chat-prompt.md` генерируется из исходников скилла скриптом `scripts/build-chat-prompt.py`, поэтому два издания не могут разойтись. Chat-режим даёт минимальное трение (одна вставка, работает в любом chat UI); скилл — повторяемое использование внутри Claude Code с авто-подгрузкой references.
 
 ## Выбери платформу
 
@@ -48,7 +49,7 @@
 - **Один файл:** скачай [`pepper-prompt-engineer.skill`](./pepper-prompt-engineer.skill) и установи как Claude Code скилл.
 - **Сначала посмотреть:** прочитай [`anthropic/SKILL.md`](./anthropic/SKILL.md) и сопровождающие файлы в [`anthropic/`](./anthropic/), потом следуй пошаговой инструкции в [`anthropic/INSTALL.md`](./anthropic/INSTALL.md).
 
-В обоих случаях получаешь те же 23 файла (SKILL.md, INSTALL.md, 7 references, 6 примеров, валидатор + README к скриптам, evals-набор).
+В обоих случаях получаешь один набор файлов: SKILL.md, INSTALL.md, 7 references, 6 примеров, валидатор и раннер evals с README к ним, набор сценариев evals.
 
 ## Когда НЕ использовать
 

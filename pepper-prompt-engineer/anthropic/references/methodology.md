@@ -6,7 +6,7 @@ This document defines the 10 semantic blocks of the CRAFT+ prompt. The skill ass
 
 - 1. ROLE
 - 2. TASK
-- 3. CONTEXT
+- 3. CONTEXT (incl. placing bulk input data)
 - 4. SUCCESS_CRITERIA
 - 5. ACTIONS
 - 6. CONSTRAINTS
@@ -65,6 +65,41 @@ Your audience: [who will consume the output].
 **Critical anti-pattern:** do NOT paraphrase the user's request to the agent ("User wants product descriptions"). Describe the task essence for the executing model ("Descriptions display on Wildberries product cards. Russian mothers 25-35 are primary readers...").
 
 **Length:** 1-4 sentences. If longer is needed, use bullet structure.
+
+### Placing bulk input data
+
+CONTEXT is the third block, but the user's actual *payload* — long documents, transcripts,
+datasets, code dumps — does not belong inside it. When the finished prompt will carry
+roughly 20k tokens or more of such material, the vendor guidance is to invert the usual
+order: put the payload **above** everything else, and keep the instructions at the end.
+Anthropic reports queries-at-the-end improving response quality by up to 30 percent in its
+tests, most visibly on complex multi-document inputs.
+
+So the assembled prompt becomes:
+
+```
+<documents>
+  <document index="1">
+    <source>[filename or origin]</source>
+    <document_content>
+      {{PASTE_DOCUMENT_HERE}}
+    </document_content>
+  </document>
+</documents>
+
+[language line]
+[ROLE, TASK, CONTEXT, ... VERIFICATION as usual]
+```
+
+CONTEXT then *describes* the payload — what the documents are, how they relate — instead of
+containing it.
+
+Pair this with quote grounding: when the payload is long, add a first step to ACTIONS
+telling the model to extract the relevant passages into `<quotes>` before analysing them.
+This keeps the model anchored to the source instead of the surrounding bulk.
+
+For short prompts with no bulk payload — the common case — ignore all of the above and keep
+the standard block order.
 
 ---
 
@@ -149,16 +184,18 @@ Priority 2: [requirement B if A is satisfied]
 **Options:**
 
 - **Direct** — for simple unambiguous tasks; no special signal needed
-- **Chain-of-Thought** — multi-step reasoning. ⚠️ ONLY add to the prompt for `target_model = deepseek-chat`. Claude 4.6+, GPT-5+, and Gemini Deep Think do CoT internally via API params; explicit "think step by step" is redundant or harmful.
+- **Chain-of-Thought** — multi-step reasoning. ⚠️ Do **not** write it into the prompt for any supported target. Every current target reasons internally once its reasoning-depth control is engaged, and an explicit decomposition instruction competes with that control while costing tokens. The correct move is a `user_instruction` that tells the user to raise the control — see the *Reasoning control* section of `target-models.md`. This applies to DeepSeek too: the retired chat model was the last target where injection helped, and it no longer exists.
 - **Tree-of-Thoughts** — explore multiple solution paths in parallel, then converge
 - **ReAct** — Thought → Action → Observation loop for tool use
 - **Self-Consistency** — generate N independent reasoning paths, then vote/aggregate; use for high-stakes (medicine, finance, security)
 
-**Pattern (when adding CoT for DeepSeek):**
+**Pattern (rare — only when the user explicitly asks for visible intermediate reasoning, e.g. because they want to audit the steps):**
 ```
 Reasoning mode: Chain-of-Thought.
 Before producing the final answer, decompose the task into sub-steps in a <thinking> block, then output the answer in an <answer> block.
 ```
+Use this for *visibility*, not for quality. If the goal is a better answer, raise the
+reasoning control instead.
 
 **Pattern (when not adding explicit reasoning, e.g., Direct):**
 The REASONING_MODE block can be a single line: `Reasoning mode: Direct.`
@@ -203,7 +240,16 @@ BULLETS:
 - Examples would be longer than the task itself
 - You're unsure the example is correct (mock examples are worse than none)
 
-**Rule:** maximum 3 examples. Many-shot (8-12) used to be recommended in 2023-2024, but on frontier reasoning models 2026 it causes context degradation past ~3000 tokens. Stay lean.
+**Rule:** 3-5 examples when you include them at all — that is the range Anthropic's current
+guidance names as giving the best results. Make them *relevant* (mirroring the real use
+case), *diverse* (covering edge cases, varied enough that the model does not latch onto an
+unintended pattern), and *structured* (each wrapped in `<example>`, the set in `<examples>`)
+so the model can tell them apart from instructions.
+
+Beyond five, added examples start costing more context than they buy in steering — but this
+is a judgement about diminishing returns, not a measured cliff. Do not cite a token
+threshold for it; the paper that used to be referenced here measured something else
+entirely (see *Sources* in `SKILL.md`).
 
 ---
 
@@ -222,7 +268,10 @@ Before outputting, verify:
 - [ ] No exclamation marks
 ```
 
-**Effect:** measurable improvement in compliance on frontier models — the executing model treats the checklist as a stop-gate before producing output.
+**Why it works:** the checklist acts as a stop-gate — the executing model re-reads its own
+output against explicit criteria before emitting it. This is the single-prompt form of the
+validator loop that this skill applies to itself (`scripts/validate.py`), and it is the
+pattern Anthropic recommends under "implement feedback loops".
 
 ---
 

@@ -53,12 +53,16 @@ The user did not specify a target model and it cannot be inferred from context. 
 
 ```
 Под какую нейросеть собрать промпт? / Which AI model is the prompt for?
-1) Claude (Opus / Sonnet)
-2) ChatGPT (GPT-5+)
-3) Gemini (2.5 / 3.x)
-4) DeepSeek-Chat (V3/V4)
+1) Claude
+2) ChatGPT
+3) Gemini
+4) DeepSeek
 5) Universal (one prompt for any of the above)
 ```
+
+Ask with bare family names, without version numbers — the user rarely knows or cares which
+point release they are on, and a stale version in the question is worse than none. Current
+generations are listed in `target-models.md` if you need them for the assumptions log.
 
 ### 3. Mega-task trigger fired
 
@@ -135,7 +139,7 @@ When a question is genuinely needed, apply these rules:
    1) Claude
    2) ChatGPT
    3) Gemini
-   4) DeepSeek-Chat
+   4) DeepSeek
    5) Universal
 
 2. В какой нише конкуренты?

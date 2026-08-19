@@ -16,10 +16,10 @@
 ## 🤔 Уточни, пожалуйста
 
 **1. Под какую нейросеть собрать промпт?**
-- 1) Claude (Opus / Sonnet)
-- 2) ChatGPT (GPT-5+)
-- 3) Gemini (2.5 / 3.x)
-- 4) DeepSeek-Chat (V3/V4)
+- 1) Claude
+- 2) ChatGPT
+- 3) Gemini
+- 4) DeepSeek
 - 5) Universal
 
 **2. В какой нише / индустрии конкуренты?**

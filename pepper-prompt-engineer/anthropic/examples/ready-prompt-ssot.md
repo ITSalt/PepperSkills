@@ -50,9 +50,9 @@ Direct.
 
 # Creativity Protocol
 <creativity_protocol>
-For each independent variant required, follow this protocol to ensure genuine diversity (bypasses RLHF mode collapse — Misaki & Akiba, ICLR 2026):
+For each independent variant required, follow this protocol to raise diversity across runs (String Seed of Thought — Misaki & Akiba, ICLR 2026):
 
-Step 1. Generate a fresh random string (16+ chars: mix uppercase letters, lowercase letters, digits, symbols) inside <random_string>...</random_string>. Generate internally — do NOT call external tools.
+Step 1. Generate a fresh random string of 24-32 characters (mix uppercase letters, lowercase letters, digits, symbols) inside <random_string>...</random_string>. Generate internally — do NOT call external tools.
 
 Step 2. Derive the variant deterministically inside <thinking>...</thinking>:
 - Uniform choice among N options: result = sum(ord(c) for c in string) mod N
@@ -86,7 +86,7 @@ Before producing the final list:
 ```
 
 ## ⚙️ Настройки перед использованием
-- Дополнительных настроек не требуется — модель отработает промпт как есть
+- Нужна ненулевая температура — при `temperature = 0` техника SSoT не работает
 - Этот промпт использует технику SSoT для повышения разнообразия ответов. Модель будет показывать промежуточные расчёты (random_string и thinking) — это ожидаемое поведение, не баг. Финальный ответ — внутри тегов `<answer>`.
 
 ## 💡 Что я решил за тебя
@@ -97,7 +97,7 @@ Before producing the final list:
 - Reasoning mode: Direct + протокол SSoT внутри Actions
 
 ## 📚 SSoT техника
-Промпт использует String Seed of Thought для повышения разнообразия. Модель будет показывать промежуточные расчёты (random_string и thinking) — это ожидаемое поведение, не баг. Финальный ответ — внутри тегов `<answer>`. Подробнее: [arXiv:2510.21150](https://arxiv.org/abs/2510.21150) (ICLR 2026).
+Промпт использует String Seed of Thought для повышения разнообразия. Нужна ненулевая температура — при `temperature = 0` приём не работает. Модель будет показывать промежуточные расчёты (random_string и thinking) — это ожидаемое поведение, не баг. Финальный ответ — внутри тегов `<answer>`. Подробнее: [arXiv:2510.21150](https://arxiv.org/abs/2510.21150) (ICLR 2026).
 
 ---
 *Если что-то поменять — скажи, переделаю.*

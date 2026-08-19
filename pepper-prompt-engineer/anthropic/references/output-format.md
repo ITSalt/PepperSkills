@@ -43,8 +43,8 @@ Section headers translate to USER_LANG. Templates for both supported languages b
 ```
 
 ## ⚙️ Настройки перед использованием
-- [user_instruction 1]
-- [user_instruction 2]
+- [reasoning-depth instruction — ALWAYS present, see target-models.md]
+- [user_instruction from an active conditional module, if any]
 
 ## 💡 Что я решил за тебя
 - [assumption 1]
@@ -52,7 +52,7 @@ Section headers translate to USER_LANG. Templates for both supported languages b
 
 [OPTIONAL — include ONLY if SSoT module was embedded:]
 ## 📚 SSoT техника
-Промпт использует String Seed of Thought для повышения разнообразия ответов. Модель будет показывать промежуточные расчёты (random_string и thinking) — это ожидаемое поведение, не баг. Финальный ответ — внутри тегов `<answer>`. Подробнее: [arXiv:2510.21150](https://arxiv.org/abs/2510.21150) (ICLR 2026).
+Промпт использует String Seed of Thought для повышения разнообразия ответов. Нужна ненулевая температура — при `temperature = 0` приём не работает. Модель будет показывать промежуточные расчёты (random_string и thinking) — это ожидаемое поведение, не баг. Финальный ответ — внутри тегов `<answer>`. Подробнее: [arXiv:2510.21150](https://arxiv.org/abs/2510.21150) (ICLR 2026).
 
 [OPTIONAL — include ONLY if mode = "improve":]
 ## 🔄 Что улучшено в твоём промпте
@@ -73,8 +73,8 @@ Section headers translate to USER_LANG. Templates for both supported languages b
 ```
 
 ## ⚙️ Setup before use
-- [user_instruction 1]
-- [user_instruction 2]
+- [reasoning-depth instruction — ALWAYS present, see target-models.md]
+- [user_instruction from an active conditional module, if any]
 
 ## 💡 Decisions I made for you
 - [assumption 1]
@@ -82,7 +82,7 @@ Section headers translate to USER_LANG. Templates for both supported languages b
 
 [OPTIONAL — if SSoT embedded:]
 ## 📚 SSoT technique
-This prompt uses String Seed of Thought to enhance response diversity. The model will show intermediate computations (random_string and thinking) — this is expected, not a bug. Final answer sits inside `<answer>` tags. Reference: [arXiv:2510.21150](https://arxiv.org/abs/2510.21150) (ICLR 2026).
+This prompt uses String Seed of Thought to enhance response diversity. It needs non-zero temperature — at `temperature = 0` the technique does nothing. The model will show intermediate computations (random_string and thinking) — this is expected, not a bug. Final answer sits inside `<answer>` tags. Reference: [arXiv:2510.21150](https://arxiv.org/abs/2510.21150) (ICLR 2026).
 
 [OPTIONAL — if mode = "improve":]
 ## 🔄 What I improved in your prompt
@@ -140,7 +140,7 @@ When JSON mode is active, output a single valid JSON object with this exact stru
 ```json
 {
   "status": "clarification_needed" | "ready",
-  "target_model": "claude" | "gpt" | "gemini" | "deepseek-chat" | "universal" | null,
+  "target_model": "claude" | "gpt" | "gemini" | "deepseek" | "universal" | null,
   "clarifying_questions": [
     "Numbered question 1 (with embedded option hints)",
     "Numbered question 2"
@@ -171,12 +171,21 @@ When JSON mode is active, output a single valid JSON object with this exact stru
 
 **status = "ready":**
 - `prompt`: full final prompt
-- `user_instructions`: array of UI hints in USER_LANG
+- `user_instructions`: array of UI hints in USER_LANG. Never empty — the reasoning-depth instruction for the chosen target is always the first element
 - `assumptions`: array of decisions; `[]` if none
 - `useSSOT`: `true` only if SSoT module embedded
 - `target_model`: one of 5 values
 - `mode`: `"generate"` or `"improve"`
 - `clarifying_questions`: `[]`
+
+### When the *inner* prompt is meant to produce JSON
+
+Distinct from this skill's own JSON output mode. If the prompt being built asks the
+executing model for JSON, add a `user_instruction`: on an API, constrain the response with
+the vendor's schema mechanism (Structured Outputs / response schema) instead of relying on
+format instructions in the prompt text. Schema enforcement is checked by the serving layer;
+prose instructions are not. In a chat UI without that option, the OUTPUT_FORMAT block
+carries the burden alone — say so, and keep the literal template in it exact.
 
 ### JSON output discipline
 
@@ -198,7 +207,7 @@ When the section header says "for [TARGET_MODEL_DISPLAY]", use these display nam
 | claude | Claude |
 | gpt | ChatGPT |
 | gemini | Gemini |
-| deepseek-chat | DeepSeek |
+| deepseek | DeepSeek |
 | universal | Universal |
 
 ---
@@ -209,7 +218,7 @@ For Structure A (ready), the order is fixed:
 
 1. Header (🎯 Готовый промпт / Ready prompt)
 2. Prompt code block
-3. Setup section (⚙️)
+3. Setup section (⚙️) — never omitted; carries at least the reasoning-depth line
 4. Decisions section (💡) — omit entirely if `assumptions` is empty
 5. SSoT section (📚) — include ONLY if SSoT module embedded
 6. Improvements section (🔄) — include ONLY if mode = "improve"

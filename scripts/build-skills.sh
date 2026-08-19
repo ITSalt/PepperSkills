@@ -34,6 +34,12 @@ for skill in "${SKILLS[@]}"; do
   src="$REPO_ROOT/$skill/anthropic"
   out="$REPO_ROOT/$skill/$skill.skill"
 
+  # Skills that ship a chat edition generate it from the same sources, so the two
+  # editions cannot drift apart. Regenerate before packaging.
+  if [[ -f "$REPO_ROOT/$skill/chat-prompt.template.md" ]]; then
+    python3 "$REPO_ROOT/scripts/build-chat-prompt.py"
+  fi
+
   if [[ ! -d "$src" ]]; then
     echo "skip: $skill has no anthropic/ directory" >&2
     continue
