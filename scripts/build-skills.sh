@@ -49,6 +49,13 @@ for skill in "${SKILLS[@]}"; do
   mkdir -p "$staging/$skill"
   cp -R "$src/." "$staging/$skill/"
   find "$staging" -name '.DS_Store' -delete
+  # Байт-код Python в релизе не нужен и тащит в архив абсолютные пути машины,
+  # на которой собирали.
+  find "$staging" -name '__pycache__' -type d -prune -exec rm -rf {} +
+
+  # Локальные снапшоты госреестров в релиз не входят: данные протухают, а
+  # устаревший реестр даёт ложный PASS вместо честного UNKNOWN.
+  find "$staging" -path '*/assets/registries-snapshot/*.json' -delete
 
   rm -f "$out"
   (cd "$staging" && zip -r -X "$out" "$skill" >/dev/null)

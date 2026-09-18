@@ -10,6 +10,7 @@ two formats can be compared and adapted.
 |-------|-------------|--------|
 | [`pepper-creative-mode`](./pepper-creative-mode/) | Distribution-faithful sampling and diverse generation via self-seeded randomness. | [`pepper-creative-mode/`](./pepper-creative-mode/) |
 | [`pepper-prompt-engineer`](./pepper-prompt-engineer/) | CRAFT+ prompt engineer: turns task descriptions into production-ready, target-model-specific prompts. | [`pepper-prompt-engineer/`](./pepper-prompt-engineer/) |
+| [`pepper-ru-web-compliance`](./pepper-ru-web-compliance/) | Audits a website against Russian legal requirements: a note for the lawyer and a remediation plan for a developer agent. | [`pepper-ru-web-compliance/`](./pepper-ru-web-compliance/) |
 
 ## Install
 

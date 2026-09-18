@@ -5,3 +5,15 @@
 .vscode/
 node_modules/
 __pycache__/
+artifacts/
+*.pyc
+
+# Локальные снапшоты госреестров: делаются пользователем у себя, в репозиторий
+# и в релиз не входят — устаревший реестр даёт ложный PASS вместо UNKNOWN.
+**/assets/registries-snapshot/*.json
+
+# Заготовка отдельного репозитория ru-registries-mirror — переезжает отсюда
+_mirror-bootstrap/
+
+# Каталог, в который Cowork складывает присланные файлы
+Claude outputs/
