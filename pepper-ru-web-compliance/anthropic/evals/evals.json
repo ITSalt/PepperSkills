@@ -1,0 +1,123 @@
+{
+  "skill_name": "pepper-ru-web-compliance",
+  "description": "Behavioral evaluations for the Russian web-compliance audit skill. Schema follows Anthropic's documented evaluation shape: skills / query / files / expected_behavior.",
+  "evals": [
+    {
+      "id": "full-audit-ru",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "Проверь сайт https://example.ru на соответствие российскому законодательству. ИНН 7736279160.",
+      "files": [],
+      "expected_behavior": [
+        "Runs the four layers in order: collect.py, registries.py, detect.py, then the semantic pass, then render.py",
+        "Does not ask for the INN again — it was given in the query",
+        "Produces one document in two parts (analytical note + remediation plan) plus remediation-plan.md as a separate file",
+        "Every rule from rules.yaml appears in the checklist with an explicit status",
+        "The chat reply is three to four sentences and does not retell the note"
+      ]
+    },
+    {
+      "id": "telegram-auth-symptom",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "У нас на сайте вход через Telegram. Это вообще законно, штраф прилетит?",
+      "files": [],
+      "expected_behavior": [
+        "Activates and asks for the site URL before concluding anything",
+        "Names п. 10 ст. 8 ФЗ-149 and ст. 13.55 КоАП as the basis, with the legal-entity fine range 500 000 – 700 000 ₽",
+        "Does not attribute the authorization requirement to 156-ФЗ — that law is about the MAX messenger",
+        "States that the liability article takes effect 07.07.2026",
+        "Does not present the answer as a legal opinion"
+      ]
+    },
+    {
+      "id": "blocked-by-antibot",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "Проверь http://ozon.ru/",
+      "files": [],
+      "expected_behavior": [
+        "Reports that the crawl was blocked and no page opened",
+        "Issues no PASS for any content-dependent rule — those become UNKNOWN",
+        "Does not claim the site is compliant or that no violations were found",
+        "Says explicitly what has to be done to get a real result (run the collector from a browser session, or supply sources)"
+      ]
+    },
+    {
+      "id": "registry-unavailable",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "Проверь https://example.ru, но у меня нет доступа к сайтам gov.ru",
+      "files": [],
+      "expected_behavior": [
+        "Explains the resolution chain: official source, user proxy, published mirror, cache",
+        "Offers both options — the user's own RF proxy via PEPPER_RU_REGISTRY_PROXY, and the ITSalt/ru-registries-mirror mirror",
+        "Marks conclusions drawn from the mirror as no stronger than WARN and says so in the note",
+        "Does not silently fall back to PASS for the disclaimer rules"
+      ]
+    },
+    {
+      "id": "weak-registry-match",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "В отчёте написано, что мы упомянули иноагента «ВОТ ТАК», хотя у нас на странице просто «дала вот такой результат». Разберись.",
+      "files": [],
+      "expected_behavior": [
+        "Confirms this is a false positive rather than defending the finding",
+        "Explains that the registry alias is built from everyday words and matched ordinary prose",
+        "States that such a match is only reported when the phrase is quoted or preceded by an organisation word",
+        "Does not lower the status of a genuine mention to make the report look cleaner"
+      ]
+    },
+    {
+      "id": "policy-published-as-pdf",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "Проверь https://example.ru — политика у нас лежит PDF-файлом на CDN.",
+      "files": [],
+      "expected_behavior": [
+        "Counts the PDF as a published policy for PDN-001 — the form of publication does not change compliance with ч. 2 ст. 18.1",
+        "Marks PDN-003 (completeness of the policy) as unverified rather than PASS, because the file content was not parsed",
+        "Keeps CK-004 and ORG-003 unverified for the same reason instead of reporting a violation"
+      ]
+    },
+    {
+      "id": "plan-needs-legal-input",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "Сделай из проверки план, который я отдам разработчику.",
+      "files": [],
+      "expected_behavior": [
+        "Produces remediation-plan.md as a separate file, ordered by descending risk",
+        "Each task carries what to do, where, and a verifiable acceptance criterion",
+        "Tasks requiring legal wording or an owner's decision are marked «нужен вход от заказчика»",
+        "Does not instruct the developer agent to write the privacy policy text itself"
+      ]
+    },
+    {
+      "id": "no-inn-given",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "Проверь https://example.ru",
+      "files": [],
+      "expected_behavior": [
+        "Asks for the site URL only if missing, and for the INN in one question, not a questionnaire",
+        "If the INN is neither given nor found on the site, marks PDN-010 UNKNOWN with the reason instead of FAIL or PASS",
+        "Does not ask about a proxy up front"
+      ]
+    },
+    {
+      "id": "out-of-scope-legal-question",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "Объясни, чем иностранный агент отличается от нежелательной организации по российскому праву.",
+      "files": [],
+      "expected_behavior": [
+        "Does not activate the skill — there is no site to audit",
+        "Answers the question directly without producing a report or a remediation plan"
+      ]
+    },
+    {
+      "id": "foreign-jurisdiction",
+      "skills": ["pepper-ru-web-compliance"],
+      "query": "Проверь https://example.de — немецкий интернет-магазин, продаёт только в ЕС.",
+      "files": [],
+      "expected_behavior": [
+        "Says the checklist covers Russian requirements and asks whether the site targets users in Russia",
+        "Does not produce a report of violations for a site outside the jurisdiction without that confirmation",
+        "Does not present GDPR conclusions — they are outside this skill"
+      ]
+    }
+  ]
+}
