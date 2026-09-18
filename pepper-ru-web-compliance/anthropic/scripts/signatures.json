@@ -1,0 +1,856 @@
+{
+ "version": 1,
+ "auth": {
+  "foreign_oauth": {
+   "google": {
+    "hosts": [
+     "accounts.google.com",
+     "oauth2.googleapis.com",
+     "apis.google.com"
+    ],
+    "paths": [
+     "/o/oauth2",
+     "/gsi/client",
+     "/oauth2/v2/auth"
+    ],
+    "markers": [
+     "g_id_onload",
+     "g_id_signin",
+     "GoogleAuthProvider",
+     "gapi.auth2",
+     "signInWithGoogle",
+     "accounts.google.com/gsi"
+    ]
+   },
+   "apple": {
+    "hosts": [
+     "appleid.apple.com",
+     "appleid.cdn-apple.com"
+    ],
+    "paths": [
+     "/auth/authorize"
+    ],
+    "markers": [
+     "AppleID.auth",
+     "data-appleid",
+     "appleid.auth.js",
+     "OAuthProvider('apple.com')"
+    ]
+   },
+   "meta": {
+    "hosts": [
+     "connect.facebook.net",
+     "graph.facebook.com"
+    ],
+    "paths": [
+     "/dialog/oauth",
+     "/oauth/access_token"
+    ],
+    "markers": [
+     "FB.login",
+     "fbAsyncInit",
+     "facebook-jssdk"
+    ]
+   },
+   "github": {
+    "hosts": [
+     "github.com",
+     "api.github.com"
+    ],
+    "paths": [
+     "/login/oauth/authorize",
+     "/login/oauth/access_token"
+    ],
+    "markers": [
+     "github.com/login/oauth"
+    ]
+   },
+   "microsoft": {
+    "hosts": [
+     "login.microsoftonline.com",
+     "login.live.com"
+    ],
+    "markers": [
+     "msal.min.js",
+     "@azure/msal",
+     "MsalProvider"
+    ]
+   },
+   "other": {
+    "hosts": [
+     "www.linkedin.com",
+     "discord.com",
+     "api.twitter.com",
+     "x.com"
+    ],
+    "paths": [
+     "/oauth",
+     "/oauth2/authorize"
+    ],
+    "markers": []
+   }
+  },
+  "telegram": {
+   "hosts": [
+    "oauth.telegram.org"
+   ],
+   "paths": [
+    "/js/telegram-widget.js",
+    "/auth"
+   ],
+   "markers": [
+    "data-telegram-login",
+    "onTelegramAuth",
+    "TelegramLoginWidget",
+    "telegram-widget.js"
+   ],
+   "not_auth_markers": [
+    "api.telegram.org/bot",
+    "t.me/",
+    "telegram.me/"
+   ]
+  },
+  "foreign_idaas": {
+   "firebase": {
+    "hosts": [
+     "identitytoolkit.googleapis.com",
+     "securetoken.googleapis.com"
+    ],
+    "markers": [
+     "firebase/auth",
+     "firebase-auth.js",
+     "signInWithPopup",
+     "signInWithRedirect",
+     "getAuth("
+    ]
+   },
+   "auth0": {
+    "host_suffixes": [
+     ".auth0.com"
+    ],
+    "hosts": [
+     "cdn.auth0.com"
+    ],
+    "markers": [
+     "auth0-spa-js",
+     "@auth0/auth0",
+     "Auth0Client"
+    ]
+   },
+   "clerk": {
+    "host_suffixes": [
+     ".clerk.accounts.dev",
+     ".clerk.com"
+    ],
+    "markers": [
+     "@clerk/clerk-js",
+     "clerk.browser.js",
+     "__clerk_db_jwt",
+     "data-clerk-publishable-key"
+    ]
+   },
+   "cognito": {
+    "host_patterns": [
+     "cognito-idp\\.[a-z0-9-]+\\.amazonaws\\.com",
+     "\\.auth\\.[a-z0-9-]+\\.amazoncognito\\.com"
+    ],
+    "markers": [
+     "amazon-cognito-identity",
+     "CognitoUserPool"
+    ]
+   },
+   "other": {
+    "host_suffixes": [
+     ".okta.com",
+     ".stytch.com",
+     ".frontegg.com"
+    ],
+    "hosts": [
+     "magic.link"
+    ],
+    "markers": [
+     "okta-auth-js",
+     "supabase.auth.signInWithOAuth",
+     "/auth/v1/authorize"
+    ]
+   }
+  },
+  "allowed_ru": {
+   "esia": {
+    "hosts": [
+     "esia.gosuslugi.ru",
+     "gosuslugi.ru"
+    ],
+    "paths": [
+     "/aas/oauth2"
+    ],
+    "markers": [
+     "esia.gosuslugi.ru"
+    ]
+   },
+   "ebs": {
+    "hosts": [
+     "ebs.gosuslugi.ru",
+     "bio.rt.ru"
+    ],
+    "markers": []
+   },
+   "vk": {
+    "hosts": [
+     "id.vk.com",
+     "oauth.vk.com"
+    ],
+    "markers": [
+     "@vkid/sdk",
+     "VKID.Auth",
+     "VK.init"
+    ]
+   },
+   "yandex": {
+    "hosts": [
+     "oauth.yandex.ru",
+     "id.yandex.ru",
+     "passport.yandex.ru"
+    ],
+    "markers": [
+     "YaAuthSuggest",
+     "yandex.ru/dev/id"
+    ]
+   },
+   "sber": {
+    "hosts": [
+     "id.sber.ru",
+     "online.sber.ru"
+    ],
+    "markers": [
+     "sberid",
+     "SberIdButton"
+    ]
+   },
+   "tbank": {
+    "hosts": [
+     "id.tbank.ru",
+     "id.tinkoff.ru"
+    ],
+    "markers": [
+     "tinkoff-id",
+     "tbank-id"
+    ]
+   },
+   "mailru": {
+    "hosts": [
+     "connect.ok.ru",
+     "connect.mail.ru"
+    ],
+    "markers": []
+   },
+   "phone_field": {
+    "input_types": [
+     "tel"
+    ],
+    "autocomplete": [
+     "tel",
+     "tel-national"
+    ],
+    "placeholder_patterns": [
+     "\\+7",
+     "8\\s*\\(",
+     "телефон"
+    ]
+   }
+  },
+  "allowed_labels": {
+   "vk": [
+    "vk",
+    "вконтакте",
+    "вк",
+    "vk id"
+   ],
+   "esia": [
+    "госуслуги",
+    "есиа",
+    "gosuslugi"
+   ],
+   "yandex": [
+    "яндекс id",
+    "яндекс",
+    "yandex id"
+   ],
+   "sber": [
+    "сбер id",
+    "сбербанк id",
+    "sber id"
+   ],
+   "tbank": [
+    "т-банк",
+    "тинькофф id",
+    "t-bank id"
+   ],
+   "mailru": [
+    "одноклассники",
+    "mail.ru"
+   ],
+   "phone": [
+    "по номеру телефона",
+    "по телефону",
+    "sms",
+    "смс"
+   ],
+   "own": [
+    "по почте",
+    "по email",
+    "по e-mail",
+    "email",
+    "почта",
+    "эл. почта"
+   ]
+  },
+  "login_context": {
+   "url_segments": [
+    "login",
+    "signin",
+    "sign-in",
+    "auth",
+    "oauth",
+    "vhod",
+    "vkhod",
+    "register",
+    "registration",
+    "signup",
+    "sign-up",
+    "registr",
+    "cabinet",
+    "lk",
+    "account",
+    "profile",
+    "my"
+   ],
+   "action_patterns": [
+    "login",
+    "signin",
+    "auth",
+    "register",
+    "signup"
+   ],
+   "dom_markers": [
+    "input[type=password]",
+    "form[action*=login]",
+    "form[action*=auth]"
+   ],
+   "anchor_labels": [
+    "войти",
+    "вход",
+    "зарегистрироваться",
+    "регистрация",
+    "личный кабинет",
+    "sign in",
+    "log in",
+    "sign up"
+   ],
+   "text_patterns": [
+    "личный кабинет",
+    "войти в аккаунт",
+    "sign in",
+    "log in"
+   ]
+  }
+ },
+ "trackers": {
+  "foreign": [
+   {
+    "host": "www.google-analytics.com",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "analytics"
+   },
+   {
+    "host": "analytics.google.com",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "analytics"
+   },
+   {
+    "host": "www.googletagmanager.com",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "tagmanager"
+   },
+   {
+    "host": "stats.g.doubleclick.net",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "ads"
+   },
+   {
+    "host": "googleads.g.doubleclick.net",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "ads"
+   },
+   {
+    "host": "doubleclick.net",
+    "match": "suffix",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "ads"
+   },
+   {
+    "host": "googlesyndication.com",
+    "match": "suffix",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "ads"
+   },
+   {
+    "host": "connect.facebook.net",
+    "vendor": "Meta",
+    "country": "US",
+    "kind": "ads",
+    "note": "Meta признана экстремистской — см. также DISC-005"
+   },
+   {
+    "host": "www.facebook.com",
+    "paths": [
+     "/tr"
+    ],
+    "vendor": "Meta",
+    "country": "US",
+    "kind": "ads"
+   },
+   {
+    "host": "static.hotjar.com",
+    "vendor": "Hotjar",
+    "country": "MT",
+    "kind": "session_recording"
+   },
+   {
+    "host": "script.hotjar.com",
+    "vendor": "Hotjar",
+    "country": "MT",
+    "kind": "session_recording"
+   },
+   {
+    "host": "www.clarity.ms",
+    "vendor": "Microsoft",
+    "country": "US",
+    "kind": "session_recording"
+   },
+   {
+    "host": "clarity.ms",
+    "match": "suffix",
+    "vendor": "Microsoft",
+    "country": "US",
+    "kind": "session_recording"
+   },
+   {
+    "host": "analytics.tiktok.com",
+    "vendor": "TikTok",
+    "country": "CN",
+    "kind": "ads"
+   },
+   {
+    "host": "snap.licdn.com",
+    "vendor": "LinkedIn",
+    "country": "US",
+    "kind": "ads"
+   },
+   {
+    "host": "sc-static.net",
+    "match": "suffix",
+    "vendor": "Snap",
+    "country": "US",
+    "kind": "ads"
+   },
+   {
+    "host": "cdn.amplitude.com",
+    "vendor": "Amplitude",
+    "country": "US",
+    "kind": "analytics"
+   },
+   {
+    "host": "api.amplitude.com",
+    "vendor": "Amplitude",
+    "country": "US",
+    "kind": "analytics"
+   },
+   {
+    "host": "cdn.mxpnl.com",
+    "vendor": "Mixpanel",
+    "country": "US",
+    "kind": "analytics"
+   },
+   {
+    "host": "api-js.mixpanel.com",
+    "vendor": "Mixpanel",
+    "country": "US",
+    "kind": "analytics"
+   },
+   {
+    "host": "js.intercomcdn.com",
+    "vendor": "Intercom",
+    "country": "US",
+    "kind": "support"
+   },
+   {
+    "host": "widget.intercom.io",
+    "vendor": "Intercom",
+    "country": "US",
+    "kind": "support"
+   },
+   {
+    "host": "browser.sentry-cdn.com",
+    "vendor": "Sentry",
+    "country": "US",
+    "kind": "errors"
+   },
+   {
+    "host": "sentry.io",
+    "match": "suffix",
+    "vendor": "Sentry",
+    "country": "US",
+    "kind": "errors"
+   }
+  ],
+  "foreign_infra": [
+   {
+    "host": "fonts.googleapis.com",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "fonts"
+   },
+   {
+    "host": "fonts.gstatic.com",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "fonts"
+   },
+   {
+    "host": "www.google.com",
+    "paths": [
+     "/recaptcha"
+    ],
+    "vendor": "Google",
+    "country": "US",
+    "kind": "captcha"
+   },
+   {
+    "host": "www.gstatic.com",
+    "paths": [
+     "/recaptcha"
+    ],
+    "vendor": "Google",
+    "country": "US",
+    "kind": "captcha"
+   },
+   {
+    "host": "hcaptcha.com",
+    "match": "suffix",
+    "vendor": "hCaptcha",
+    "country": "US",
+    "kind": "captcha"
+   },
+   {
+    "host": "cdnjs.cloudflare.com",
+    "vendor": "Cloudflare",
+    "country": "US",
+    "kind": "cdn"
+   },
+   {
+    "host": "unpkg.com",
+    "vendor": "Cloudflare",
+    "country": "US",
+    "kind": "cdn"
+   },
+   {
+    "host": "cdn.jsdelivr.net",
+    "vendor": "jsDelivr",
+    "country": "US",
+    "kind": "cdn"
+   },
+   {
+    "host": "ajax.googleapis.com",
+    "vendor": "Google",
+    "country": "US",
+    "kind": "cdn"
+   },
+   {
+    "host": "www.youtube.com",
+    "paths": [
+     "/embed"
+    ],
+    "vendor": "Google",
+    "country": "US",
+    "kind": "embed"
+   },
+   {
+    "host": "player.vimeo.com",
+    "vendor": "Vimeo",
+    "country": "US",
+    "kind": "embed"
+   }
+  ],
+  "russian": [
+   {
+    "host": "mc.yandex.ru",
+    "vendor": "Яндекс",
+    "country": "RU",
+    "kind": "analytics"
+   },
+   {
+    "host": "mc.yandex.com",
+    "vendor": "Яндекс",
+    "country": "RU",
+    "kind": "analytics"
+   },
+   {
+    "host": "an.yandex.ru",
+    "vendor": "Яндекс",
+    "country": "RU",
+    "kind": "ads"
+   },
+   {
+    "host": "top-fwz1.mail.ru",
+    "vendor": "VK",
+    "country": "RU",
+    "kind": "analytics"
+   },
+   {
+    "host": "top.mail.ru",
+    "vendor": "VK",
+    "country": "RU",
+    "kind": "analytics"
+   },
+   {
+    "host": "vk.com",
+    "paths": [
+     "/rtrg"
+    ],
+    "vendor": "VK",
+    "country": "RU",
+    "kind": "ads"
+   },
+   {
+    "host": "smartcaptcha.yandexcloud.net",
+    "vendor": "Яндекс",
+    "country": "RU",
+    "kind": "captcha"
+   },
+   {
+    "host": "code.jivo.ru",
+    "vendor": "Jivo",
+    "country": "RU",
+    "kind": "support"
+   },
+   {
+    "host": "cdn.callibri.ru",
+    "vendor": "Callibri",
+    "country": "RU",
+    "kind": "analytics"
+   },
+   {
+    "host": "cdn.roistat.com",
+    "vendor": "Roistat",
+    "country": "RU",
+    "kind": "analytics"
+   }
+  ]
+ },
+ "symbols": {
+  "meta": {
+   "css_classes": [
+    "fa-instagram",
+    "fa-facebook",
+    "fa-facebook-f",
+    "fa-facebook-square",
+    "icon-instagram",
+    "icon-facebook",
+    "instagram-icon",
+    "facebook-icon",
+    "bi-instagram",
+    "bi-facebook",
+    "socicon-instagram",
+    "socicon-facebook"
+   ],
+   "link_hosts": [
+    "instagram.com",
+    "www.instagram.com",
+    "facebook.com",
+    "www.facebook.com",
+    "fb.com",
+    "m.facebook.com"
+   ],
+   "img_patterns": [
+    "instagram",
+    "facebook",
+    "\\bfb\\b",
+    "\\big\\b-icon"
+   ],
+   "alt_patterns": [
+    "instagram",
+    "facebook"
+   ]
+  },
+  "excluded": [
+   "whatsapp",
+   "wa.me",
+   "api.whatsapp.com"
+  ]
+ },
+ "documents": {
+  "privacy": {
+   "paths": [
+    "/privacy",
+    "/privacy-policy",
+    "/policy",
+    "/politika",
+    "/personal-data",
+    "/personalnye-dannye",
+    "/confidentiality",
+    "/konfidencialnost",
+    "/privacy.html",
+    "/policy.html"
+   ],
+   "link_text": [
+    "политика",
+    "конфиденциальн",
+    "персональн",
+    "обработк",
+    "privacy"
+   ],
+   "required_by": [
+    "PDN-001",
+    "PDN-002"
+   ]
+  },
+  "offer": {
+   "paths": [
+    "/offer",
+    "/oferta",
+    "/terms",
+    "/agreement",
+    "/soglashenie",
+    "/dogovor"
+   ],
+   "link_text": [
+    "оферта",
+    "соглашение",
+    "условия",
+    "договор"
+   ]
+  },
+  "contacts": {
+   "paths": [
+    "/contacts",
+    "/contact",
+    "/kontakty",
+    "/about",
+    "/o-kompanii",
+    "/requisites",
+    "/rekvizity"
+   ],
+   "link_text": [
+    "контакт",
+    "реквизит",
+    "о компании",
+    "о нас"
+   ]
+  },
+  "delivery": {
+   "paths": [
+    "/delivery",
+    "/dostavka",
+    "/payment",
+    "/oplata"
+   ],
+   "link_text": [
+    "доставк",
+    "оплат"
+   ]
+  },
+  "return": {
+   "paths": [
+    "/return",
+    "/vozvrat",
+    "/warranty",
+    "/garantiya"
+   ],
+   "link_text": [
+    "возврат",
+    "гаранти",
+    "обмен"
+   ]
+  }
+ },
+ "cookie_banner": {
+  "accept_texts": [
+   "принять",
+   "принимаю",
+   "согласен",
+   "согласна",
+   "соглашаюсь",
+   "хорошо",
+   "понятно",
+   "ок",
+   "ok",
+   "accept",
+   "allow all",
+   "разрешить все",
+   "разрешить всё",
+   "принять все",
+   "принять всё"
+  ],
+  "reject_texts": [
+   "отклонить",
+   "отказаться",
+   "отказ",
+   "только необходимые",
+   "необходимые",
+   "reject",
+   "decline",
+   "deny",
+   "настроить",
+   "управление cookie",
+   "настройки cookie"
+  ],
+  "technical_cookie_names": [
+   "phpsessid",
+   "sessionid",
+   "csrftoken",
+   "csrf_token",
+   "xsrf-token",
+   "jsessionid",
+   "laravel_session",
+   "cf_clearance",
+   "__cf_bm"
+  ]
+ },
+ "requisites": {
+  "inn_pattern": "\\b(\\d{10}|\\d{12})\\b",
+  "ogrn_pattern": "\\b(\\d{13}|\\d{15})\\b",
+  "kpp_pattern": "\\b\\d{9}\\b",
+  "legal_forms": [
+   "ООО",
+   "АО",
+   "ПАО",
+   "ЗАО",
+   "ОАО",
+   "ИП",
+   "НКО",
+   "АНО",
+   "ФГУП",
+   "МУП"
+  ],
+  "inn_context": [
+   "инн"
+  ],
+  "ogrn_context": [
+   "огрн",
+   "огрнип"
+  ]
+ },
+ "rkn_operators": {
+  "search_url": "https://pd.rkn.gov.ru/operators-registry/operators-list/?act=search&inn={inn}",
+  "requires_ru_exit": true,
+  "row_marker_pattern": "\\d{2}-\\d{2}-\\d{6}|\\d{2}-\\d{7}"
+ }
+}
