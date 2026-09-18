@@ -17,3 +17,6 @@ _mirror-bootstrap/
 
 # Каталог, в который Cowork складывает присланные файлы
 Claude outputs/
+
+# Файлы, которые не удалось удалить из песочницы Cowork
+_to_delete/
