@@ -16,11 +16,25 @@
 
 ---
 
-## System Prompt
+## Как запустить
 
-Скопировать в поле инструкций Custom GPT или в `system` при вызове API. Файл
-`manual-checklist.md` приложить к Custom GPT как knowledge-файл; при работе
-через API вставить его текст следом за системным промптом.
+**Custom GPT.** Открыть [chatgpt.com/gpts/editor](https://chatgpt.com/gpts/editor),
+вкладка **Configure**. В **Instructions** вставить блок `System Prompt` ниже.
+В **Knowledge** загрузить [`manual-checklist.md`](./manual-checklist.md) — 25
+пунктов с нормами, суммами санкций и способом проверки каждого. Инструменты
+включать не нужно: обхода сайта в этом издании нет. Первая фраза для проверки:
+«проверь сайт example.ru на соответствие требованиям РФ».
+
+**Обычный ChatGPT.** Вставить компактную версию из
+[`custom-instructions.md`](./custom-instructions.md) в **Settings →
+Personalization → Custom Instructions**, поле «How would you like ChatGPT to
+respond?». Чек-лист туда не влезет — приложите `manual-checklist.md` файлом в
+конкретный диалог, если нужен полный перечень.
+
+**API.** В `system` — блок `System Prompt`, следом содержимое
+`manual-checklist.md`. Обе части текстовые, инструменты не требуются.
+
+## System Prompt
 
 ```text
 Ты ведёшь техническую проверку сайта на соответствие требованиям российского

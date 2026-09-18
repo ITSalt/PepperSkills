@@ -137,15 +137,32 @@ including administrative penalties. The software is provided "as is" — see
 
 ## Installation
 
-Details in [`anthropic/INSTALL.md`](./anthropic/INSTALL.md).
+Step by step for every environment — [`anthropic/INSTALL.md`](./anthropic/INSTALL.md).
+In short:
+
+**Claude Code** — copy the folder into your skills directory:
 
 ```bash
 cp -R anthropic ~/.claude/skills/pepper-ru-web-compliance
 ```
 
+**Claude web and desktop** — enable *Settings → Capabilities → Code execution
+and file creation*, download the `.skill` from the
+[latest release](https://github.com/ITSalt/PepperSkills/releases/latest) and
+upload it via *Customize → Skills → Add → Upload skill*.
+
+**GPT** — paste [`openai/system-prompt.md`](./openai/system-prompt.md) into a
+Custom GPT's Instructions and attach
+[`openai/manual-checklist.md`](./openai/manual-checklist.md) as Knowledge.
+
 No dependencies: Python 3.10+ standard library only. Playwright is optional and
 widens coverage — without it the rules about the cookie banner, checkbox state
 and network requests fall back to `UNKNOWN`.
+
+A full automatic audit is possible in Claude Code only: the execution
+environment inside the Claude apps has no browser, and its network access
+depends on account settings. What works where is a table at the top of
+`INSTALL.md`.
 
 ## Pick your platform
 

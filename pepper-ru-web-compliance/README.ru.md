@@ -134,15 +134,32 @@ render.py      сборка документов  -> записка + план
 
 ## Установка
 
-Подробности — [`anthropic/INSTALL.md`](./anthropic/INSTALL.md).
+Пошагово для всех окружений — [`anthropic/INSTALL.md`](./anthropic/INSTALL.md).
+Коротко:
+
+**Claude Code** — скопировать каталог в папку скиллов:
 
 ```bash
 cp -R anthropic ~/.claude/skills/pepper-ru-web-compliance
 ```
 
+**Claude в браузере и десктопе** — включить *Settings → Capabilities → Code
+execution and file creation*, скачать `.skill` из
+[последнего релиза](https://github.com/ITSalt/PepperSkills/releases/latest) и
+загрузить через *Customize → Skills → Add → Upload skill*.
+
+**GPT** — инструкции из [`openai/system-prompt.md`](./openai/system-prompt.md)
+в поле Instructions у Custom GPT, чек-лист
+[`openai/manual-checklist.md`](./openai/manual-checklist.md) — в Knowledge.
+
 Зависимостей нет: всё на стандартной библиотеке Python 3.10+. Playwright
 опционален и расширяет покрытие — без него правила про cookie-баннер, состояние
 чекбоксов и сетевые запросы уходят в `UNKNOWN`.
+
+Полная автоматическая проверка возможна только в Claude Code: в приложениях
+Claude у среды исполнения нет браузера, а сетевой доступ зависит от настроек
+аккаунта. Что именно работает в каждом окружении — таблица в начале
+`INSTALL.md`.
 
 ## Выбери платформу
 

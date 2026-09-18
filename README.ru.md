@@ -14,9 +14,11 @@
 
 ## Установка
 
-- **Claude Desktop / claude.ai** — скачай нужный `.skill`-архив из
+- **Claude в браузере и десктопе** — включи *Settings → Capabilities → Code
+  execution and file creation* (на Team и Enterprise это делает администратор
+  в *Organization settings → Skills*), скачай нужный `.skill`-архив из
   [последнего релиза](https://github.com/ITSalt/PepperSkills/releases/latest)
-  и загрузи через *Settings → Capabilities → Skills → Upload*.
+  и загрузи через *Customize → Skills → Add → Upload skill*.
 - **Claude Code** — скопируй распакованную папку `<skill>/anthropic/`
   (переименованную под `name:` из `SKILL.md`) в `~/.claude/skills/`
   (личный скилл) или `<project>/.claude/skills/` (проектный). Подробности —

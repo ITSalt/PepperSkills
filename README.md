@@ -16,7 +16,10 @@ two formats can be compared and adapted.
 
 - **Claude Desktop / claude.ai** — download the `.skill` archive for the
   skill you want from the [latest release](https://github.com/ITSalt/PepperSkills/releases/latest)
-  and upload via *Settings → Capabilities → Skills → Upload*.
+  and upload it via *Customize → Skills → Add → Upload skill*. Skills that ship
+  scripts also need *Settings → Capabilities → Code execution and file creation*
+  (on Team and Enterprise an admin enables it in *Organization settings →
+  Skills*).
 - **Claude Code** — copy the unpacked `<skill>/anthropic/` folder (renamed
   to match `name:` in `SKILL.md`) into `~/.claude/skills/` (personal) or
   `<project>/.claude/skills/` (per-project). Each skill's
