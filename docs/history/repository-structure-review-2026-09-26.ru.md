@@ -42,14 +42,15 @@
 
 ## Проверки и следующий шаг
 
-Локальная среда: macOS, Python 3.14.5. Команда:
+Локальная среда: macOS, Python 3.14.5. Для воспроизведения установите зависимости
+из `scripts/requirements-build.txt` в выбранное Python-окружение и запустите:
 
 ```bash
-PYTHONPATH=/private/tmp/pepperskills-ci-deps bash scripts/check.sh
+python3 -m pip install -r scripts/requirements-build.txt
+bash scripts/check.sh
 ```
 
-Каталог в PYTHONPATH содержит зависимости из `scripts/requirements-build.txt`;
-в CI они устанавливаются на этапе подготовки. Офлайн-набор блокирует и записывает
+В CI зависимости устанавливаются на этапе подготовки. Офлайн-набор блокирует и записывает
 сетевые попытки, в том числе в дочерних Python-процессах. Команды менеджеров,
 живые сайты, браузерная приёмка и загрузка ZIP клиентом не выдаются за офлайн-тесты.
 

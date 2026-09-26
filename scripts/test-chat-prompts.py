@@ -27,3 +27,26 @@ for path, generated in outputs.items():
     assert hashlib.sha256(body.encode('utf-8')).hexdigest() == case['baseline_sha256'], rel
     assert not re.search(r'\]\(\.?/?references/', generated), rel
     print('PASS checkpoint chat golden:', rel)
+
+# Labels are driven by metadata, even if a template starts with punctuation,
+# a heading, lowercase Cyrillic, or prose in the other language.
+for language, included, missing in (
+    ('en', 'appendix “present”', 'the “absent” reference in the full skill edition'),
+    ('ru', 'приложение «present»', 'справочный материал «absent» в полной версии скилла'),
+):
+    for prefix in ('# Heading\n', 'english introduction\n', 'русское вступление\n', '«Вступление»\n'):
+        body = prefix + '`references/present.md` / `references/absent.md`\n\n## present\n'
+        template = f'<!-- chat-language: {language} -->\n\n' + body
+        declared, content = chat.template_language(template)
+        assert content == body and declared == language
+        rendered = chat.local_reference_labels(content, language=declared)
+        assert included in rendered and missing in rendered
+        assert rendered.startswith(prefix)
+for invalid in ('no marker', '<!-- chat-language: de -->\n\nText'):
+    try:
+        chat.template_language(invalid)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('missing/unsupported language must be rejected')
+print('PASS explicit template languages and localized missing references')

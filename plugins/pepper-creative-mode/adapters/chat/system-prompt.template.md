@@ -1,3 +1,5 @@
+<!-- chat-language: en -->
+
 Apply the following protocol only to eligible tasks.
 
 ## When to apply

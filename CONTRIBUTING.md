@@ -113,7 +113,9 @@ Both wrappers refresh the complete pair (`<name>.zip` and `<name>.plugin.zip`) a
 for compatibility, but never reuses a previously built sibling archive. Builders
 reject stale generation and only write distribution outputs.
 
-Chat templates use `{{include: path#Heading}}` for selected source sections,
+Chat templates declare their label language in a leading `<!-- chat-language: en -->`
+or `<!-- chat-language: ru -->` comment followed by a blank line. The marker is not
+included in generated output. Templates use `{{include: path#Heading}}` for selected source sections,
 `{{appendix: path}}` for explicitly selected full appendices, and `{{FENCE}}` for
 the outer prompt fence. Merely mentioning a reference does not append it. Changes
 to chat content must update the reviewed golden differences in

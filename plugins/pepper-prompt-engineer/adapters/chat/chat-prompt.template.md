@@ -1,3 +1,5 @@
+<!-- chat-language: en -->
+
 # CRAFT+ Prompt Engineer — chat edition
 
 Universal system prompt. Paste the block below as the **first/system message** in any LLM chat (Claude.ai Projects, ChatGPT Custom GPT, Gemini Gem, DeepSeek chat, etc.). The agent will greet you, then wait for your task and reply with a ready-to-copy prompt formatted for the model you target.

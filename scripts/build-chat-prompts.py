@@ -69,13 +69,26 @@ def appendices(template, plugin_dir):
     return re.sub(r'\{\{appendix:\s*([^}]+?)\s*\}\}', replace, template)
 
 
-def local_reference_labels(body):
+def template_language(template):
+    """Read explicit template metadata, independently of the prompt's prose."""
+    match = re.match(r'\A<!-- chat-language: (en|ru) -->\n\n', template)
+    if not match:
+        raise ValueError('template must start with <!-- chat-language: en|ru --> and a blank line')
+    return match.group(1), template[match.end():]
+
+
+def local_reference_labels(body, *, language):
     """A pasted prompt cannot follow repository-relative Markdown links."""
+    labels = {
+        'en': ('appendix “{stem}”', 'the “{stem}” reference in the full skill edition'),
+        'ru': ('приложение «{stem}»', 'справочный материал «{stem}» в полной версии скилла'),
+    }
+    included, external = labels[language]
     def label(match):
         stem = Path(match.group(1)).stem
         if re.search(r'^## ' + re.escape(stem) + r'$', body, re.M):
-            return ('приложение «' + stem + '»') if re.match('[А-Я]', body) else ('appendix “' + stem + '”')
-        return 'the “' + stem + '” reference in the full skill edition'
+            return included.format(stem=stem)
+        return external.format(stem=stem)
     body = re.sub(r'\[`references/[^`]+`\]\(\.?/?(references/[^)]+\.md)\)', label, body)
     return re.sub(r'`(references/[^`]+\.md)`', label, body)
 
@@ -102,11 +115,12 @@ def build_all():
         chat_dir = plugin_dir / 'adapters/chat'
         for template_path in sorted(chat_dir.glob('*.template.md')):
             output_path = template_path.with_name(template_path.name.removesuffix('.template.md') + '.md')
-            body = expand(template_path.read_text(encoding='utf-8'), plugin_dir, plugin_dir.name == 'pepper-prompt-engineer')
+            language, template = template_language(template_path.read_text(encoding='utf-8'))
+            body = expand(template, plugin_dir, plugin_dir.name == 'pepper-prompt-engineer')
             if plugin_dir.name == 'pepper-prompt-engineer' and template_path.name == 'chat-prompt.template.md':
                 generated = prompt_engineer(body, plugin_dir)
             else:
-                body = local_reference_labels(appendices(body, plugin_dir))
+                body = local_reference_labels(appendices(body, plugin_dir), language=language)
                 generated = '<!-- GENERATED: python3 scripts/build-chat-prompts.py --write; edit canonical skill sources and templates. -->\n\n' + body
             outputs[output_path] = generated
     return outputs
