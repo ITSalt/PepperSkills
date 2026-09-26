@@ -11,7 +11,7 @@
 что детектор промолчал. Такие ошибки дороже обычных: они не ломают прогон, а
 тихо меняют вывод, и заметить их можно только повторной проверкой.
 
-Запуск: python3 scripts/selftest.py
+Запуск: uv run --no-project scripts/selftest.py
 """
 
 from __future__ import annotations
@@ -264,7 +264,7 @@ def test_data_twins() -> None:
         from_yaml = detect.load_data(yaml_path)
         from_json = json.loads(json_path.read_text(encoding="utf-8"))
         check(from_yaml == from_json, f"{name}.json совпадает с {name}.yaml",
-              "перегенерировать: python3 scripts/gen_checklist.py")
+              "перегенерировать: uv run --no-project scripts/gen_checklist.py --write")
 
 
 def test_processing_basis() -> None:

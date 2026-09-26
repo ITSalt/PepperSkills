@@ -48,9 +48,17 @@ for the same skill name or link entire agent configuration/cache directories.
 | Codex | `.agents/skills/`, `~/.agents/skills/` | Individual skill directory links supported |
 | Claude Code | `.claude/skills/`, `~/.claude/skills/` | Individual skill directory links supported |
 | Gemini CLI | `.gemini/skills/`, `~/.gemini/skills/`; `.agents/skills/`, `~/.agents/skills/` aliases | Shared directory alias documented |
+| Pi | `.pi/skills/`, `~/.pi/agent/skills/`; also `.agents/skills/`, `~/.agents/skills/` | Use the same canonical skill through the shared directory; no extra copy needed |
 
 Check the documentation for other clients and your installed version. Manager
 catalogues may still list `~/.codex/skills`; do not create both locations automatically.
+
+For Pi, the existing shared `.agents/skills/<name>` (project) or
+`~/.agents/skills/<name>` (user) is sufficient. Invoke
+`/skill:pepper-ru-web-compliance`; run `/reload` after updating the checkout.
+To disable it, remove your link/copy and run `/reload`, checking for duplicates
+in other discovery directories. These instructions follow Pi documentation;
+installation/update/disable acceptance in the actual client is still pending.
 
 ### macOS / Linux: existing checkout
 
@@ -131,9 +139,9 @@ do not replace or edit the entire plugin cache.
 
 Download the package for your product:
 
-- [pepper-creative-mode 2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.0)
-- [pepper-prompt-engineer 2.5.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.0)
-- [pepper-ru-web-compliance 2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.0.0)
+- [pepper-creative-mode 2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1)
+- [pepper-prompt-engineer 2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1)
+- [pepper-ru-web-compliance 2.1.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.0)
 
 Under Assets, choose `<name>.zip` for skill upload or `<name>.plugin.zip` for the plugin. `SHA256SUMS` covers both archives.
 
@@ -146,8 +154,10 @@ For scripted skills, check that code execution is enabled in that environment.
 
 Root `.skill` files are frozen previous builds from repository revision
 `v1.4.1-1-g4128fe6` (commit `4128fe6`); they are never rebuilt and do not represent the
-current plugin versions. New builds go to `dist/<name>/<version>/`. All three published skill ZIPs
-were accepted through Upload and replace in Claude web on 2026-09-26. If the name
+current plugin versions. New builds go to `dist/<name>/<version>/`. The previous ZIPs
+(Creative Mode 2.0.0, Prompt Engineer 2.5.0, Compliance 2.0.0) were accepted through
+Upload and replace in Claude web on 2026-09-26. That acceptance does not automatically
+cover the new versions. If the name
 already exists, choose replacement to update the existing skill. This verifies
 import and update, not every execution scenario in Chat/Cowork or Desktop.
 Old releases and tags remain available throughout the transition.
@@ -253,3 +263,5 @@ other product links explicitly; your user installations are never changed automa
 - [Cursor plugins](https://prod.cursor.com/docs/plugins)
 - [Vercel Skills CLI](https://github.com/vercel-labs/skills)
 - [skillsync](https://github.com/Akemid/skillsync), [Windows](https://github.com/Akemid/skillsync#windows-powershell)
+
+- [Pi skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md)

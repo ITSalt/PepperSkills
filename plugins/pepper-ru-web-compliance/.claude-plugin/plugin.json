@@ -1,6 +1,6 @@
 {
   "name": "pepper-ru-web-compliance",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Технический аудит сайта по требованиям РФ с доказательствами и планом исправлений.",
   "author": {
     "name": "ITSalt",

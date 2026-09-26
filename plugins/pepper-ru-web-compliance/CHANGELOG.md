@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.0 — 2026-09-26
+
+- Standardized runtime commands and browser dependency guidance on `uv`.
+- Added a public legitimate-interest declaration scaffold, conditional interface
+  examples and guidance for removing unnecessary tags without ignoring other obligations.
+- Shortened skill instructions and specified concise, evidence-preserving findings.
+- Reports now use accepted semantic review for totals, labels and outstanding
+  work while retaining machine observations; stale reviews are discarded.
+- Documented Pi installation through the shared skill directory.
+- Fixed OpenAI final listing text limits; public submission remains pending.
+
 ## Unreleased
 
 - Repository transition: old `<name>/anthropic/` now maps to

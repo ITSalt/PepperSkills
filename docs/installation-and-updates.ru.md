@@ -48,9 +48,17 @@ project/global. `skillsync` использует общий реестр `~/.age
 | Codex | `.agents/skills/`, `~/.agents/skills/` | Поддерживает ссылки на отдельные skill-каталоги |
 | Claude Code | `.claude/skills/`, `~/.claude/skills/` | Поддерживает ссылки на отдельные skill-каталоги |
 | Gemini CLI | `.gemini/skills/`, `~/.gemini/skills/`; aliases `.agents/skills/`, `~/.agents/skills/` | Общая папка документирована как alias |
+| Pi | `.pi/skills/`, `~/.pi/agent/skills/`; также `.agents/skills/`, `~/.agents/skills/` | Общая ссылка ведёт в тот же канонический каталог; отдельная копия не нужна |
 
 Для других клиентов и установленной версии сверяйтесь с документацией. В таблицах
 менеджеров ещё может встречаться `~/.codex/skills`; не создавайте обе точки автоматически.
+
+Для Pi достаточно уже настроенного общего `.agents/skills/<name>` (проект)
+или `~/.agents/skills/<name>` (пользователь). Вызовите
+`/skill:pepper-ru-web-compliance`; после обновления клона выполните `/reload`.
+Для отключения уберите свою ссылку/копию и повторите `/reload`, убедившись,
+что другой каталог не содержит дубликат. Это инструкция по документации Pi;
+приёмка установки, обновления и отключения в реальном клиенте ещё не выполнена.
 
 ### macOS / Linux: существующий клон
 
@@ -132,9 +140,9 @@ marketplaces и публичный каталог. Документация оп
 
 Готовые пакеты (выберите свой продукт):
 
-- [pepper-creative-mode 2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.0)
-- [pepper-prompt-engineer 2.5.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.0)
-- [pepper-ru-web-compliance 2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.0.0)
+- [pepper-creative-mode 2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1)
+- [pepper-prompt-engineer 2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1)
+- [pepper-ru-web-compliance 2.1.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.0)
 
 В разделе Assets скачайте `<name>.zip` для загрузки скилла или `<name>.plugin.zip` для плагина. `SHA256SUMS` содержит контрольные суммы обоих архивов.
 
@@ -148,8 +156,9 @@ Custom skills используют ZIP с одной верхней папкой
 Корневые `.skill` — прежние зафиксированные сборки из ревизии репозитория
 `v1.4.1-1-g4128fe6` (commit `4128fe6`); они не пересобираются и не соответствуют
 текущим версиям плагинов. Новые сборки находятся в `dist/<name>/<version>/`.
-Все три опубликованных ZIP скиллов приняты через Upload and replace в Claude web
-26 сентября 2026 года. При совпадении имени выберите замену, чтобы обновить существующий
+Предыдущие ZIP (Creative Mode 2.0.0, Prompt Engineer 2.5.0, Compliance 2.0.0)
+приняты через Upload and replace в Claude web 26 сентября 2026 года.
+Это подтверждение не распространяется автоматически на новые версии. При совпадении имени выберите замену, чтобы обновить существующий
 скилл. Это проверка импорта и обновления, а не выполнения всех сценариев в Chat/Cowork
 или Desktop. Прежние Releases и теги сохраняются.
 
@@ -255,3 +264,5 @@ pepper_repo="$HOME/projects/PepperSkills"
 - [Cursor plugins](https://prod.cursor.com/docs/plugins)
 - [Vercel Skills CLI](https://github.com/vercel-labs/skills)
 - [skillsync](https://github.com/Akemid/skillsync), [Windows](https://github.com/Akemid/skillsync#windows-powershell)
+
+- [Pi skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md)

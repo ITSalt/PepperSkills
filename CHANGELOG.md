@@ -1,5 +1,16 @@
 # Changelog
 
+## Feedback follow-up — 2026-09-26
+
+Compliance 2.1.0 and listing-only patches Creative Mode 2.0.1 /
+Prompt Engineer 2.5.1. Unified uv runtime guidance, added a public legitimate-
+interest scaffold and conditional removal/UI guidance, documented Pi, and made
+accepted semantic reviews close report actions while preserving machine facts.
+Final OpenAI listing limits are now checked offline.
+[GitHub release links and validation scope](docs/releases/2026-09-26-feedback.md).
+OpenAI marketplace submission and publication remain separate and were not performed.
+
+
 ## 2026-09-26 — repository layout transition
 
 Published Creative Mode 2.0.0, Prompt Engineer 2.5.0 and RU Web Compliance 2.0.0.
@@ -25,10 +36,13 @@ current plugin versions; new archives are built in `dist/<name>/<version>/`.
 
 ### Chat compatibility corrections after review
 
-Chat bodies match checkpoint `e2c7d4f` (including whitespace), except the rebuild
+At the transition release, chat bodies matched checkpoint `e2c7d4f` (including whitespace), except the rebuild
 command and six deliberately repaired local-reference labels. The full prompts
 already had dangling Markdown links with Russian appendix labels at that checkpoint;
 these now name the included appendix directly (English in Creative Mode, Russian in
 Compliance). The compact Creative Mode names the full-skill reference without adding
 its 5 KB appendix. Appendix selection is explicit in templates. Golden hashes and
 exact allowed replacements are recorded in `scripts/fixtures/chat-goldens.json`.
+
+Compliance 2.1.0 adds separately recorded, intentional text changes for the
+reviewer feedback. The original checkpoint remains the comparison baseline.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "pepper-prompt-engineer",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "CRAFT+ workflow for turning task descriptions into verified production-ready prompts.",
   "author": {
     "name": "ITSalt",
@@ -21,7 +21,7 @@
     "com.openai": {
       "interface": {
         "displayName": "Prompt Engineer",
-        "shortDescription": "CRAFT+ production prompt builder",
+        "shortDescription": "CRAFT+ prompt builder",
         "longDescription": "Turns an unstructured task into a production-ready prompt with model-specific formatting, constraints and acceptance checks.",
         "category": "Productivity",
         "developerName": "ITSalt",

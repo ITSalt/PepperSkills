@@ -1,6 +1,6 @@
 {
   "name": "pepper-creative-mode",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Self-seeded randomness for fair sampling and genuinely varied creative generation.",
   "author": {
     "name": "ITSalt",
@@ -19,7 +19,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Creative Mode",
-    "shortDescription": "Fair sampling and diverse generation",
+    "shortDescription": "Fair sampling and creativity",
     "longDescription": "Produces reproducible, self-seeded random choices and varied creative alternatives when a task explicitly requires variation.",
     "category": "Productivity",
     "developerName": "ITSalt",

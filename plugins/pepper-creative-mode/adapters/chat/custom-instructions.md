@@ -1,4 +1,4 @@
-<!-- GENERATED: python3 scripts/build-chat-prompts.py --write; edit canonical skill sources and templates. -->
+<!-- GENERATED: uv run --no-project scripts/build-chat-prompts.py --write; edit canonical skill sources and templates. -->
 
 Apply the following protocol only to eligible tasks.
 

@@ -15,6 +15,7 @@ export PYTHONPATH="$(pwd)/scripts/offline_guard${PYTHONPATH:+:$PYTHONPATH}"
 skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" scripts/sync-skill-versions.py --check
 "$PYTHON" scripts/sync-plugin-manifests.py --check
+"$PYTHON" scripts/test-openai-listing.py
 "$PYTHON" scripts/sync-plugin-metadata.py --check
 "$PYTHON" scripts/build-chat-prompts.py --check
 "$PYTHON" scripts/test-chat-prompts.py

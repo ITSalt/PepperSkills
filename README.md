@@ -15,13 +15,13 @@ standalone skills can be linked from a repository clone.
 
 | Product | Version |
 | --- | --- |
-| `pepper-creative-mode` | [2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.0) |
-| `pepper-prompt-engineer` | [2.5.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.0) |
-| `pepper-ru-web-compliance` | [2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.0.0) |
+| `pepper-creative-mode` | [2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1) |
+| `pepper-prompt-engineer` | [2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1) |
+| `pepper-ru-web-compliance` | [2.1.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.0) |
 
-Each release contains a skill ZIP, a plugin ZIP, and SHA256SUMS. All three skill ZIPs were accepted by Claude web on 2026-09-26.
+Each release contains a skill ZIP, a plugin ZIP, and SHA256SUMS. Claude web import/update was verified for the previous transition releases; these new packages require separate client acceptance.
 
-See the [transition release record](./docs/releases/2026-09-26-transition.md).
+See the [feedback release record](./docs/releases/2026-09-26-feedback.md) and the [previous transition release](./docs/releases/2026-09-26-transition.md).
 
 ## Install
 
@@ -31,7 +31,7 @@ clients, marketplace setup, shared skill directories, and chat prompts.
 | Surface | Distribution |
 | --- | --- |
 | Codex, Claude Code | Plugin marketplace or standalone skill directory |
-| Claude Chat and Cowork | Skill ZIP; upload verified in Claude web |
+| Claude Chat and Cowork | Skill ZIP; previous release upload verified in Claude web |
 | Cursor | Cursor marketplace or supported local plugin directory |
 | Chat APIs and other prompt fields | Generated chat adapter |
 
