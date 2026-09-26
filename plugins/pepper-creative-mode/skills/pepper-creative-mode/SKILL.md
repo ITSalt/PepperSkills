@@ -1,6 +1,8 @@
 ---
 name: pepper-creative-mode
 description: "This skill instructs the assistant to perform distribution-faithful sampling and diverse generation by seeding randomness from a self-generated string rather than relying on token-completion patterns. Apply it when the task requires genuine stochasticity or meaningful variation across runs: creative writing, brainstorming, variant generation, probabilistic sampling, mixed-strategy games, and agent simulation. Trigger phrases include: \"write 5 different\", \"brainstorm\", \"flip a coin\", \"pick randomly\", \"generate variants\", \"surprise me\", \"diverse\", \"different versions\". Do not apply for math, factual lookup, code debugging, translation, classification, extraction, or any single-answer task where variability reduces correctness."
+metadata:
+  version: 2.0.0
 ---
 
 # pepper-creative-mode
