@@ -1,0 +1,39 @@
+{
+  "displayName": "RU Web Compliance",
+  "shortDescription": "Проверка сайта и план правок по требованиям РФ",
+  "longDescription": "Собирает технические доказательства, проверяет персональные данные, cookie, трекеры, реестры и формирует записку с планом для разработчика.",
+  "developerName": "ITSalt",
+  "category": "Productivity",
+  "websiteURL": "https://github.com/ITSalt/PepperSkills",
+  "capabilities": [
+    "Analyze",
+    "Generate"
+  ],
+  "defaultPrompt": [
+    "Проверь сайт по требованиям РФ и составь план исправлений."
+  ],
+  "logo": "./assets/logo.png",
+  "composerIcon": "./assets/logo.png",
+  "brandColor": "#173E35",
+  "submissionType": "Skills only",
+  "publisher": {
+    "name": "ITSalt",
+    "email": "info@itsalt.ru",
+    "url": "https://github.com/ITSalt/PepperSkills"
+  },
+  "supportURL": "https://github.com/ITSalt/PepperSkills/issues",
+  "privacyPolicyURL": "https://github.com/ITSalt/PepperSkills/blob/main/plugins/pepper-ru-web-compliance/submission/privacy.md",
+  "termsOfServiceURL": "https://github.com/ITSalt/PepperSkills/blob/main/plugins/pepper-ru-web-compliance/submission/terms.md",
+  "proposedRegions": [
+    "US",
+    "CA",
+    "GB",
+    "DE",
+    "FR"
+  ],
+  "regionsStatus": "proposal; confirm in submission portal",
+  "publicationStatus": "local draft; privacy and terms URLs are planned, not verified public",
+  "identityStatus": "requires verified publisher identity in OpenAI Platform",
+  "releaseNotes": "Portable schema validation, purpose-scoped basis evidence, independent refusal/revisit collection, report acceptance and packaging fixes.",
+  "tests": "../submission-tests.json"
+}

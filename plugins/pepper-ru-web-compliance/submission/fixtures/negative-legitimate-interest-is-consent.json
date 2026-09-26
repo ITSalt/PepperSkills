@@ -1,0 +1,12 @@
+{
+  "policy": "Законный интерес для рекламы не заменяет согласие. Аналитика без согласия.",
+  "requests": [
+    "https://mc.yandex.ru/watch/1"
+  ],
+  "expected": {
+    "LI-001": [
+      "WARN"
+    ]
+  },
+  "basis": "UNKNOWN"
+}

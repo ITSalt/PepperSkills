@@ -1,49 +1,42 @@
 # PepperSkills
 
-Библиотека портативных скиллов для prompt engineering. Каждый скилл
-поставляется параллельно в двух экосистемах — **Anthropic (Claude)** и
-**OpenAI (GPT)** — чтобы форматы можно было сравнивать и адаптировать.
+Библиотека портативных скиллов и устанавливаемых Agent Plugins. Каждый плагин
+можно поставить отдельно из marketplace или подключить из клона репозитория.
 
 ## Скиллы
 
 | Скилл | Описание | Папка |
 |-------|----------|-------|
-| [`pepper-creative-mode`](./pepper-creative-mode/) | Честное сэмплирование из распределения и разнообразная генерация через self-seeded randomness. | [`pepper-creative-mode/`](./pepper-creative-mode/) |
-| [`pepper-prompt-engineer`](./pepper-prompt-engineer/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`pepper-prompt-engineer/`](./pepper-prompt-engineer/) |
-| [`pepper-ru-web-compliance`](./pepper-ru-web-compliance/) | Проверка сайта на соответствие требованиям РФ: записка для юриста и план правок для разработчика. | [`pepper-ru-web-compliance/`](./pepper-ru-web-compliance/) |
+| [`pepper-creative-mode`](./plugins/pepper-creative-mode/) | Честное сэмплирование из распределения и разнообразная генерация через self-seeded randomness. | [`plugins/pepper-creative-mode/`](./plugins/pepper-creative-mode/) |
+| [`pepper-prompt-engineer`](./plugins/pepper-prompt-engineer/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`plugins/pepper-prompt-engineer/`](./plugins/pepper-prompt-engineer/) |
+| [`pepper-ru-web-compliance`](./plugins/pepper-ru-web-compliance/) | Проверка сайта на соответствие требованиям РФ: записка для юриста и план правок для разработчика. | [`plugins/pepper-ru-web-compliance/`](./plugins/pepper-ru-web-compliance/) |
 
 ## Установка
 
-- **Claude в браузере и десктопе** — включи *Settings → Capabilities → Code
-  execution and file creation* (на Team и Enterprise это делает администратор
-  в *Organization settings → Skills*), скачай нужный `.skill`-архив из
-  [последнего релиза](https://github.com/ITSalt/PepperSkills/releases/latest)
-  и загрузи через *Customize → Skills → Add → Upload skill*.
-- **Claude Code** — скопируй распакованную папку `<skill>/anthropic/`
-  (переименованную под `name:` из `SKILL.md`) в `~/.claude/skills/`
-  (личный скилл) или `<project>/.claude/skills/` (проектный). Подробности —
-  в `anthropic/INSTALL.md` соответствующего скилла.
-- **OpenAI / ChatGPT / GPT API** — содержимое `openai/system-prompt.md`
-  (полная версия) или `openai/custom-instructions.md` (компактная, <1500
-  символов) копируется в соответствующее поле.
+- **Плагин** — используй marketplace соответствующего клиента и пакет из
+  `plugins/`. Локальный marketplace и публичный каталог — разные каналы.
+- **Общая папка + симлинки** — подключи `plugins/<name>/skills/<name>` к
+  `~/.agents/skills/<name>`. Для Claude Code добавь ссылку из
+  `~/.claude/skills/<name>`; для других клиентов проверь поддерживаемый путь.
+- **Проект, менеджер skills, ZIP или чат** — выбери способ по
+  [инструкции установки](./docs/installation-and-updates.ru.md).
+- **OpenAI review** — собери `scripts/build-plugins.sh pepper-ru-web-compliance`
+  и загрузи получившийся архив в портал Skills only.
 
-Собрать `.skill`-архивы из исходников: `scripts/build-skills.sh`.
+Собрать `.skill`-архивы для совместимой загрузки: `scripts/build-skills.sh`.
+Собрать переносимые плагины: `scripts/build-plugins.sh`.
 
 ## Структура
 
 Каждая группа скиллов — самодостаточная папка:
 
 ```
-<skill-group>/
+plugins/<name>/
 ├── README.md         # описание скилла (English)
 ├── README.ru.md      # описание скилла (Русский)
-├── anthropic/        # вариант для Claude — Anthropic Skill spec
-│   ├── SKILL.md      #   YAML frontmatter + тело
-│   ├── examples/
-│   └── references/
-└── openai/           # вариант для GPT — OpenAI prompt format
-    ├── system-prompt.md         # полный промпт для API / Custom GPT
-    └── custom-instructions.md   # компактная версия для ChatGPT Custom Instructions
+├── plugin.json       # переносимый Agent Plugins manifest
+├── skills/<name>/    # единый источник SKILL.md, scripts и references
+└── adapters/chat/    # сгенерированные инструкции для чатов без исполнения кода
 ```
 
 ## Версии документации
@@ -55,6 +48,11 @@
 
 См. [`CONTRIBUTING.md`](./CONTRIBUTING.md). Сообщения о безопасности — [`SECURITY.md`](./SECURITY.md).
 Кодекс поведения — [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
+
+Полный цикл установки и обновления: [`docs/installation-and-updates.ru.md`](./docs/installation-and-updates.ru.md).
+
+Проект новой структуры и карта переноса: [`docs/repository-structure.ru.md`](./docs/repository-structure.ru.md).
+Это предложение; приведённые выше текущие пути пока сохраняются.
 
 ## Лицензия
 

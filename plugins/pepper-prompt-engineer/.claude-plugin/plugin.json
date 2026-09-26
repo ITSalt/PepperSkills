@@ -1,0 +1,19 @@
+{
+  "name": "pepper-prompt-engineer",
+  "version": "2.0.0",
+  "description": "CRAFT+ workflow for turning task descriptions into verified production-ready prompts.",
+  "author": {
+    "name": "ITSalt",
+    "email": "info@itsalt.ru",
+    "url": "https://github.com/ITSalt/PepperSkills"
+  },
+  "homepage": "https://github.com/ITSalt/PepperSkills/tree/main/plugins/pepper-prompt-engineer",
+  "repository": "https://github.com/ITSalt/PepperSkills",
+  "license": "MIT",
+  "keywords": [
+    "prompt-engineering",
+    "craft",
+    "workflow",
+    "verification"
+  ]
+}

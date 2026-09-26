@@ -1,8 +1,8 @@
 # Contributing to PepperSkills
 
 Thanks for your interest in contributing. PepperSkills is a curated library of
-portable prompt-engineering skills, each shipped in parallel for **Anthropic
-(Claude)** and **OpenAI (GPT)** so the two formats can be compared and adapted.
+portable Agent Plugins. Each plugin has one canonical skill source and small
+adapters for clients that expose different capabilities.
 
 ## Ways to contribute
 
@@ -27,31 +27,25 @@ A skill belongs here only if it meets all of:
 
 Internal / project-specific skills do not belong here.
 
-## Skill folder layout
+## Plugin folder layout
 
 Every skill is a self-contained folder named `<namespace>-<slug>`:
 
 ```
-<namespace>-<slug>/
-├── README.md         # skill overview (English, canonical)
-├── README.ru.md      # skill overview (Russian, optional)
-├── anthropic/
-│   ├── SKILL.md      # YAML frontmatter + body, follows Anthropic Skill spec
-│   ├── examples/     # one .md per worked example
-│   └── references/   # one .md per supporting reference doc
-└── openai/
-    ├── system-prompt.md         # full API / Custom GPT prompt
-    └── custom-instructions.md   # compact (<1500 chars) ChatGPT Custom Instructions
+plugins/<name>/
+├── plugin.json
+├── skills/<name>/SKILL.md
+├── adapters/chat/       # generated or provider-light chat material
+├── README.md
+├── README.ru.md
+└── CHANGELOG.md
 ```
 
-### Alternative: universal chat prompt
+### Chat adapters
 
-If the skill's mechanism is a single system prompt that behaves identically in
-any chat UI (Claude.ai / ChatGPT / Gemini / DeepSeek) without per-vendor
-adaptation, you may ship a top-level `chat-prompt.md` at the skill root **in
-place of** the `openai/` folder. The Anthropic `anthropic/SKILL.md` variant is
-still required so the skill remains installable inside Claude Code. See
-`pepper-prompt-engineer/` for a worked example.
+Chat-only material belongs in `adapters/chat/` and is generated from the
+canonical skill where possible. It is an adapter for environments without code,
+browser or network access; it is not a second editable skill implementation.
 
 When you add a skill, also add a row to the **Skills** table in the root
 `README.md` (and `README.ru.md` if you maintain a Russian translation).
@@ -89,3 +83,35 @@ Do not open a public issue for security problems. See [SECURITY.md](./SECURITY.m
 
 By contributing, you agree that your contributions will be licensed under the
 [MIT License](./LICENSE).
+
+## Generated plugin artifacts
+
+`plugins/<name>/plugin.json` is canonical metadata. Compatibility adapters in
+`.codex-plugin`, `.claude-plugin`, `.cursor-plugin` are generated, not edited.
+The vendored schema in `scripts/schemas/agent-plugin-1.0.0.json` comes from
+https://agent-plugins.org/schemas/1.0.0/plugin.schema.json (retrieved 2026-09-21).
+Builds validate the official schema offline and reject adapter drift.
+
+```bash
+uv run --no-project --with jsonschema scripts/sync-plugin-manifests.py
+uv run --no-project plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/gen_checklist.py
+python3 scripts/build-chat-adapters.py
+python3 scripts/build-chat-prompt.py
+uv run --no-project --with jsonschema bash scripts/build-skills.sh
+uv run --no-project --with jsonschema bash scripts/build-plugins.sh
+```
+
+Plugin version describes the distribution package. Skill `metadata.version`
+describes the skill protocol and may differ: e.g. package 2.0.0 contains
+prompt-engineer 2.4.0. Generated chat adapters use current skill sections and
+references; changes to them require regeneration before packaging.
+
+Full local release check:
+
+```bash
+uv run --no-project --with jsonschema --with pyyaml bash scripts/check.sh
+```
+
+Live browser and PDF checks are separate and require Chromium, as documented
+in the compliance plugin's submission/README.md. Filesystem symlink tests do
+not substitute for installation/update/disable acceptance in actual clients.

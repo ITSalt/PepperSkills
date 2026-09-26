@@ -1,0 +1,94 @@
+[
+  {
+    "scenario": "positive-cookie-no-optional-tracking",
+    "status": "PASS",
+    "observed_statuses": {
+      "CK-001": "NA"
+    },
+    "checks": {
+      "CK-001": true,
+      "no_detector_errors": true
+    }
+  },
+  {
+    "scenario": "positive-consent-gating",
+    "status": "PASS",
+    "observed_statuses": {
+      "CK-003": "WARN"
+    },
+    "checks": {
+      "CK-003": true,
+      "no_detector_errors": true
+    }
+  },
+  {
+    "scenario": "positive-legitimate-interest",
+    "status": "PASS",
+    "observed_statuses": {
+      "LI-001": "WARN"
+    },
+    "checks": {
+      "LI-001": true,
+      "processing_basis": true,
+      "no_detector_errors": true
+    }
+  },
+  {
+    "scenario": "positive-remediation",
+    "status": "PASS",
+    "observed_statuses": {
+      "CK-005": "WARN"
+    },
+    "checks": {
+      "CK-005": true,
+      "no_detector_errors": true
+    }
+  },
+  {
+    "scenario": "positive-manual-mode",
+    "status": "PASS",
+    "observed_statuses": {
+      "LI-001": "UNKNOWN",
+      "CK-003": "UNKNOWN"
+    },
+    "checks": {
+      "LI-001": true,
+      "CK-003": true,
+      "no_detector_errors": true
+    }
+  },
+  {
+    "scenario": "negative-no-banner-fail",
+    "status": "PASS",
+    "observed_statuses": {
+      "CK-001": "UNKNOWN"
+    },
+    "checks": {
+      "CK-001": true,
+      "no_detector_errors": true
+    }
+  },
+  {
+    "scenario": "negative-foreign-domain-is-violation",
+    "status": "PASS",
+    "observed_statuses": {
+      "PDN-009": "UNKNOWN"
+    },
+    "checks": {
+      "PDN-009": true,
+      "no_detector_errors": true
+    }
+  },
+  {
+    "scenario": "negative-legitimate-interest-is-consent",
+    "status": "PASS",
+    "observed_statuses": {
+      "LI-001": "WARN"
+    },
+    "checks": {
+      "LI-001": true,
+      "processing_basis": true,
+      "no_detector_errors": true
+    }
+  }
+]

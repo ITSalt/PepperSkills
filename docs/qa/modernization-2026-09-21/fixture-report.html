@@ -1,0 +1,99 @@
+<!doctype html><html lang=ru><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>127.0.0.1 — проверка на соответствие требованиям РФ</title><style>
+:root { --fail:#b3261e; --warn:#8a5a00; --pass:#1b5e20; --unknown:#5f6368; --na:#9aa0a6;
+        --bg:#ffffff; --fg:#1f1f1f; --muted:#5f6368; --line:#e3e3e3; --card:#f7f7f7; }
+* { box-sizing:border-box; }
+body { margin:0; padding:0 0 4rem; background:var(--bg); color:var(--fg);
+       font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+.wrap { max-width:60rem; margin:0 auto; padding:2rem 1.25rem; }
+h1 { font-size:1.9rem; line-height:1.25; margin:0 0 .5rem; }
+h2 { font-size:1.35rem; margin:2.5rem 0 .75rem; padding-bottom:.35rem;
+     border-bottom:2px solid var(--line); }
+h3 { font-size:1.05rem; margin:1.75rem 0 .5rem; }
+.meta { color:var(--muted); margin-bottom:1.5rem; }
+.disclaimer { background:var(--card); border-left:4px solid var(--muted);
+              padding:.9rem 1.1rem; margin:1.5rem 0; color:var(--muted); font-size:.92rem; }
+.kpis { display:flex; flex-wrap:wrap; gap:.75rem; margin:1.5rem 0; }
+.kpi { flex:1 1 9rem; background:var(--card); border-radius:.5rem; padding:.9rem 1rem; }
+.kpi .n { font-size:1.6rem; font-weight:700; line-height:1.1; }
+.kpi .l { color:var(--muted); font-size:.82rem; }
+.kpi.fail .n { color:var(--fail); } .kpi.warn .n { color:var(--warn); }
+.kpi.unknown .n { color:var(--unknown); } .kpi.pass .n { color:var(--pass); }
+table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.92rem; }
+th,td { text-align:left; padding:.55rem .6rem; border-bottom:1px solid var(--line);
+        vertical-align:top; }
+th { background:var(--card); font-weight:600; }
+.badge { display:inline-block; padding:.1rem .5rem; border-radius:.25rem;
+         font-size:.78rem; font-weight:600; white-space:nowrap; color:#fff; }
+.badge.FAIL{background:var(--fail);} .badge.WARN{background:var(--warn);}
+.badge.PASS{background:var(--pass);} .badge.UNKNOWN{background:var(--unknown);}
+.badge.NA{background:var(--na);}
+.finding { border:1px solid var(--line); border-radius:.5rem; padding:1rem 1.15rem;
+           margin:1rem 0; }
+.finding.FAIL { border-left:4px solid var(--fail); }
+.finding.WARN { border-left:4px solid var(--warn); }
+.ev { background:var(--card); border-radius:.4rem; padding:.6rem .8rem; margin:.5rem 0;
+      font-size:.88rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+      word-break:break-all; }
+.ev q { display:block; font-family:inherit; color:var(--muted); margin-top:.35rem; }
+code { background:var(--card); padding:.1rem .3rem; border-radius:.2rem; font-size:.9em; }
+.rule-id { color:var(--muted); font-weight:400; }
+.hint { color:var(--muted); font-size:.85rem; margin:.25rem 0 .75rem; }
+td.norm { font-size:.82rem; color:var(--muted); }
+td.fine { font-size:.85rem; }
+/* Ширины колонок заданы явно: без этого «Правило» сжимается в столбик по
+   одному слову, а редкая длинная санкция растягивает свою колонку на треть
+   страницы. В PDF колонки не переверстать, поэтому раскладка фиксированная. */
+table.checklist { table-layout:fixed; }
+table.checklist td, table.checklist th { overflow-wrap:break-word; hyphens:auto; }
+table.checklist col.c-rule { width:25%; }
+table.checklist col.c-norm { width:13%; }
+table.checklist col.c-status { width:15%; }
+table.checklist col.c-fine { width:18%; }
+table.checklist col.c-found { width:29%; }
+/* Внутри чек-листа плашка статуса переносится: «НУЖНА РУЧНАЯ ПРОВЕРКА» одной
+   строкой шире своей колонки и наезжает на соседнюю. */
+table.checklist .badge { white-space:normal; overflow-wrap:normal; hyphens:none; }
+table.manual { table-layout:fixed; }
+table.manual td { overflow-wrap:break-word; hyphens:auto; }
+table.manual col.m-rule { width:26%; }
+table.manual col.m-why { width:30%; }
+table.manual col.m-how { width:44%; }
+/* Раскладка «stacked»: норма и штраф уходят под основное поле мелким шрифтом,
+   и ни одна колонка не остаётся уже своего содержимого. */
+table.checklist col.s-rule { width:38%; }
+table.checklist col.s-status { width:22%; }
+table.checklist col.s-found { width:40%; }
+table.checklist .sub { color:var(--muted); font-size:.8rem; margin-top:.25rem;
+                       line-height:1.35; }
+/* Раскладка «twoline»: шапка пункта отдельной строкой, подробности — второй. */
+table.checklist col.t-rule { width:58%; }
+table.checklist col.t-status { width:22%; }
+table.checklist col.t-fine { width:20%; }
+table.checklist tr.head td { border-bottom:none; padding-bottom:.2rem; }
+table.checklist tr.body td { padding-top:0; color:var(--fg); font-size:.88rem; }
+table.checklist tr.body .sub { color:var(--muted); font-size:.8rem; }
+table.checklist tr.head, table.checklist tr.body { page-break-inside:avoid; }
+.manualitem { border:1px solid var(--line); border-left:4px solid var(--unknown);
+              border-radius:.5rem; padding:.9rem 1.15rem; margin:1rem 0; }
+.manualitem h3 { margin:0 0 .5rem; }
+pre.cmd { background:var(--card); border-radius:.4rem; padding:.7rem .8rem;
+          font-size:.82rem; overflow-x:auto; white-space:pre-wrap;
+          word-break:break-all; margin:.5rem 0; }
+.colophon { background:var(--card); border-radius:.5rem; padding:1rem 1.15rem;
+            margin:1rem 0; font-size:.92rem; color:var(--muted); }
+.colophon ul { margin:.5rem 0; padding-left:1.2rem; }
+.colophon a { color:inherit; }
+.alert { background:#fdf1ef; border-left:4px solid var(--fail); color:var(--fg);
+         padding:.9rem 1.1rem; margin:1.5rem 0; font-size:.95rem; }
+.warnbox { background:var(--card); border-left:4px solid var(--warn);
+           padding:.7rem .9rem; margin:.6rem 0; font-size:.9rem; }
+.parttitle { margin-top:2.5rem; }
+.partbreak { page-break-before:always; height:0; }
+a { color:inherit; }
+@media print { body{font-size:11pt;} .wrap{max-width:none;padding:0;} h2{page-break-after:avoid;}
+               .finding{page-break-inside:avoid;} }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1b1b1b; --fg:#e8e8e8; --muted:#a8abb0; --line:#3a3a3a; --card:#252525;
+          --fail:#f2b8b5; --warn:#f0c26b; --pass:#a6d4a8; }
+}
+</style></head><body><div class=wrap><h1>127.0.0.1 — проверка на соответствие требованиям РФ</h1><p>Документ состоит из двух частей. <b>Часть I</b> — аналитическая записка для владельца сайта и юриста. <b>Часть II</b> — план устранения для разработчика.</p><h1 class=parttitle>Часть I. Аналитическая записка — 127.0.0.1</h1><div class=meta>http://127.0.0.1:52873 · проверено 2026-09-21 · страниц: 2</div><div class=disclaimer>Настоящий документ — результат технической проверки сайта, а не юридическое заключение. Статусы и суммы санкций носят справочный характер; окончательную правовую квалификацию даёт юрист. Проверка охватывает только сам сайт и не распространяется на внутренние процессы оператора, договоры с подрядчиками и содержимое внешних площадок.</div><div class=kpis><div class='kpi fail'><div class=n>0</div><div class=l>нарушений</div></div><div class='kpi warn'><div class=n>1</div><div class=l>нужна ручная проверка</div></div><div class='kpi unknown'><div class=n>0</div><div class=l>не проверено</div></div><div class='kpi pass'><div class=n>0</div><div class=l>соблюдается</div></div></div><h2>Чек-лист</h2><p class=hint>Идентификатор правила — ссылка на расшифровку ниже.</p><h3>Cookie и трекеры</h3><table class='checklist stacked'><colgroup><col class=s-rule><col class=s-status><col class=s-found></colgroup><tr><th>Правило и норма</th><th>Статус и штраф юрлицу, ₽</th><th>Что обнаружено</th></tr><tr><td><a href='#rule-li-001'><span class=rule-id>LI-001</span></a> Обоснование законного интереса для ограниченной аналитики<div class=sub>п. 7 ч. 1 ст. 6 и ст. 18.1 ФЗ-152</div></td><td><span class='badge WARN'>НУЖНА РУЧНАЯ ПРОВЕРКА</span><div class=sub>оценивается по составу нарушения</div></td><td>После отказа наблюдаются запросы сервисов или неклассифицированные cookie; эффективность отказа не подтверждена. Основание требует отдельной смысловой проверки</td></tr></table><h2>Основания обработки и смысловая проверка</h2><h3>LI-001</h3><ul><li>Заявленное основание: consent_declared; статус: UNVERIFIED.</li><li>Fixture analytics / analytics: заявлено consent_declared; проверенное основание: UNKNOWN.</li><li>Fixture analytics / analytics: кандидат основания — http://127.0.0.1:52873/privacy — Аналитика по согласию пользователя BASIS_PROOF_913</li></ul><h2>Подробно по каждому нарушению</h2><div class='finding WARN' id='rule-li-001'><h3><span class=rule-id>LI-001</span> Обоснование законного интереса для ограниченной аналитики <span class='badge WARN'>НУЖНА РУЧНАЯ ПРОВЕРКА</span></h3><p class=hint>Штраф юрлицу: оценивается по составу нарушения</p><p><b>Норма.</b> п. 7 ч. 1 ст. 6 и ст. 18.1 ФЗ-152</p><p><b>Ответственность.</b> ст. 13.11 КоАП РФ: юрлица оценивается по составу нарушения</p><p><b>Обнаружено.</b> После отказа наблюдаются запросы сервисов или неклассифицированные cookie; эффективность отказа не подтверждена. Основание требует отдельной смысловой проверки</p><div class=ev>Fixture analytics: запрос в сценарии after_reject — http://127.0.0.1:52873/track</div><div class=ev>after_reject: cookie требуют классификации: choice, analytics</div><div class=ev>Fixture analytics: запрос в сценарии revisit_reject — http://127.0.0.1:52873/track</div><div class=ev>revisit_reject: cookie требуют классификации: choice, analytics</div><p><b>Как устранить.</b> Подтвердить основание каждой цели. При выборе законного интереса заполнить шаблон его обоснования; при согласии проверить его получение. Проверить настройки аналитики и отказ.</p></div><div class=partbreak></div><h1>Часть II. План устранения</h1><div class=meta>Задач: 1 · основание — часть I</div><p>Документ предназначен для исполнения агентом-разработчиком. Задачи отсортированы по убыванию риска; порядок не переставлять.</p><h2>P1. Высокий риск</h2><div class='finding WARN'><h3>P1-01. Уточнить основания и режим работы аналитики</h3><p class=hint>Правило LI-001 · пункт части I</p><div class=warnbox>⚠️ <b>Нужен вход от заказчика.</b> Задача требует юридического текста или решения владельца. Разработчик реализует форму и размещение, но не сочиняет содержание.</div><p><b>Что обнаружено.</b> После отказа наблюдаются запросы сервисов или неклассифицированные cookie; эффективность отказа не подтверждена. Основание требует отдельной смысловой проверки.</p><p><b>Где менять.</b></p><ul><li>`http://127.0.0.1:52873/privacy` — Fixture analytics / analytics: кандидат основания</li><li>Цитата: Аналитика по согласию пользователя BASIS_PROOF_913</li><li>`http://127.0.0.1:52873/track` — Fixture analytics: запрос в сценарии after_reject</li><li>after_reject: cookie требуют классификации: choice, analytics</li><li>`http://127.0.0.1:52873/track` — Fixture analytics: запрос в сценарии revisit_reject</li><li>revisit_reject: cookie требуют классификации: choice, analytics</li></ul><p><b>Что сделать.</b> Подтвердить основание каждой цели. При выборе законного интереса заполнить шаблон его обоснования; при согласии проверить его получение. Проверить настройки аналитики и отказ.</p><p><b>Критерий приёмки.</b> LI-001: Техническая приёмка: приложены свежие сетевые и cookie-доказательства первого визита, согласия, отказа и повторного визита; неуспешные сценарии явно отмечены. Документальная приёмка: проверяющий фиксирует цель, сервис, подтверждённое основание и источники в отдельной semantic_review. Машинный WARN не требует искусственной замены на PASS.</p></div><h2>О проверке</h2><div class=colophon><p>Проверка выполнена скиллом <b>pepper-ru-web-compliance</b> — открытый набор правил и скриптов проверки сайта на соответствие требованиям РФ.</p><ul><li>Автор: Максим Никитин, ITSalt</li><li>Исходники и обновления правил: <a href='https://github.com/ITSalt/PepperSkills'>https://github.com/ITSalt/PepperSkills</a></li><li>Канал автора: <a href='https://t.me/itpepper'>https://t.me/itpepper</a></li><li>Вопросы и замечания по проверке: <a href='mailto:mnikitin@itsalt.ru'>mnikitin@itsalt.ru</a></li></ul><p>Нормы и суммы санкций актуальны на дату проверки (2026-09-21). Законодательство меняется — перед использованием записки в переписке или в суде сверьтесь с актуальной редакцией.</p></div></div></body></html>

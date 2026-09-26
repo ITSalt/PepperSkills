@@ -1,0 +1,107 @@
+{
+  "version": "2.0",
+  "purpose": "OpenAI Skills-only plugin review scenarios",
+  "positive": [
+    {
+      "id": "positive-cookie-no-optional-tracking",
+      "prompt": "Проверь https://example.ru: на главной только технические cookie, необязательной аналитики нет.",
+      "expected": "Не объявлять отсутствие баннера нарушением; запросить доказательства и отметить CK-001 как NA или UNKNOWN при неполных данных.",
+      "fixture": "submission/fixtures/positive-cookie-no-optional-tracking.json",
+      "expected_statuses": {
+        "CK-001": [
+          "NA"
+        ]
+      }
+    },
+    {
+      "id": "positive-consent-gating",
+      "prompt": "В HAR видны запросы analytics до клика по баннеру и после согласия.",
+      "expected": "Связать факт с CK-003, запросить квалификацию основания и выдать WARN/UNKNOWN, а не безусловный юридический вывод.",
+      "fixture": "submission/fixtures/positive-consent-gating.json",
+      "expected_statuses": {
+        "CK-003": [
+          "WARN"
+        ]
+      }
+    },
+    {
+      "id": "positive-legitimate-interest",
+      "prompt": "Сайт использует ограниченную аналитику, заявляет п. 7 ч. 1 ст. 6 ФЗ-152 и даёт рабочий отказ.",
+      "expected": "Предложить шаблон LI-001 и проверить цель, необходимость, минимизацию, получателей, уведомление и фактический отказ.",
+      "fixture": "submission/fixtures/positive-legitimate-interest.json",
+      "expected_statuses": {
+        "LI-001": [
+          "WARN"
+        ]
+      }
+    },
+    {
+      "id": "positive-remediation",
+      "prompt": "В GTM нет используемых тегов, а владелец просит план исправлений.",
+      "expected": "Предложить удалить ненужный контейнер первым вариантом и дать проверяемый критерий приёмки.",
+      "fixture": "submission/fixtures/positive-remediation.json",
+      "expected_statuses": {
+        "CK-005": [
+          "WARN"
+        ]
+      }
+    },
+    {
+      "id": "positive-manual-mode",
+      "prompt": "Браузер и исполнение кода недоступны; у пользователя есть скриншоты и сетевой лог.",
+      "expected": "Перейти в ручной режим, сохранить UNKNOWN для непроверяемого и попросить точные наблюдения из DevTools.",
+      "fixture": "submission/fixtures/positive-manual-mode.json",
+      "expected_statuses": {
+        "LI-001": [
+          "UNKNOWN"
+        ],
+        "CK-003": [
+          "UNKNOWN"
+        ]
+      }
+    }
+  ],
+  "negative": [
+    {
+      "id": "negative-no-banner-fail",
+      "prompt": "На сайте нет баннера; данных об аналитике и цели нет.",
+      "expected": "Не выставлять FAIL только за отсутствие баннера.",
+      "fixture": "submission/fixtures/negative-no-banner-fail.json",
+      "expected_statuses": {
+        "CK-001": [
+          "UNKNOWN"
+        ]
+      }
+    },
+    {
+      "id": "negative-foreign-domain-is-violation",
+      "prompt": "В HAR есть запрос к иностранному домену CDN без сведений о данных и получателе.",
+      "expected": "Не квалифицировать автоматически как нарушение; зафиксировать подключение и запросить правовое основание.",
+      "fixture": "submission/fixtures/negative-foreign-domain-is-violation.json",
+      "expected_statuses": {
+        "PDN-009": [
+          "UNKNOWN"
+        ]
+      }
+    },
+    {
+      "id": "negative-legitimate-interest-is-consent",
+      "prompt": "Оператор ссылается на законный интерес для рекламы и заранее отмеченного чекбокса.",
+      "expected": "Не считать это заранее данным согласием; разделить цели и потребовать отдельную проверку согласия.",
+      "fixture": "submission/fixtures/negative-legitimate-interest-is-consent.json",
+      "expected_statuses": {
+        "LI-001": [
+          "WARN"
+        ]
+      }
+    }
+  ],
+  "run": "python3 submission/run_tests.py --out /tmp/pepper-submission-results",
+  "result_format": {
+    "scenario": "string",
+    "status": "PASS | FAIL",
+    "observed_statuses": "object keyed by rule id",
+    "checks": "object of assertion booleans"
+  },
+  "scope": "Offline regression fixtures; model-response quality and client loading require separate live review."
+}

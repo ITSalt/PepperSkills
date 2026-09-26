@@ -31,9 +31,9 @@ import re
 import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-SKILL_DIR = REPO_ROOT / "pepper-prompt-engineer"
-TEMPLATE = SKILL_DIR / "chat-prompt.template.md"
-OUTPUT = SKILL_DIR / "chat-prompt.md"
+SKILL_DIR = REPO_ROOT / "plugins" / "pepper-prompt-engineer" / "skills" / "pepper-prompt-engineer"
+TEMPLATE = REPO_ROOT / "plugins" / "pepper-prompt-engineer" / "adapters" / "chat" / "chat-prompt.template.md"
+OUTPUT = REPO_ROOT / "plugins" / "pepper-prompt-engineer" / "adapters" / "chat" / "chat-prompt.md"
 
 INCLUDE_RE = re.compile(r"^\{\{include:\s*([^#}]+?)\s*(?:#\s*(.+?)\s*)?\}\}\s*$", re.M)
 
@@ -55,8 +55,8 @@ REFMAP = {
     "security.md": "BLOCK 11",
     "output-format.md": "BLOCK 2",
     "SKILL.md": "this prompt",
-    "scripts/validate.py": "the validator in the Claude Code skill edition",
-    "scripts/README.md": "the Claude Code skill edition",
+    "scripts/validate.py": "the validator in the full skill edition",
+    "scripts/README.md": "the full skill edition",
 }
 
 
@@ -114,6 +114,11 @@ def strip_front_matter_and_title(text: str) -> str:
 
 
 def resolve(path_str: str) -> pathlib.Path:
+    # The transition template used `anthropic/` paths. Treat that prefix as the
+    # canonical skill root so old templates remain buildable while there is one
+    # editable source tree.
+    if path_str.startswith("anthropic/"):
+        path_str = path_str[len("anthropic/"):]
     path = SKILL_DIR / path_str
     if not path.exists():
         raise FileNotFoundError(f"include source not found: {path}")
@@ -140,6 +145,8 @@ def expand(template: str) -> str:
 def apply_refmap(text: str) -> str:
     for src, dst in sorted(REFMAP.items(), key=lambda kv: -len(kv[0])):
         text = text.replace(f"`{src}`", dst)
+    text = text.replace("`anthropic/SKILL.md`", "`../../skills/pepper-prompt-engineer/SKILL.md`")
+    text = text.replace("(./anthropic/SKILL.md)", "(../../skills/pepper-prompt-engineer/SKILL.md)")
     return text
 
 
@@ -162,7 +169,7 @@ def build() -> str:
     body = body.replace("{{FENCE}}", outer_fence(body))
     header = (
         "<!-- GENERATED FILE — do not edit by hand.\n"
-        "     Source: chat-prompt.template.md + anthropic/ (SKILL.md, references/).\n"
+        "     Source: chat-prompt.template.md + skills/pepper-prompt-engineer/ (SKILL.md, references/).\n"
         "     Rebuild: python3 scripts/build-chat-prompt.py -->\n\n"
     )
     if not body.endswith("\n"):

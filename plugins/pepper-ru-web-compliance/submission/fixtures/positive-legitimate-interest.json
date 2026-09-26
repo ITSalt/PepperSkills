@@ -1,0 +1,16 @@
+{
+  "policy": "Аналитика на основании п. 7 ч. 1 ст. 6 ФЗ-152 BASIS_PROOF_913",
+  "requests": [
+    "https://mc.yandex.ru/watch/1"
+  ],
+  "refusal": {
+    "click_status": "clicked",
+    "revisit_completed": true
+  },
+  "expected": {
+    "LI-001": [
+      "WARN"
+    ]
+  },
+  "basis": "legitimate_interest_declared"
+}

@@ -1,0 +1,11 @@
+{
+  "policy": "Аналитика по согласию",
+  "requests": [
+    "https://mc.yandex.ru/watch/1"
+  ],
+  "expected": {
+    "CK-003": [
+      "WARN"
+    ]
+  }
+}

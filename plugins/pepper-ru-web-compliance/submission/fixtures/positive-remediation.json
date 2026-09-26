@@ -1,0 +1,11 @@
+{
+  "policy": "Контейнер GTM не используется. Удалить ненужный контейнер после проверки владельцем.",
+  "requests": [
+    "https://www.googletagmanager.com/gtm.js?id=GTM-TEST"
+  ],
+  "expected": {
+    "CK-005": [
+      "WARN"
+    ]
+  }
+}

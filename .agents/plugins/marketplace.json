@@ -1,0 +1,9 @@
+{
+  "name": "pepperskills",
+  "interface": {"displayName": "PepperSkills"},
+  "plugins": [
+    {"name":"pepper-ru-web-compliance","source":{"source":"local","path":"./plugins/pepper-ru-web-compliance"},"policy":{"installation":"AVAILABLE","authentication":"ON_INSTALL"},"category":"Productivity"},
+    {"name":"pepper-creative-mode","source":{"source":"local","path":"./plugins/pepper-creative-mode"},"policy":{"installation":"AVAILABLE","authentication":"ON_INSTALL"},"category":"Productivity"},
+    {"name":"pepper-prompt-engineer","source":{"source":"local","path":"./plugins/pepper-prompt-engineer"},"policy":{"installation":"AVAILABLE","authentication":"ON_INSTALL"},"category":"Productivity"}
+  ]
+}

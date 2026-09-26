@@ -1,0 +1,35 @@
+[
+  {
+    "scenario": "good",
+    "refusal": {
+      "click_status": "clicked",
+      "revisit_completed": true,
+      "button": "Отказаться",
+      "storage_state": "refusal-storage-state.json"
+    },
+    "status": "PASS",
+    "browser": "chromium 153.0.8010.12"
+  },
+  {
+    "scenario": "broken",
+    "refusal": {
+      "click_status": "clicked",
+      "revisit_completed": true,
+      "button": "Отказаться",
+      "storage_state": "refusal-storage-state.json"
+    },
+    "status": "PASS",
+    "browser": "chromium 153.0.8010.12"
+  },
+  {
+    "scenario": "disabled",
+    "refusal": {
+      "click_status": "failed",
+      "revisit_completed": false,
+      "button": "Отказаться",
+      "error": "TimeoutError: Locator.click: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\"#cookie-banner\").first.get_by_text(\"Отказаться\", exact=True).first\n    - locator resolved to <button disabled onclick=\"choose('no')\">Отказаться</button>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n      - waiting 100ms\n    10 × waiting for element to be visible, enabled and stable\n       - element is not enabled\n     - retrying click action\n       - waiting 500ms\n"
+    },
+    "status": "PASS",
+    "browser": "chromium 153.0.8010.12"
+  }
+]

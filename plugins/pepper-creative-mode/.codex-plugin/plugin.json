@@ -1,0 +1,33 @@
+{
+  "name": "pepper-creative-mode",
+  "version": "2.0.0",
+  "description": "Self-seeded randomness for fair sampling and genuinely varied creative generation.",
+  "author": {
+    "name": "ITSalt",
+    "email": "info@itsalt.ru",
+    "url": "https://github.com/ITSalt/PepperSkills"
+  },
+  "homepage": "https://github.com/ITSalt/PepperSkills/tree/main/plugins/pepper-creative-mode",
+  "repository": "https://github.com/ITSalt/PepperSkills",
+  "license": "MIT",
+  "keywords": [
+    "randomness",
+    "creative",
+    "sampling",
+    "variation"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Creative Mode",
+    "shortDescription": "Fair sampling and diverse generation",
+    "longDescription": "Produces reproducible, self-seeded random choices and varied creative alternatives when a task explicitly requires variation.",
+    "category": "Productivity",
+    "developerName": "ITSalt",
+    "capabilities": [
+      "Generate"
+    ],
+    "defaultPrompt": [
+      "Generate five genuinely varied alternatives for this idea."
+    ]
+  }
+}
