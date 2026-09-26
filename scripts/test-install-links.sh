@@ -22,14 +22,22 @@ for shell_name in bash zsh; do
   test -L "$link" && test "$(readlink "$link")" = "$source"
   "$runner" "$script" pepper-test "$link" "$source" # already-correct link
   # Recognized good legacy path is safely repointed.
-  old="$tmp/pepper-test/anthropic"
-  ln -s "$tmp/pepper-test/anthropic" "$tmp/$shell_name/shared/legacy-good"
+  mkdir -p "$tmp/$shell_name/pepper-test"
+  old="$tmp/$shell_name/pepper-test/anthropic"
+  ln -s "$source" "$old"
+  ln -s "$old" "$tmp/$shell_name/shared/legacy-good"
+  test -f "$tmp/$shell_name/shared/legacy-good/SKILL.md"
   "$runner" "$script" pepper-test "$tmp/$shell_name/shared/legacy-good" "$source"
   test "$(readlink "$tmp/$shell_name/shared/legacy-good")" = "$source"
   # Recognized broken legacy path is repairable.
   ln -s "$tmp/pepper-test/anthropic" "$tmp/$shell_name/shared/legacy-broken"
+  test ! -e "$tmp/$shell_name/shared/legacy-broken"
   "$runner" "$script" pepper-test "$tmp/$shell_name/shared/legacy-broken" "$source"
   test -f "$tmp/$shell_name/shared/legacy-broken/SKILL.md"
+  # Existing agent -> shared-directory -> canonical chains remain valid.
+  ln -s pepper-test "$tmp/$shell_name/shared/agent-chain"
+  "$runner" "$script" pepper-test "$tmp/$shell_name/shared/agent-chain" "$source"
+  test "$(readlink "$tmp/$shell_name/shared/agent-chain")" = pepper-test
   # Existing directory and unrelated/broken links must be preserved and rejected.
   mkdir "$tmp/$shell_name/shared/existing-directory"
   if "$runner" "$script" pepper-test "$tmp/$shell_name/shared/existing-directory" "$source" 2>/dev/null; then exit 1; fi
@@ -41,7 +49,9 @@ for shell_name in bash zsh; do
   chat_link="$tmp/$shell_name/shared/chat"
   "$runner" "$path_script" chat pepper-test "$chat_link" "$chat_source"
   test -f "$chat_link/system-prompt.md"
-  ln -s "$tmp/pepper-test/openai" "$tmp/$shell_name/shared/chat-legacy"
+  ln -s "$chat_source" "$tmp/$shell_name/pepper-test/openai"
+  ln -s "$tmp/$shell_name/pepper-test/openai" "$tmp/$shell_name/shared/chat-legacy"
+  test -f "$tmp/$shell_name/shared/chat-legacy/system-prompt.md"
   "$runner" "$path_script" chat pepper-test "$tmp/$shell_name/shared/chat-legacy" "$chat_source"
   test "$(readlink "$tmp/$shell_name/shared/chat-legacy")" = "$chat_source"
   ln -s "$tmp/pepper-test/openai" "$tmp/$shell_name/shared/chat-broken"
@@ -51,7 +61,9 @@ for shell_name in bash zsh; do
   file_link="$tmp/$shell_name/shared/chat-prompt.md"
   "$runner" "$path_script" file pepper-test "$file_link" "$file_source"
   test -f "$file_link" && test "$(readlink "$file_link")" = "$file_source"
-  ln -s "$tmp/pepper-test/chat-prompt.md" "$tmp/$shell_name/shared/prompt-legacy"
+  ln -s "$file_source" "$tmp/$shell_name/pepper-test/chat-prompt.md"
+  ln -s "$tmp/$shell_name/pepper-test/chat-prompt.md" "$tmp/$shell_name/shared/prompt-legacy"
+  test -f "$tmp/$shell_name/shared/prompt-legacy"
   "$runner" "$path_script" file pepper-test "$tmp/$shell_name/shared/prompt-legacy" "$file_source"
   test "$(readlink "$tmp/$shell_name/shared/prompt-legacy")" = "$file_source"
 done

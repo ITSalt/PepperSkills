@@ -16,11 +16,28 @@ case "$kind" in
   file) [[ -f "$source_path" ]] || { echo "missing canonical file: $source_path" >&2; exit 1; } ;;
   *) echo "unsupported link kind: $kind" >&2; exit 2 ;;
 esac
-if [[ -d "$source_path" ]]; then
-  source_abs="$(cd "$source_path" && pwd -P)"
-else
-  source_abs="$(cd "$(dirname "$source_path")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$source_path")")"
-fi
+# Resolve existing files or directories with BSD/macOS tools (no readlink -f).
+resolve_existing() (
+  path="$1"
+  count=0
+  while [[ -L "$path" ]]; do
+    count=$((count + 1))
+    [[ "$count" -le 40 ]] || return 1
+    target="$(readlink "$path")" || return 1
+    case "$target" in
+      /*) path="$target" ;;
+      *) path="$(dirname "$path")/$target" ;;
+    esac
+  done
+  if [[ -d "$path" ]]; then
+    cd "$path" && pwd -P
+  elif [[ -f "$path" ]]; then
+    cd "$(dirname "$path")" && printf '%s/%s\n' "$(pwd -P)" "$(basename "$path")"
+  else
+    return 1
+  fi
+)
+source_abs="$(resolve_existing "$source_path")"
 if [[ -L "$link_path" ]]; then
   current="$(readlink "$link_path")"
   case "$kind:$current" in
@@ -28,7 +45,12 @@ if [[ -L "$link_path" ]]; then
     skill:*/"$product"/anthropic|skill:*/plugins/"$product"/skills/"$product") ;;
     chat:*/"$product"/openai|chat:*/plugins/"$product"/adapters/chat) ;;
     file:*/"$product"/chat-prompt.md|file:*/"$product"/chat-prompt.template.md|file:*/plugins/"$product"/adapters/chat/chat-prompt.md|file:*/plugins/"$product"/adapters/chat/chat-prompt.template.md) ;;
-    *) echo "refusing to replace unrecognized symlink: $link_path -> $current" >&2; exit 1 ;;
+    *)
+      resolved="$(resolve_existing "$link_path")" || resolved=""
+      [[ "$resolved" == "$source_abs" ]] && exit 0
+      echo "refusing to replace unrecognized symlink: $link_path -> $current" >&2
+      exit 1 ;;
+
   esac
   rm "$link_path"
   ln -s "$source_abs" "$link_path"
