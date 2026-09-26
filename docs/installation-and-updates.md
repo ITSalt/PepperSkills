@@ -39,16 +39,9 @@ set -eu
 pepper_repo="$HOME/projects/PepperSkills"
 pepper_name="pepper-prompt-engineer"
 pepper_source="$pepper_repo/plugins/$pepper_name/skills/$pepper_name"
-test -f "$pepper_source/SKILL.md"
-mkdir -p "$HOME/.agents/skills"
-test ! -e "$HOME/.agents/skills/$pepper_name"
-test ! -L "$HOME/.agents/skills/$pepper_name"
-ln -s "$pepper_source" "$HOME/.agents/skills/$pepper_name"
+"$pepper_repo/scripts/link-skill.sh" "$pepper_name" "$HOME/.agents/skills/$pepper_name" "$pepper_source"
 # Optional Claude Code link:
-mkdir -p "$HOME/.claude/skills"
-test ! -e "$HOME/.claude/skills/$pepper_name"
-test ! -L "$HOME/.claude/skills/$pepper_name"
-ln -s "$HOME/.agents/skills/$pepper_name" "$HOME/.claude/skills/$pepper_name"
+"$pepper_repo/scripts/link-skill.sh" "$pepper_name" "$HOME/.claude/skills/$pepper_name" "$HOME/.agents/skills/$pepper_name"
 )
 ```
 
@@ -122,21 +115,8 @@ the expected PepperSkills paths. It leaves directories and unrecognized links al
 set -eu
 pepper_repo="$HOME/projects/PepperSkills"
 pepper_name="pepper-prompt-engineer"
-pepper_link="$HOME/.agents/skills/$pepper_name"
-pepper_new="$pepper_repo/plugins/$pepper_name/skills/$pepper_name"
-if [ -L "$pepper_link" ]; then
-  pepper_target=$(readlink "$pepper_link")
-  case "$pepper_target" in
-    */"$pepper_name"/anthropic|*/plugins/"$pepper_name"/skills/"$pepper_name")
-      test -f "$pepper_new/SKILL.md"
-      rm "$pepper_link"
-      ln -s "$pepper_new" "$pepper_link"
-      ;;
-    *) printf 'Leaving unrecognized link: %s -> %s\n' "$pepper_link" "$pepper_target" >&2 ;;
-  esac
-else
-  printf 'Not a symlink; leaving unchanged: %s\n' "$pepper_link" >&2
-fi
+pepper_source="$pepper_repo/plugins/$pepper_name/skills/$pepper_name"
+"$pepper_repo/scripts/link-skill.sh" "$pepper_name" "$HOME/.agents/skills/$pepper_name" "$pepper_source"
 )
 ```
 

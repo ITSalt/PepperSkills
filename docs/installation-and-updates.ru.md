@@ -85,20 +85,11 @@ Codex читает напрямую       └── ~/.claude/skills/<name> → 
 (
 set -eu
 pepper_repo="$HOME/projects/PepperSkills"
-pepper_skill="pepper-prompt-engineer"
-pepper_source="$pepper_repo/plugins/$pepper_skill/skills/$pepper_skill"
-test -f "$pepper_source/SKILL.md"
-mkdir -p "$HOME/.agents/skills"
-# Отдельная проверка важна: ln может создать вложенную ссылку в существующей папке.
-test ! -e "$HOME/.agents/skills/$pepper_skill"
-test ! -L "$HOME/.agents/skills/$pepper_skill"
-ln -s "$pepper_source" "$HOME/.agents/skills/$pepper_skill"
-
+pepper_name="pepper-prompt-engineer"
+pepper_source="$pepper_repo/plugins/$pepper_name/skills/$pepper_name"
+"$pepper_repo/scripts/link-skill.sh" "$pepper_name" "$HOME/.agents/skills/$pepper_name" "$pepper_source"
 # Только если нужен Claude Code:
-mkdir -p "$HOME/.claude/skills"
-test ! -e "$HOME/.claude/skills/$pepper_skill"
-test ! -L "$HOME/.claude/skills/$pepper_skill"
-ln -s "$HOME/.agents/skills/$pepper_skill" "$HOME/.claude/skills/$pepper_skill"
+"$pepper_repo/scripts/link-skill.sh" "$pepper_name" "$HOME/.claude/skills/$pepper_name" "$HOME/.agents/skills/$pepper_name"
 )
 ```
 
@@ -243,21 +234,8 @@ Prompt Engineer — `chat-prompt.md`; Creative Mode — `system-prompt.md` и
 set -eu
 pepper_repo="$HOME/projects/PepperSkills"
 pepper_name="pepper-prompt-engineer"
-pepper_link="$HOME/.agents/skills/$pepper_name"
-pepper_new="$pepper_repo/plugins/$pepper_name/skills/$pepper_name"
-if [ -L "$pepper_link" ]; then
-  pepper_target=$(readlink "$pepper_link")
-  case "$pepper_target" in
-    */"$pepper_name"/anthropic|*/plugins/"$pepper_name"/skills/"$pepper_name")
-      test -f "$pepper_new/SKILL.md"
-      rm "$pepper_link"
-      ln -s "$pepper_new" "$pepper_link"
-      ;;
-    *) printf 'Оставляю неизвестную ссылку: %s -> %s\n' "$pepper_link" "$pepper_target" >&2 ;;
-  esac
-else
-  printf 'Не симлинк, оставляю без изменений: %s\n' "$pepper_link" >&2
-fi
+pepper_source="$pepper_repo/plugins/$pepper_name/skills/$pepper_name"
+"$pepper_repo/scripts/link-skill.sh" "$pepper_name" "$HOME/.agents/skills/$pepper_name" "$pepper_source"
 )
 ```
 

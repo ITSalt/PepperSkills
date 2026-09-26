@@ -34,6 +34,11 @@ def main():
     license_text = (ROOT / 'LICENSE').read_text(encoding='utf-8')
     for plugin in sorted((ROOT / 'plugins').glob('pepper-*')):
         ok &= rendered(plugin / 'LICENSE', license_text, check)
+        pointer = ('<!-- GENERATED TRANSITION POINTER; excluded from distribution archives. -->\n'
+                   'Installation instructions have moved to the repository guide:\n'
+                   '- English: ../../../../docs/installation-and-updates.md\n'
+                   '- Русский: ../../../../docs/installation-and-updates.ru.md\n')
+        ok &= rendered(plugin / 'skills' / plugin.name / 'INSTALL.md', pointer, check)
     plugin = ROOT / 'plugins/pepper-ru-web-compliance'
     manifest = json.loads((plugin / 'plugin.json').read_text(encoding='utf-8'))
     author = manifest['author']
