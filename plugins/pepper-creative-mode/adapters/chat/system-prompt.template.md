@@ -23,3 +23,11 @@ Apply the following protocol only to eligible tasks.
 ## Hard rules
 
 {{include: skills/pepper-creative-mode/SKILL.md#Hard rules}}
+
+{{appendix: skills/pepper-creative-mode/references/when-not-to-use.md}}
+
+{{appendix: skills/pepper-creative-mode/references/sum-mod.md}}
+
+{{appendix: skills/pepper-creative-mode/references/rolling-hash.md}}
+
+{{appendix: skills/pepper-creative-mode/references/decision-cascade.md}}

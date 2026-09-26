@@ -19,3 +19,5 @@
 ## Чего скилл не делает
 
 {{include: skills/pepper-ru-web-compliance/SKILL.md#Чего скилл не делает}}
+
+{{appendix: skills/pepper-ru-web-compliance/references/legitimate-interest.md}}

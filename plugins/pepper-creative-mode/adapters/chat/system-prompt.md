@@ -44,7 +44,7 @@ Do NOT activate for:
 - **Classification, extraction, or summarization** — deterministic tasks with objectively better answers.
 - **Any task where the same correct answer is expected on every run.**
 
-See [приложение «when-not-to-use»](references/when-not-to-use.md) for edge cases, the QwQ-32B anomaly, and fallback guidance for mixed tasks.
+See appendix “when-not-to-use” for edge cases, the QwQ-32B anomaly, and fallback guidance for mixed tasks.
 
 ---
 
@@ -92,11 +92,11 @@ mapping: 0->Heads, 1->Tails -> Tails
 
 Choose the arithmetic pattern that matches the task's probability structure:
 
-- **Sum-Mod** ([приложение «sum-mod»](references/sum-mod.md)) — Use when all N outcomes have equal probability. Formula: `sum(ord(c) for c in string) mod N`. Map the result (0-indexed) to the Nth option.
+- **Sum-Mod** (appendix “sum-mod”) — Use when all N outcomes have equal probability. Formula: `sum(ord(c) for c in string) mod N`. Map the result (0-indexed) to the Nth option.
 
-- **Rolling Hash** ([приложение «rolling-hash»](references/rolling-hash.md)) — Use when probabilities are unequal or arbitrary. Formula: `h = 0; for c in string: h = (h*31 + ord(c)) mod M` (M >= 10000). Split `[0, M)` into intervals sized by target probabilities; the interval containing `h` is the choice.
+- **Rolling Hash** (appendix “rolling-hash”) — Use when probabilities are unequal or arbitrary. Formula: `h = 0; for c in string: h = (h*31 + ord(c)) mod M` (M >= 10000). Split `[0, M)` into intervals sized by target probabilities; the interval containing `h` is the choice.
 
-- **Decision Cascade** ([приложение «decision-cascade»](references/decision-cascade.md)) — Use for open-ended creative tasks. Decompose the output into components, define candidate lists per component, pick each component by applying Sum-Mod to a non-overlapping segment of the string, then assemble.
+- **Decision Cascade** (appendix “decision-cascade”) — Use for open-ended creative tasks. Decompose the output into components, define candidate lists per component, pick each component by applying Sum-Mod to a non-overlapping segment of the string, then assemble.
 
 Quick selection guide:
 
@@ -125,7 +125,6 @@ Follow all of these without exception:
 - Do not adjust the string or the arithmetic after seeing the result. Commit and proceed.
 
 ---
-
 
 ## when-not-to-use
 
@@ -191,6 +190,7 @@ The rule: **apply `pepper-creative-mode` only to the sub-parts that are genuinel
 ---
 
 Source: Misaki, K., & Akiba, T. "String Seed of Thought: Prompting LLMs for Distribution-Faithful and Diverse Generation." arXiv:2510.21150. Accepted at ICLR 2026.
+
 
 ## sum-mod
 
@@ -267,6 +267,7 @@ Result: **Tails**
 ---
 
 Source: Misaki, K., & Akiba, T. "String Seed of Thought: Prompting LLMs for Distribution-Faithful and Diverse Generation." arXiv:2510.21150. Accepted at ICLR 2026.
+
 
 ## rolling-hash
 
@@ -391,6 +392,7 @@ For equal-probability choices, prefer Sum-Mod ([`sum-mod.md`](sum-mod.md)) over 
 ---
 
 Source: Misaki, K., & Akiba, T. "String Seed of Thought: Prompting LLMs for Distribution-Faithful and Diverse Generation." arXiv:2510.21150. Accepted at ICLR 2026.
+
 
 ## decision-cascade
 
@@ -520,3 +522,4 @@ May the new year bring you quiet discoveries, one step at a time.
 ---
 
 Source: Misaki, K., & Akiba, T. "String Seed of Thought: Prompting LLMs for Distribution-Faithful and Diverse Generation." arXiv:2510.21150. Accepted at ICLR 2026.
+

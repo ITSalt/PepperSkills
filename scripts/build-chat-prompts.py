@@ -40,7 +40,7 @@ def extract_section(text, heading):
     return '\n'.join(lines[start:end]).strip('\n')
 
 
-def expand(template, plugin_dir):
+def expand(template, plugin_dir, prompt=False):
     def replace(m):
         rel, heading = m.group(1).strip(), m.group(2)
         source = (plugin_dir / rel).resolve()
@@ -50,7 +50,8 @@ def expand(template, plugin_dir):
         return extract_section(text, heading) if heading else text.strip('\n')
     old = None
     for _ in range(4):
-        old, template = template, INCLUDE_RE.sub(replace, template)
+        pattern = re.compile(r"^\{\{include:\s*([^#}]+?)\s*(?:#\s*(.+?)\s*)?\}\}\s*$", re.M) if prompt else INCLUDE_RE
+        old, template = template, pattern.sub(replace, template)
         if template == old:
             break
     if INCLUDE_RE.search(template):
@@ -58,14 +59,25 @@ def expand(template, plugin_dir):
     return template
 
 
-def inline_references(body, skill_root):
-    refs = list(dict.fromkeys(re.findall(r'`(references/[^`]+\.md)`', body)))
-    for rel in refs:
-        path = skill_root / rel
-        if path.is_file():
-            body = body.replace('`' + rel + '`', 'приложение «' + path.stem + '»')
-            body += '\n\n## ' + path.stem + '\n\n' + path.read_text(encoding='utf-8').rstrip()
-    return body
+def appendices(template, plugin_dir):
+    """Append only the resources explicitly selected by the Markdown template."""
+    def replace(match):
+        source = (plugin_dir / match.group(1).strip()).resolve()
+        if not source.is_relative_to(plugin_dir.resolve()) or not source.is_file():
+            raise ValueError(f'invalid appendix: {source}')
+        return '## ' + source.stem + '\n\n' + source.read_text(encoding='utf-8')
+    return re.sub(r'\{\{appendix:\s*([^}]+?)\s*\}\}', replace, template)
+
+
+def local_reference_labels(body):
+    """A pasted prompt cannot follow repository-relative Markdown links."""
+    def label(match):
+        stem = Path(match.group(1)).stem
+        if re.search(r'^## ' + re.escape(stem) + r'$', body, re.M):
+            return ('приложение «' + stem + '»') if re.match('[А-Я]', body) else ('appendix “' + stem + '”')
+        return 'the “' + stem + '” reference in the full skill edition'
+    body = re.sub(r'\[`references/[^`]+`\]\(\.?/?(references/[^)]+\.md)\)', label, body)
+    return re.sub(r'`(references/[^`]+\.md)`', label, body)
 
 
 def fence_for(body):
@@ -90,13 +102,12 @@ def build_all():
         chat_dir = plugin_dir / 'adapters/chat'
         for template_path in sorted(chat_dir.glob('*.template.md')):
             output_path = template_path.with_name(template_path.name.removesuffix('.template.md') + '.md')
-            body = expand(template_path.read_text(encoding='utf-8'), plugin_dir)
+            body = expand(template_path.read_text(encoding='utf-8'), plugin_dir, plugin_dir.name == 'pepper-prompt-engineer')
             if plugin_dir.name == 'pepper-prompt-engineer' and template_path.name == 'chat-prompt.template.md':
                 generated = prompt_engineer(body, plugin_dir)
             else:
-                skill_root = plugin_dir / 'skills' / plugin_dir.name
-                body = inline_references(body, skill_root)
-                generated = '<!-- GENERATED: python3 scripts/build-chat-prompts.py; edit canonical skill sources and templates. -->\n\n' + body.rstrip() + '\n'
+                body = local_reference_labels(appendices(body, plugin_dir))
+                generated = '<!-- GENERATED: python3 scripts/build-chat-prompts.py; edit canonical skill sources and templates. -->\n\n' + body
             outputs[output_path] = generated
     return outputs
 
