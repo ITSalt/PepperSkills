@@ -66,32 +66,37 @@ def main():
                         subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
             print(f'PASS package {archive.relative_to(ROOT)}')
 
-    # Change source mtimes and process umask in a copied tree; package bytes must stay fixed.
+    # Recreate identical source files in different orders, modes, timestamps, umasks, and TZ.
     with tempfile.TemporaryDirectory(prefix='pepperskills-repro-') as raw:
         tmp = Path(raw)
-        copied_plugins = tmp / 'plugins'
-        shutil.copytree(ROOT / 'plugins', copied_plugins, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.zip', '*.skill'))
-        copied_root = tmp / 'repo'
-        copied_root.mkdir()
-        shutil.move(copied_plugins, copied_root / 'plugins')
-        shutil.copy2(ROOT / 'LICENSE', copied_root / 'LICENSE')
-        shutil.copy2(ROOT / 'scripts/package.py', copied_root / 'package.py')
-        files = [p for p in (copied_root / 'plugins').rglob('*') if p.is_file()]
-        random.Random(4815).shuffle(files)
-        for index, path in enumerate(files):
-            path.touch()
-            path.chmod(0o600 if index % 2 else 0o777)
-        old_umask = __import__('os').umask(0o077)
-        try:
-            subprocess.run([sys.executable, str(copied_root / 'package.py'), '--kind', 'all',
-                            '--repo-root', str(copied_root), '--output-root', str(tmp / 'dist')], check=True)
-        finally:
-            __import__('os').umask(old_umask)
-        for source in archives:
-            relative = source.relative_to(ROOT / 'dist')
-            repeated = tmp / 'dist' / relative
-            assert sha(source) == sha(repeated), f'archive changed with source metadata: {source.name}'
-    print('PASS reproducible ZIP metadata, source mtime, umask, and file traversal order')
+        source_files = [p for p in (ROOT / 'plugins').rglob('*') if p.is_file()]
+        for seed in (17, 4815):
+            copied_root = tmp / f'repo-{seed}'
+            copied_root.mkdir()
+            order = list(source_files)
+            random.Random(seed).shuffle(order)
+            for index, original in enumerate(order):
+                destination = copied_root / original.relative_to(ROOT)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(original.read_bytes())
+                destination.chmod(0o600 if (index + seed) % 2 else 0o777)
+                destination.touch()
+            (copied_root / 'LICENSE').write_bytes((ROOT / 'LICENSE').read_bytes())
+            output = tmp / f'dist-{seed}'
+            old_umask = __import__('os').umask(0o077 if seed == 17 else 0o027)
+            env = __import__('os').environ.copy()
+            env['TZ'] = 'Pacific/Honolulu' if seed == 17 else 'Europe/Moscow'
+            try:
+                subprocess.run([sys.executable, str(ROOT / 'scripts/package.py'), '--kind', 'all',
+                                '--repo-root', str(copied_root), '--output-root', str(output)],
+                               check=True, env=env)
+            finally:
+                __import__('os').umask(old_umask)
+            for source in archives:
+                relative = source.relative_to(ROOT / 'dist')
+                rebuilt = output / relative
+                assert sha(source) == sha(rebuilt), f'archive changed with source environment: {source.name}'
+    print('PASS reproducible ZIP metadata across file order, mtime, mode, umask, TZ, and source roots')
 
 
 if __name__ == '__main__':

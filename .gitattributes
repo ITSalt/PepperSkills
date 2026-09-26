@@ -1,0 +1,12 @@
+plugins/*/.claude-plugin/plugin.json linguist-generated
+plugins/*/.codex-plugin/plugin.json linguist-generated
+plugins/*/.cursor-plugin/plugin.json linguist-generated
+plugins/*/LICENSE linguist-generated
+plugins/*/submission/listing.json linguist-generated
+plugins/*/skills/*/INSTALL.md linguist-generated
+plugins/pepper-creative-mode/adapters/chat/custom-instructions.md linguist-generated
+plugins/pepper-creative-mode/adapters/chat/system-prompt.md linguist-generated
+plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md linguist-generated
+plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md linguist-generated
+plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md linguist-generated
+plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md linguist-generated

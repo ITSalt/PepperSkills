@@ -15,7 +15,9 @@ SCHEMA = ROOT / 'scripts/schemas/agent-plugin-1.0.0.json'
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--check', action='store_true')
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--check', action='store_true')
+    mode.add_argument('--write', action='store_true')
     args = parser.parse_args()
     try:
         from jsonschema import Draft202012Validator

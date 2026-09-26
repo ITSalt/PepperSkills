@@ -11,7 +11,7 @@ rules.yaml — единственный источник правды. Чек-л
 версия и версия, по которой работают скрипты, не могут разойтись.
 
 Использование:
-    python3 scripts/gen_checklist.py           # записать references/checklist.md
+    python3 scripts/gen_checklist.py --write   # записать references/checklist.md
     python3 scripts/gen_checklist.py --check   # проверить, что файл актуален (для CI)
 """
 from __future__ import annotations
@@ -224,8 +224,10 @@ def emit_json_twins() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", action="store_true",
-                        help="не писать файл, а проверить его актуальность")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--check", action="store_true",
+                      help="не писать файл, а проверить его актуальность")
+    mode.add_argument("--write", action="store_true", help="записать сгенерированный файл")
     args = parser.parse_args()
 
     data = yaml.safe_load(RULES.read_text(encoding="utf-8"))

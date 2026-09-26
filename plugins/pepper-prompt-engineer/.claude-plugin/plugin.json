@@ -1,6 +1,6 @@
 {
   "name": "pepper-prompt-engineer",
-  "version": "2.0.0",
+  "version": "2.5.0",
   "description": "CRAFT+ workflow for turning task descriptions into verified production-ready prompts.",
   "author": {
     "name": "ITSalt",
