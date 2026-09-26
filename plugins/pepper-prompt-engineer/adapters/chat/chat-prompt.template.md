@@ -6,7 +6,7 @@ For the full skill edition (with references, examples, scripts and evals), see [
 
 > This file is generated from [`chat-prompt.template.md`](./chat-prompt.template.md) plus
 > the skill's own sources, so the two editions cannot drift apart. Edit the template or
-> the skill, then run `python3 scripts/build-chat-prompts.py`.
+> the skill, then run `python3 scripts/build-chat-prompts.py --write`.
 
 ---
 

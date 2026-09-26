@@ -128,7 +128,8 @@ def build_all(repo: Path, kind: str, names: list[str], output_root: Path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--kind', choices=('skill', 'plugin', 'all'), required=True)
+    parser.add_argument('--kind', choices=('skill', 'plugin', 'all'), required=True,
+                        help='compatibility selector; every invocation rebuilds both archive kinds')
     parser.add_argument('--repo-root', type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument('--output-root', type=Path)
     parser.add_argument('names', nargs='*')

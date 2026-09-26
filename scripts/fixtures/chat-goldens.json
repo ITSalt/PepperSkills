@@ -29,7 +29,7 @@
       "intentional_changes": [
         {
           "before": "> the skill, then run `python3 scripts/build-chat-prompt.py`.\n",
-          "after": "> the skill, then run `python3 scripts/build-chat-prompts.py`.\n"
+          "after": "> the skill, then run `python3 scripts/build-chat-prompts.py --write`.\n"
         }
       ]
     },

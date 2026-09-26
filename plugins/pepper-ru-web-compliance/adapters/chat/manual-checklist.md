@@ -1,4 +1,4 @@
-<!-- GENERATED: python3 scripts/build-chat-prompts.py; edit canonical skill sources and templates. -->
+<!-- GENERATED: python3 scripts/build-chat-prompts.py --write; edit canonical skill sources and templates. -->
 
 <!-- СГЕНЕРИРОВАНО scripts/gen_checklist.py — не редактировать вручную. -->
 <!-- Источник правды: scripts/rules.yaml -->

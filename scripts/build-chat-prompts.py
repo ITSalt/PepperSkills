@@ -93,7 +93,7 @@ def prompt_engineer(body, plugin_dir):
     body = body.replace('{{FENCE}}', fence_for(body))
     return ('<!-- GENERATED FILE — do not edit by hand.\n'
             '     Source: chat-prompt.template.md + skills/pepper-prompt-engineer/.\n'
-            '     Rebuild: python3 scripts/build-chat-prompts.py -->\n\n' + body.rstrip() + '\n')
+            '     Rebuild: python3 scripts/build-chat-prompts.py --write -->\n\n' + body.rstrip() + '\n')
 
 
 def build_all():
@@ -107,7 +107,7 @@ def build_all():
                 generated = prompt_engineer(body, plugin_dir)
             else:
                 body = local_reference_labels(appendices(body, plugin_dir))
-                generated = '<!-- GENERATED: python3 scripts/build-chat-prompts.py; edit canonical skill sources and templates. -->\n\n' + body
+                generated = '<!-- GENERATED: python3 scripts/build-chat-prompts.py --write; edit canonical skill sources and templates. -->\n\n' + body
             outputs[output_path] = generated
     return outputs
 

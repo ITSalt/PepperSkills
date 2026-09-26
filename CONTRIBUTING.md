@@ -90,7 +90,8 @@ Each product has one editable skill at `plugins/<name>/skills/<name>/`. The
 plugin's `plugin.json` is canonical for product metadata and version. The
 `.codex-plugin`, `.claude-plugin`, `.cursor-plugin` files, chat adapters,
 OpenAI `submission/listing.json`, plugin LICENSE copies, and transition
-`INSTALL.md` pointers are generated. Edit their sources or templates, then
+`INSTALL.md` pointers, compliance `references/checklist.md`, and the JSON twins
+of `rules.yaml` / `signatures.yaml` are generated. Edit their sources or templates, then
 regenerate them; do not hand-edit generated files.
 
 The vendored schema in `scripts/schemas/agent-plugin-1.0.0.json` is checked
@@ -102,11 +103,21 @@ python -m pip install -r scripts/requirements-build.txt
 python scripts/sync-skill-versions.py --write
 python scripts/sync-plugin-manifests.py --write
 python scripts/sync-plugin-metadata.py --write
-python scripts/build-chat-prompts.py --write
 python plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/gen_checklist.py --write
-bash scripts/build-skills.sh
-bash scripts/build-plugins.sh
+python scripts/build-chat-prompts.py --write
+bash scripts/build-skills.sh  # or: bash scripts/build-plugins.sh
 ```
+
+Both wrappers refresh the complete pair (`<name>.zip` and `<name>.plugin.zip`) and
+`SHA256SUMS` in `dist/<name>/<version>/`. The low-level `--kind` option is retained
+for compatibility, but never reuses a previously built sibling archive. Builders
+reject stale generation and only write distribution outputs.
+
+Chat templates use `{{include: path#Heading}}` for selected source sections,
+`{{appendix: path}}` for explicitly selected full appendices, and `{{FENCE}}` for
+the outer prompt fence. Merely mentioning a reference does not append it. Changes
+to chat content must update the reviewed golden differences in
+`scripts/fixtures/chat-goldens.json` deliberately.
 
 `plugin.json` owns the shipped version; `sync-skill-versions.py` updates only
 `metadata.version` in the corresponding `SKILL.md` frontmatter. Current product

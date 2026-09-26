@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,7 +19,7 @@ def snapshot(root):
             for p in root.rglob('*') if '.git' not in p.relative_to(root).parts and (p.is_file() or p.is_symlink())}
 
 def git(root, *args):
-    return subprocess.check_output(['git', '-C', str(root), *args])
+    return subprocess.check_output(['git', '-c', 'core.hooksPath=/dev/null', '-C', str(root), *args])
 
 def main():
     cases = {
@@ -67,6 +68,20 @@ def main():
                 assert git(repo, 'status', '--porcelain=v1', '--untracked-files=all', '--ignored') == status
             path.write_bytes(original)
             print('PASS read-only stale rejection:', label)
+        adapters = [repo / COMPLIANCE / kind / 'plugin.json'
+                    for kind in ('.codex-plugin', '.claude-plugin', '.cursor-plugin')]
+        originals = {path: path.read_bytes() for path in adapters}
+        for path in adapters:
+            path.write_text('{}\n', encoding='utf-8')
+        before = snapshot(repo)
+        result = subprocess.run([sys.executable, str(repo / 'scripts/sync-plugin-manifests.py'), '--check'],
+                                cwd=repo, capture_output=True, text=True)
+        assert result.returncode != 0
+        assert all(str(path) in result.stderr for path in adapters), result.stderr
+        assert snapshot(repo) == before
+        for path, data in originals.items():
+            path.write_bytes(data)
+        print('PASS manifest check reports every stale adapter without writing')
         # Successful public wrappers must also work without the legacy tree.
         before = snapshot(repo)
         for builder in ('build-skills.sh', 'build-plugins.sh'):

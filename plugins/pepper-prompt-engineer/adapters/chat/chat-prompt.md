@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — do not edit by hand.
      Source: chat-prompt.template.md + skills/pepper-prompt-engineer/.
-     Rebuild: python3 scripts/build-chat-prompts.py -->
+     Rebuild: python3 scripts/build-chat-prompts.py --write -->
 
 # CRAFT+ Prompt Engineer — chat edition
 
@@ -10,7 +10,7 @@ For the full skill edition (with references, examples, scripts and evals), see [
 
 > This file is generated from [`chat-prompt.template.md`](./chat-prompt.template.md) plus
 > the skill's own sources, so the two editions cannot drift apart. Edit the template or
-> the skill, then run `python3 scripts/build-chat-prompts.py`.
+> the skill, then run `python3 scripts/build-chat-prompts.py --write`.
 
 ---
 
