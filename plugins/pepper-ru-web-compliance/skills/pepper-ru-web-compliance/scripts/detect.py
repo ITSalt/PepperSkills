@@ -22,8 +22,8 @@
    официальному реестру — утверждения разной силы, и в findings они различимы.
 
 Использование:
-    python3 scripts/detect.py --artifacts artifacts/ --out findings.json
-    python3 scripts/detect.py --artifacts artifacts/ --out findings.json --inn 7736207543
+    uv run --no-project scripts/detect.py --artifacts artifacts/ --out findings.json
+    uv run --no-project scripts/detect.py --artifacts artifacts/ --out findings.json --inn 7736207543
 """
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ def load_data(yaml_path: Path) -> dict[str, Any]:
     if not twin.exists():
         raise SystemExit(
             f"нет ни PyYAML, ни {twin.name}. Выполните "
-            f"`python3 scripts/gen_checklist.py` на машине с PyYAML "
+            f"`uv run --no-project scripts/gen_checklist.py --write` на машине с PyYAML "
             f"либо установите PyYAML.")
     return json.loads(twin.read_text(encoding="utf-8"))
 SCHEMA_VERSION = 1
@@ -1196,7 +1196,7 @@ def detect_rkn_operator(ctx: Context) -> list[Finding]:
                        "выход. Прокси задаётся переменной окружения в той же "
                        "команде, отдельной настройки нет:\n\n"
                        "    PEPPER_RU_REGISTRY_PROXY=http://логин:пароль@адрес:порт \\\n"
-                       "        python3 scripts/detect.py --artifacts artifacts/ "
+                       "        uv run --no-project scripts/detect.py --artifacts artifacts/ "
                        f"--out findings.json --inn {ctx.inn}\n\n"
                        "Подойдёт любой HTTP-прокси с российским выходом — свой VPS "
                        "или VPN-шлюз. На сам обход сайта эта переменная не влияет: "
@@ -1551,6 +1551,9 @@ def artifact_fingerprint(ctx: Context) -> str:
 
 
 def attach_semantic_reviews(ctx: Context, findings: list[Finding]):
+    # Reusing findings after an artifact change must not retain a stale review.
+    for finding in findings:
+        finding.semantic_review = None
     review = ctx._load_json("semantic-review.json", {})
     if not isinstance(review, dict) or not review or review.get("target") != ctx.target or review.get("artifacts_sha256") != artifact_fingerprint(ctx):
         return

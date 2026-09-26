@@ -15,13 +15,13 @@
 
 | Продукт | Версия |
 | --- | --- |
-| `pepper-creative-mode` | [2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.0) |
-| `pepper-prompt-engineer` | [2.5.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.0) |
-| `pepper-ru-web-compliance` | [2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.0.0) |
+| `pepper-creative-mode` | [2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1) |
+| `pepper-prompt-engineer` | [2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1) |
+| `pepper-ru-web-compliance` | [2.1.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.0) |
 
-В каждом релизе: ZIP скилла, ZIP плагина и SHA256SUMS. Загрузка всех трёх ZIP скиллов проверена в Claude web 26 сентября 2026 года.
+В каждом релизе: ZIP скилла, ZIP плагина и SHA256SUMS. В Claude web проверены импорт и обновление предыдущих переходных версий; новые пакеты требуют отдельной клиентской приёмки.
 
-Подробнее: [переходный выпуск](./docs/releases/2026-09-26-transition.md).
+Подробнее: [выпуск по замечаниям](./docs/releases/2026-09-26-feedback.md) и [предыдущий переходный выпуск](./docs/releases/2026-09-26-transition.md).
 
 ## Установка
 
@@ -31,7 +31,7 @@
 | Поверхность | Способ |
 | --- | --- |
 | Codex, Claude Code | Marketplace или отдельный каталог скиллов |
-| Claude Chat и Cowork | ZIP скилла; загрузка проверена в Claude web |
+| Claude Chat и Cowork | ZIP скилла; проверена загрузка предыдущего выпуска |
 | Cursor | Cursor marketplace или поддерживаемый локальный плагин |
 | API и другие поля промптов | Сгенерированный чат-адаптер |
 

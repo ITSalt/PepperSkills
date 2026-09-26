@@ -121,7 +121,7 @@ def build_all():
                 generated = prompt_engineer(body, plugin_dir)
             else:
                 body = local_reference_labels(appendices(body, plugin_dir), language=language)
-                generated = '<!-- GENERATED: python3 scripts/build-chat-prompts.py --write; edit canonical skill sources and templates. -->\n\n' + body
+                generated = '<!-- GENERATED: uv run --no-project scripts/build-chat-prompts.py --write; edit canonical skill sources and templates. -->\n\n' + body
             outputs[output_path] = generated
     return outputs
 

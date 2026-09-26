@@ -11,8 +11,8 @@ rules.yaml — единственный источник правды. Чек-л
 версия и версия, по которой работают скрипты, не могут разойтись.
 
 Использование:
-    python3 scripts/gen_checklist.py --write   # записать references/checklist.md
-    python3 scripts/gen_checklist.py --check   # проверить, что файл актуален (для CI)
+    uv run --no-project scripts/gen_checklist.py --write   # записать references/checklist.md
+    uv run --no-project scripts/gen_checklist.py --check   # проверить, что файл актуален (для CI)
 """
 from __future__ import annotations
 

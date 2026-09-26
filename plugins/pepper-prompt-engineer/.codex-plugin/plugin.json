@@ -1,6 +1,6 @@
 {
   "name": "pepper-prompt-engineer",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "CRAFT+ workflow for turning task descriptions into verified production-ready prompts.",
   "author": {
     "name": "ITSalt",
@@ -19,7 +19,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Prompt Engineer",
-    "shortDescription": "CRAFT+ production prompt builder",
+    "shortDescription": "CRAFT+ prompt builder",
     "longDescription": "Turns an unstructured task into a production-ready prompt with model-specific formatting, constraints and acceptance checks.",
     "category": "Productivity",
     "developerName": "ITSalt",

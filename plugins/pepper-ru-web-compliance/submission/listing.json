@@ -1,6 +1,6 @@
 {
   "displayName": "RU Web Compliance",
-  "shortDescription": "Проверка сайта и план правок по требованиям РФ",
+  "shortDescription": "Аудит сайта по требованиям РФ",
   "longDescription": "Собирает технические доказательства, проверяет персональные данные, cookie, трекеры, реестры и формирует записку с планом для разработчика.",
   "developerName": "ITSalt",
   "category": "Productivity",
@@ -32,8 +32,8 @@
     "FR"
   ],
   "regionsStatus": "proposal; confirm in submission portal",
-  "publicationStatus": "local draft; privacy and terms URLs are planned, not verified public",
+  "publicationStatus": "prepared locally; not submitted; policy drafts and public URL availability unverified",
   "identityStatus": "requires verified publisher identity in OpenAI Platform",
-  "releaseNotes": "Portable schema validation, purpose-scoped basis evidence, independent refusal/revisit collection, report acceptance and packaging fixes.",
+  "releaseNotes": "2.1.0: unified uv commands, public legitimate-interest template and conditional UI guidance, concise findings, reviewed report statuses, Pi installation guidance, final OpenAI listing limits.",
   "tests": "../submission-tests.json"
 }

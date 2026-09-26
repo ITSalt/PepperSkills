@@ -18,7 +18,7 @@
 Из каталога плагина:
 
 ```bash
-python3 submission/run_tests.py --out /tmp/pepper-submission-results
+uv run --no-project submission/run_tests.py --out /tmp/pepper-submission-results
 ```
 
 В каждом сценарии сохраняются findings и Markdown-отчёт; общий результат —
@@ -35,10 +35,21 @@ uv run --no-project --with playwright scripts/test_browser_scenarios.py --out /t
 
 ## Перед подачей
 
-Подтвердить проекты privacy/terms, издателя и регионы. Опубликовать эти файлы
-по планируемым URL из listing.json и проверить их без авторизации. После этого
-перенести подтверждённые policy URL в `plugin.json` и перегенерировать адаптеры.
-Подтвердить Developer Identity в OpenAI Platform. Пройти установку, обновление,
-отключение и тестовые диалоги в целевых клиентах. Финальный ZIP пересобрать.
+Карточка проверяется локально: displayName и shortDescription — до 30 символов,
+longDescription — до 4000, developerName — до 80. Проверка входит в
+`scripts/check.sh` в корне репозитория и не заменяет проверку портала.
+
+Для Skills-only ZIP website/support/privacy/terms URL необязательны по текущей
+[справке ошибок OpenAI](https://developers.openai.com/plugins/deploy/submission-errors).
+Если URL используются, проверить публичную доступность и достоверность текста;
+не переносить неподтверждённые обещания из черновиков в карточку. Для remote MCP
+эти URL обязательны. Документы в submission остаются проектами; их утверждение
+и актуальная доступность по URL отдельно не подтверждены.
+
+Подтвердить издателя и регионы, Developer Identity и право Apps Management: Write.
+Пройти установку, обновление, отключение и тестовые диалоги в целевых клиентах.
+Собрать финальный ZIP. Отправка и публикация — отдельные действия после явной
+авторизации владельца; агент может выполнить технические шаги в её пределах.
+Текущий статус: подготовлено локально, не подано; публичный каталог не проверен.
 
 Требования к комплекту: https://developers.openai.com/plugins/deploy/submission.

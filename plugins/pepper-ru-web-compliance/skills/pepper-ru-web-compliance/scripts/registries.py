@@ -38,11 +38,11 @@ findings и при `origin != "live"` понижать вывод до UNKNOWN �
 совпадений — это утверждение, а не наблюдение.
 
 Использование:
-    python3 scripts/registries.py status
-    python3 scripts/registries.py update
-    python3 scripts/registries.py update --registry minjust_extremist_orgs
-    python3 scripts/registries.py import --registry minjust_foreign_agents --file ~/Downloads/reestr.xlsx
-    python3 scripts/registries.py match --registry minjust_extremist_orgs --text-file page.txt
+    uv run --no-project scripts/registries.py status
+    uv run --no-project scripts/registries.py update
+    uv run --no-project scripts/registries.py update --registry minjust_extremist_orgs
+    uv run --no-project scripts/registries.py import --registry minjust_foreign_agents --file ~/Downloads/reestr.xlsx
+    uv run --no-project scripts/registries.py match --registry minjust_extremist_orgs --text-file page.txt
 """
 from __future__ import annotations
 

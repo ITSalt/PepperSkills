@@ -13,6 +13,24 @@ ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / 'scripts/schemas/agent-plugin-1.0.0.json'
 
 
+def validate_openai_listing(manifest):
+    """Check final directory text limits, stricter than package JSON Schema.
+
+    https://developers.openai.com/plugins/deploy/submission-errors
+    This is local metadata validation, not portal/identity approval.
+    """
+    interface = manifest.get('extensions', {}).get('com.openai', {}).get('interface')
+    if interface is None:
+        return
+    for field, limit in {'displayName': 30, 'shortDescription': 30,
+                         'longDescription': 4000, 'developerName': 80}.items():
+        value = interface.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > limit:
+            raise ValueError(f"{manifest['name']}: {field} must contain 1–{limit} characters")
+        if field != 'longDescription' and any(c in value for c in '\n\r\u0085\u2028\u2029'):
+            raise ValueError(f"{manifest['name']}: {field} must fit on one line")
+
+
 def main():
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -28,6 +46,10 @@ def main():
     for plugin in sorted((ROOT / 'plugins').glob('pepper-*')):
         manifest = json.loads((plugin / 'plugin.json').read_text(encoding='utf-8'))
         validator.validate(manifest)
+        try:
+            validate_openai_listing(manifest)
+        except ValueError as error:
+            sys.exit(str(error))
         if manifest['name'] != plugin.name:
             sys.exit(f'name mismatch: {plugin}')
         core = {k: v for k, v in manifest.items() if k not in ('$schema', 'extensions')}

@@ -46,7 +46,7 @@
 Проверить, что именно не отвечает:
 
 ```bash
-python3 scripts/registries.py probe
+uv run --no-project scripts/registries.py probe
 ```
 
 Три пути, по убыванию предпочтительности:
@@ -56,7 +56,7 @@ python3 scripts/registries.py probe
 
 ```bash
 export PEPPER_RU_REGISTRY_PROXY=http://user:pass@vps:3128
-python3 scripts/registries.py update
+uv run --no-project scripts/registries.py update
 ```
 
 Переменная своя, а не общепринятая `HTTPS_PROXY`, намеренно: прокси применяется
@@ -69,7 +69,7 @@ python3 scripts/registries.py update
 **Ручной импорт.** Выгрузить файл со страницы реестра в браузере и подать:
 
 ```bash
-python3 scripts/registries.py import --registry minjust_foreign_agents \
+uv run --no-project scripts/registries.py import --registry minjust_foreign_agents \
   --file ~/Downloads/reestr.xlsx --as-snapshot
 ```
 

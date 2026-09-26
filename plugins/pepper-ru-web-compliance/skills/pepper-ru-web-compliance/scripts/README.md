@@ -16,14 +16,14 @@
 
 ## Установка
 
-Нужен Python 3.10+. Базовый сбор и детекторы используют стандартную библиотеку;
-`requirements.txt` не устанавливает Playwright. Для браузерного сбора и PDF
-добавьте его отдельно в окружение, из которого запускаете скрипты. Команды ниже
-выполняются из корня распакованного скилла:
+Нужен [uv](https://docs.astral.sh/uv/getting-started/installation/); Python 3.10+
+указан в PEP 723 заголовках скриптов. `uv run --no-project` использует отдельное
+окружение, не добавляя зависимости в проект сайта. Базовый сбор и детекторы
+работают на стандартной библиотеке. Для браузера/PDF добавляйте `--with playwright`
+при каждом запуске. Команды выполняются из корня распакованного скилла:
 
 ```bash
-python3 -m pip install playwright
-python3 -m playwright install chromium
+uv run --no-project --with playwright python -m playwright install chromium
 ```
 
 Для разработки: `gen_checklist.py --write` требует PyYAML; `--check` проверяет
@@ -37,11 +37,26 @@ checklist и оба JSON-файла без записи. В поставке JSO
 ## Сбор
 
 ```bash
-python3 scripts/collect.py https://example.ru --out artifacts/
-python3 scripts/collect.py https://example.ru --out artifacts/ --max-pages 25
-python3 scripts/collect.py https://example.ru --out artifacts/ --no-browser
+uv run --no-project --with playwright scripts/collect.py https://example.ru --out artifacts/
+uv run --no-project --with playwright scripts/collect.py https://example.ru --out artifacts/ --max-pages 25
+uv run --no-project scripts/collect.py https://example.ru --out artifacts/ --no-browser
 ```
 
-Главная страница загружается дважды: до взаимодействия с cookie-баннером и
-после нажатия кнопки согласия. Разница между `network/before_consent.jsonl` и
-`network/after_consent.jsonl` — доказательная база правила `CK-003`.
+Сбор разделяет независимые сценарии `before_consent`, `after_consent`,
+`after_reject` и `revisit_reject`. Сравниваются сеть и cookie; наличие кнопки
+не доказывает работающий отказ. Используйте одного пользователя и одинаковый
+`PLAYWRIGHT_BROWSERS_PATH` при установке Chromium и при запуске.
+
+## Проверка и документы
+
+```bash
+uv run --no-project scripts/detect.py --artifacts artifacts/ --out findings.json
+uv run --no-project scripts/render.py --findings findings.json --out-dir report/ --format md,html
+uv run --no-project --with playwright scripts/render.py --findings findings.json --out-dir report/ --format md,html,pdf
+uv run --no-project scripts/selftest.py
+uv run --no-project scripts/gen_checklist.py --check
+```
+
+`uv` может загружать Python и пакеты при первом запуске. Для автономной работы
+подготовьте кэш заранее. Отсутствие браузера явно ограничивает покрытие;
+`--no-browser` не является полной проверкой.

@@ -29,8 +29,8 @@ PDF печатается тем же Chromium, который нужен кра�
 для печати не нужна; если браузера нет, PDF просто не собирается.
 
 Использование:
-    python3 scripts/render.py --findings findings.json --out-dir report/
-    python3 scripts/render.py --findings findings.json --out-dir report/ --format md,html,pdf
+    uv run --no-project scripts/render.py --findings findings.json --out-dir report/
+    uv run --no-project --with playwright scripts/render.py --findings findings.json --out-dir report/ --format md,html,pdf
 """
 from __future__ import annotations
 
@@ -52,13 +52,26 @@ STATUS_RU = {"FAIL": "НАРУШЕНО", "WARN": "НУЖНА РУЧНАЯ ПРО
              "NA": "НЕ ПРИМЕНИМО", "UNKNOWN": "НЕ УДАЛОСЬ ПРОВЕРИТЬ"}
 
 
+def report_status(finding: dict[str, Any]) -> str:
+    """Use the review attached by detect; never overwrite its machine observation.
+
+    detect accepts reviews only for the current artifact fingerprint and checks
+    service/purpose coverage. Rendering an old findings file remains a snapshot,
+    not a new validation of the website or its legal basis.
+    """
+    review = finding.get("semantic_review") or {}
+    return review.get("status", finding["status"])
+
+
 def status_label(finding: dict[str, Any]) -> str:
     """«Не удалось» и «ещё не сделано» — разные вещи, и читатель вправе их
     различать. Правило, по которому скрипт собрал всё нужное, но вывод даёт
     смысловой анализ, не проверено не потому, что данных не хватило."""
-    if finding["status"] == "UNKNOWN" and finding.get("needs_llm"):
+    status = report_status(finding)
+    if status == "UNKNOWN" and finding.get("needs_llm") and not finding.get("semantic_review"):
         return "ТРЕБУЕТ АНАЛИЗА"
-    return STATUS_RU.get(finding["status"], finding["status"])
+    label = STATUS_RU.get(status, status)
+    return label + " · смысловая проверка" if finding.get("semantic_review") else label
 STATUS_ORDER = {"FAIL": 0, "WARN": 1, "UNKNOWN": 2, "PASS": 3, "NA": 4}
 SEVERITY_RU = {"critical": "критический", "high": "высокий", "medium": "средний",
                "low": "низкий", "info": "справочно"}
@@ -205,17 +218,17 @@ def coverage_alert(data: dict[str, Any]) -> str | None:
 
 def summarise(data: dict[str, Any]) -> dict[str, Any]:
     findings = data["findings"]
-    fails = [f for f in findings if f["status"] == "FAIL"]
-    warns = [f for f in findings if f["status"] == "WARN"]
-    unknowns = [f for f in findings if f["status"] == "UNKNOWN"]
+    fails = [f for f in findings if report_status(f) == "FAIL"]
+    warns = [f for f in findings if report_status(f) == "WARN"]
+    unknowns = [f for f in findings if report_status(f) == "UNKNOWN"]
     exposure = sum(max_fine(f) for f in fails)
     turnover = [f for f in fails
                 if "выручки" in (f.get("liability") or "")
                 or f.get("severity") == "critical"]
     return {"fails": fails, "warns": warns, "unknowns": unknowns,
             "exposure": exposure, "turnover_risk": turnover,
-            "passes": [f for f in findings if f["status"] == "PASS"],
-            "nas": [f for f in findings if f["status"] == "NA"]}
+            "passes": [f for f in findings if report_status(f) == "PASS"],
+            "nas": [f for f in findings if report_status(f) == "NA"]}
 
 
 def manual_blocks_html(text: str) -> str:
@@ -256,7 +269,7 @@ def manual_hint(finding: dict[str, Any]) -> str:
 
 
 def sort_findings(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(items, key=lambda f: (STATUS_ORDER.get(f["status"], 9),
+    return sorted(items, key=lambda f: (STATUS_ORDER.get(report_status(f), 9),
                                         SEVERITY_ORDER.get(f["severity"], 9),
                                         f["rule_id"]))
 
@@ -274,19 +287,26 @@ def site_name(data: dict[str, Any]) -> str:
 
 def basis_lines(f):
     lines = []
+    review = f.get("semantic_review") or {}
+    reviewed = {(a['service'], a['purpose']): a.get('verified_basis')
+                for a in review.get('activities', [])}
     if f.get("processing_basis"):
-        lines.append(f"Заявленное основание: {f['processing_basis']}; статус: {f.get('basis_status', 'UNKNOWN')}.")
+        lines.append(f"Автоматически распознанное основание: {f['processing_basis']}; "
+                     f"статус распознавания: {f.get('basis_status', 'UNKNOWN')}.")
     for a in f.get("processing_activities") or []:
+        verified = reviewed.get((a['service'], a['purpose'])) or a.get('verified_basis') or 'UNKNOWN'
         lines.append(f"{a['service']} / {a['purpose']}: заявлено {a['declared_basis']}; "
-                     f"проверенное основание: {a.get('verified_basis') or 'UNKNOWN'}.")
+                     f"проверенное основание: {verified}.")
     for e in f.get("basis_evidence") or []:
         lines.append(" — ".join(str(e[k]) for k in ("detail", "url", "selector", "snippet") if e.get(k)))
     if f.get("semantic_review"):
         review = f["semantic_review"]
-        lines.append(f"Отдельная смысловая проверка: {review['status']}; "
-                     f"{review['reviewer']}, {review['reviewed_at']}. Машинный статус сохранён.")
+        lines.append(f"Смысловая проверка: {review['status']}; "
+                     f"{review['reviewer']}, {review['reviewed_at']}. "
+                     f"Машинное наблюдение: {f['status']} — {f['summary']}")
         for a in review.get("activities", []):
-            lines.append(f"Проверено: {a['service']} / {a['purpose']}: {a['verified_basis']}")
+            # Keep activity-specific proof, not only the rule's general evidence.
+            lines.extend(f"{a['service']} / {a['purpose']}: {e}" for e in a.get('evidence', []))
         lines.extend(str(e) for e in review["evidence"])
     return list(dict.fromkeys(lines))
 
@@ -372,7 +392,7 @@ def report_md(data: dict[str, Any]) -> str:
 
     # --- Таблица по группам ---
     detail_ids = {f["rule_id"] for f in data["findings"]
-                  if f["status"] in ("FAIL", "WARN", "UNKNOWN")}
+                  if report_status(f) in ("FAIL", "WARN", "UNKNOWN") or f.get("semantic_review")}
     add("## Чек-лист")
     add("")
     add("Идентификатор правила — ссылка на расшифровку ниже, если по пункту "
@@ -399,6 +419,8 @@ def report_md(data: dict[str, Any]) -> str:
         add("## Основания обработки и смысловая проверка")
         add("")
         for f in qualified:
+            if report_status(f) in ("PASS", "NA"):
+                add(f'<a id="{anchor(f["rule_id"])}"></a>')
             add(f"### {f['rule_id']}")
             add("")
             for line in basis_lines(f):
@@ -408,7 +430,7 @@ def report_md(data: dict[str, Any]) -> str:
     # --- Подробности по нарушениям ---
     detailed = sort_findings(s["fails"] + s["warns"])
     if detailed:
-        add("## Подробно по каждому нарушению")
+        add("## Подробности по открытым пунктам")
         add("")
         for f in detailed:
             add(f'<a id="{anchor(f["rule_id"])}"></a>')
@@ -443,7 +465,7 @@ def report_md(data: dict[str, Any]) -> str:
                         line += f" (страница `{e['selector']}`)"
                     add(line)
                     if e.get("snippet"):
-                        add(f"  > {e['snippet'][:300]}")
+                        add(f"  > {e['snippet']}")
                 add("")
             if f.get("source_note"):
                 add(f"**Источник данных.** {f['source_note']}")
@@ -853,7 +875,7 @@ def checklist_table_html(items: list[dict[str, Any]], detail_ids: set[str],
         for f in items:
             add(f"<tr><td>{rule_cell(f, detail_ids)}"
                 f"<div class=sub>{esc(f.get('norm') or '—')}</div></td>"
-                f"<td><span class='badge {esc(f['status'])}'>{esc(status_label(f))}</span>"
+                f"<td><span class='badge {esc(report_status(f))}'>{esc(status_label(f))}</span>"
                 + (f"<div class=sub>{esc(fine_amount(f))}</div>"
                    if fine_amount(f) != "—" else "")
                 + "</td>"
@@ -865,7 +887,7 @@ def checklist_table_html(items: list[dict[str, Any]], detail_ids: set[str],
             "<tr><th>Правило</th><th>Статус</th><th>Штраф юрлицу, ₽</th></tr>")
         for f in items:
             add(f"<tr class=head><td>{rule_cell(f, detail_ids)}</td>"
-                f"<td><span class='badge {esc(f['status'])}'>{esc(status_label(f))}</span></td>"
+                f"<td><span class='badge {esc(report_status(f))}'>{esc(status_label(f))}</span></td>"
                 f"<td class=fine>{esc(fine_amount(f))}</td></tr>")
             add(f"<tr class=body><td colspan=3>"
                 f"<span class=sub>{esc(f.get('norm') or '—')}</span> · "
@@ -879,7 +901,7 @@ def checklist_table_html(items: list[dict[str, Any]], detail_ids: set[str],
         for f in items:
             add(f"<tr><td>{rule_cell(f, detail_ids)}</td>"
                 f"<td class=norm>{esc(f.get('norm') or '—')}</td>"
-                f"<td><span class='badge {esc(f['status'])}'>{esc(status_label(f))}</span></td>"
+                f"<td><span class='badge {esc(report_status(f))}'>{esc(status_label(f))}</span></td>"
                 f"<td class=fine>{esc(fine_amount(f))}</td>"
                 f"<td>{esc(f['summary'])}</td></tr>")
         add("</table>")
@@ -925,7 +947,7 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
             f"Часть правил не проверена.</div>")
 
     detail_ids = {f["rule_id"] for f in data["findings"]
-                  if f["status"] in ("FAIL", "WARN", "UNKNOWN")}
+                  if report_status(f) in ("FAIL", "WARN", "UNKNOWN") or f.get("semantic_review")}
     add("<h2>Чек-лист</h2>")
     add("<p class=hint>Идентификатор правила — ссылка на расшифровку ниже.</p>")
     for group, title in GROUP_RU.items():
@@ -939,6 +961,8 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
     if qualified:
         add("<h2>Основания обработки и смысловая проверка</h2>")
         for f in qualified:
+            if report_status(f) in ("PASS", "NA"):
+                add(f'<a id="{anchor(f["rule_id"])}"></a>')
             add(f"<h3>{esc(f['rule_id'])}</h3><ul>")
             for line in basis_lines(f):
                 add(f"<li>{esc(line)}</li>")
@@ -946,11 +970,11 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
 
     detailed = sort_findings(s["fails"] + s["warns"])
     if detailed:
-        add("<h2>Подробно по каждому нарушению</h2>")
+        add("<h2>Подробности по открытым пунктам</h2>")
         for f in detailed:
-            add(f"<div class='finding {esc(f['status'])}' id='{anchor(f['rule_id'])}'>")
+            add(f"<div class='finding {esc(report_status(f))}' id='{anchor(f['rule_id'])}'>")
             add(f"<h3><span class=rule-id>{esc(f['rule_id'])}</span> {esc(f['title'])} "
-                f"<span class='badge {esc(f['status'])}'>{esc(status_label(f))}</span></h3>")
+                f"<span class='badge {esc(report_status(f))}'>{esc(status_label(f))}</span></h3>")
             add(f"<p class=hint>Штраф юрлицу: {esc(fine_display(f))}</p>")
             if f.get("norm"):
                 add(f"<p><b>Норма.</b> {esc(f['norm'])}</p>")
@@ -963,7 +987,7 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
                     bits += f" — {esc(e['url'])}"
                 if e.get("selector"):
                     bits += f" (страница {esc(e['selector'])})"
-                snippet = f"<q>{esc(e['snippet'][:300])}</q>" if e.get("snippet") else ""
+                snippet = f"<q>{esc(e['snippet'])}</q>" if e.get("snippet") else ""
                 add(f"<div class=ev>{bits}{snippet}</div>")
             if f.get("source_note"):
                 add(f"<p><b>Источник данных.</b> {esc(f['source_note'])}</p>")
@@ -1029,7 +1053,7 @@ def plan_html(data: dict[str, Any]) -> str:
         for f in bucket:
             assigned.add(f["rule_id"])
             counter += 1
-            add(f"<div class='finding {esc(f['status'])}'>")
+            add(f"<div class='finding {esc(report_status(f))}'>")
             add(f"<h3>{esc(code)}-{counter:02d}. {esc(f['title'])}</h3>")
             add(f"<p class=hint>Правило "
                 f"{esc(action_rules(f))} · "
@@ -1143,7 +1167,7 @@ def main() -> int:
             written.append(pdf_path)
         else:
             print("  PDF пропущен: нет Playwright с Chromium "
-                  "(pip install playwright && python -m playwright install chromium)",
+                  "(uv run --no-project --with playwright python -m playwright install chromium)",
                   file=sys.stderr)
 
     s = summarise(data)

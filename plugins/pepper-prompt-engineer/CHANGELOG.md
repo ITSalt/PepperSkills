@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.1 — 2026-09-26
+
+- Shortened OpenAI listing subtitle to meet the 30-character final directory limit.
+
 ## Unreleased
 
 - Repository transition: old `<name>/anthropic/` now maps to

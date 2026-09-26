@@ -28,7 +28,7 @@
 нестабилен.
 
 ```bash
-python3 scripts/registries.py update --registry minjust_extremist_orgs
+uv run --no-project scripts/registries.py update --registry minjust_extremist_orgs
 cp ~/.cache/pepper-ru-web-compliance/registries/minjust_extremist_orgs.json \
    assets/registries-snapshot/
 ```
@@ -37,7 +37,7 @@ cp ~/.cache/pepper-ru-web-compliance/registries/minjust_extremist_orgs.json \
 отовсюду), выгрузите файл вручную со страницы реестра и подайте напрямую:
 
 ```bash
-python3 scripts/registries.py import \
+uv run --no-project scripts/registries.py import \
   --registry minjust_foreign_agents \
   --file ~/Downloads/reestr.xlsx \
   --as-snapshot
@@ -46,7 +46,7 @@ python3 scripts/registries.py import \
 Проверить, что откуда берётся:
 
 ```bash
-python3 scripts/registries.py status
+uv run --no-project scripts/registries.py status
 ```
 
 ## Доступность источников

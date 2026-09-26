@@ -15,9 +15,9 @@ cookie-баннером. Разница между ними показывает
 согласия. Без этих двух проходов правило CK-003 проверить невозможно.
 
 Использование:
-    python3 scripts/collect.py https://example.ru --out artifacts/
-    python3 scripts/collect.py https://example.ru --out artifacts/ --max-pages 25
-    python3 scripts/collect.py https://example.ru --out artifacts/ --no-browser
+    uv run --no-project --with playwright scripts/collect.py https://example.ru --out artifacts/
+    uv run --no-project --with playwright scripts/collect.py https://example.ru --out artifacts/ --max-pages 25
+    uv run --no-project scripts/collect.py https://example.ru --out artifacts/ --no-browser
 
 Требуется playwright с установленным chromium. Без него скрипт переходит в
 режим degraded: собирает статический HTML через urllib, но не видит SPA,
