@@ -24,8 +24,22 @@
 | API и другие поля промптов | Сгенерированный чат-адаптер |
 
 Для владельцев симлинков на старые `anthropic/` и `openai/` в инструкции есть
-[карта перехода](./docs/installation-and-updates.ru.md#переход-со-старых-путей).
+[карта перехода](./docs/installation-and-updates.ru.md#переход-со-старых-путей-pepperskills).
 Решение и этапы миграции — в [отчёте](./docs/history/repository-structure-2026-09-26.ru.md).
+
+## Пути на переходном этапе
+
+| Старый путь | Канонический путь |
+| --- | --- |
+| `<name>/anthropic/` | `plugins/<name>/skills/<name>/` |
+| `<name>/openai/` | `plugins/<name>/adapters/chat/` |
+| `pepper-prompt-engineer/chat-prompt.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md` |
+| `pepper-prompt-engineer/chat-prompt.template.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.template.md` |
+| `<name>/anthropic/INSTALL.md` | `docs/installation-and-updates.md`, `docs/installation-and-updates.ru.md` |
+
+Корневые `.skill` — прежние зафиксированные сборки из ревизии репозитория
+`v1.4.1-1-g4128fe6` (commit `4128fe6`). Они не пересобираются и не соответствуют
+текущим версиям плагинов; новые архивы собираются в `dist/<name>/<version>/`.
 
 ## Версии документации
 
@@ -36,8 +50,6 @@
 
 См. [`CONTRIBUTING.md`](./CONTRIBUTING.md). Сообщения о безопасности — [`SECURITY.md`](./SECURITY.md).
 Кодекс поведения — [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
-
-Полный цикл установки и обновления: [`docs/installation-and-updates.ru.md`](./docs/installation-and-updates.ru.md).
 
 Результат перехода этапа A: [отчёт по структуре](./docs/history/repository-structure-2026-09-26.ru.md).
 Исходное предложение сохранено в [`docs/history/`](./docs/history/).

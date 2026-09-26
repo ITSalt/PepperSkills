@@ -23,10 +23,22 @@ clients, marketplace setup, shared skill directories, and chat prompts.
 | Cursor | Cursor marketplace or supported local plugin directory |
 | Chat APIs and other prompt fields | Generated chat adapter |
 
-The Russian guide also has a [transition map](./docs/installation-and-updates.ru.md)
-for users with links to the former `anthropic/` and `openai/` paths.
 The Russian [repository migration report](./docs/history/repository-structure-2026-09-26.ru.md)
 documents the staged cleanup.
+
+## Transition paths
+
+| Old path | Canonical path |
+| --- | --- |
+| `<name>/anthropic/` | `plugins/<name>/skills/<name>/` |
+| `<name>/openai/` | `plugins/<name>/adapters/chat/` |
+| `pepper-prompt-engineer/chat-prompt.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md` |
+| `pepper-prompt-engineer/chat-prompt.template.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.template.md` |
+| `<name>/anthropic/INSTALL.md` | `docs/installation-and-updates.md`, `docs/installation-and-updates.ru.md` |
+
+Root `.skill` files are frozen previous builds from repository revision
+`v1.4.1-1-g4128fe6` (commit `4128fe6`). They are not rebuilt and do not represent
+current plugin versions; new archives are built in `dist/<name>/<version>/`.
 
 ## Layout
 
@@ -51,8 +63,6 @@ plugins/<plugin-name>/
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md). Security issues: [`SECURITY.md`](./SECURITY.md).
 Conduct: [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
-
-Installation and update details: [`docs/installation-and-updates.ru.md`](./docs/installation-and-updates.ru.md).
 
 ## License
 
