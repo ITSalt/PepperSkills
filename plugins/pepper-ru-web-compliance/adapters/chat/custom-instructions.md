@@ -1,4 +1,4 @@
-<!-- GENERATED: python3 scripts/build-chat-adapters.py; edit canonical skill sources. -->
+<!-- GENERATED: python3 scripts/build-chat-prompts.py; edit canonical skill sources and templates. -->
 
 Ручной режим: не запускай команды и не утверждай, что сам обошёл сайт. Запрашивай доказательства пользователя; при нехватке данных ставь UNKNOWN. Приложи manual-checklist.md к этому диалогу.
 

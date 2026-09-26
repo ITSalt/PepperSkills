@@ -6,8 +6,7 @@ PYTHON="${PYTHON:-python3}"
 export PYTHON
 skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" scripts/sync-plugin-manifests.py --check
-"$PYTHON" scripts/build-chat-adapters.py --check
-"$PYTHON" scripts/build-chat-prompt.py --check
+"$PYTHON" scripts/build-chat-prompts.py --check
 "$PYTHON" "$skill/scripts/gen_checklist.py" --check
 "$PYTHON" "$skill/scripts/selftest.py"
 "$PYTHON" "$skill/scripts/test_modernization.py"

@@ -6,7 +6,7 @@ For the full skill edition (with references, examples, scripts and evals), see [
 
 > This file is generated from [`chat-prompt.template.md`](./chat-prompt.template.md) plus
 > the skill's own sources, so the two editions cannot drift apart. Edit the template or
-> the skill, then run `python3 scripts/build-chat-prompt.py`.
+> the skill, then run `python3 scripts/build-chat-prompts.py`.
 
 ---
 
@@ -63,17 +63,17 @@ BLOCK 2. OUTPUT FORMAT (MARKDOWN)
 <output_contract>
 EVERY task response is Markdown with one of two structures depending on status.
 
-{{include: anthropic/references/output-format.md#Markdown templates}}
+{{include: skills/pepper-prompt-engineer/references/output-format.md#Markdown templates}}
 
-{{include: anthropic/references/output-format.md#Mode detection}}
+{{include: skills/pepper-prompt-engineer/references/output-format.md#Mode detection}}
 
-{{include: anthropic/references/output-format.md#When the *inner* prompt is meant to produce JSON}}
+{{include: skills/pepper-prompt-engineer/references/output-format.md#When the *inner* prompt is meant to produce JSON}}
 
-{{include: anthropic/references/output-format.md#JSON schema}}
+{{include: skills/pepper-prompt-engineer/references/output-format.md#JSON schema}}
 
-{{include: anthropic/references/output-format.md#TARGET_MODEL_DISPLAY values}}
+{{include: skills/pepper-prompt-engineer/references/output-format.md#TARGET_MODEL_DISPLAY values}}
 
-{{include: anthropic/references/output-format.md#Section ordering rules (Markdown)}}
+{{include: skills/pepper-prompt-engineer/references/output-format.md#Section ordering rules (Markdown)}}
 </output_contract>
 
 ==============================================================================
@@ -81,7 +81,7 @@ BLOCK 3. LANGUAGE POLICY
 ==============================================================================
 
 <language_policy>
-{{include: anthropic/SKILL.md#Language policy}}
+{{include: skills/pepper-prompt-engineer/SKILL.md#Language policy}}
 </language_policy>
 
 ==============================================================================
@@ -104,11 +104,11 @@ The final prompt (inside the code block) consists of 10 semantic blocks. Dependi
 
 BLOCK SKIPPING RULES
 
-{{include: anthropic/references/methodology.md#Block skipping rules}}
+{{include: skills/pepper-prompt-engineer/references/methodology.md#Block skipping rules}}
 
 PLACING BULK INPUT DATA
 
-{{include: anthropic/references/methodology.md#Placing bulk input data}}
+{{include: skills/pepper-prompt-engineer/references/methodology.md#Placing bulk input data}}
 
 UNCERTAINTY RULE (mandatory in CONSTRAINTS):
 "If you lack data to complete the task: state explicitly what is missing and ask ONE clarifying question. Do not fabricate facts."
@@ -120,19 +120,19 @@ BLOCK 5. CONDITIONAL MODULES
 
 <conditional_modules>
 MODULE A. FACT-CHECKING
-{{include: anthropic/references/conditional-modules.md#Module A. Fact-checking}}
+{{include: skills/pepper-prompt-engineer/references/conditional-modules.md#Module A. Fact-checking}}
 
 MODULE B. PYTHON / CODE EXECUTION
-{{include: anthropic/references/conditional-modules.md#Module B. Python / Code Execution}}
+{{include: skills/pepper-prompt-engineer/references/conditional-modules.md#Module B. Python / Code Execution}}
 
 MODULE C. SSoT (CREATIVITY PROTOCOL)
-{{include: anthropic/references/conditional-modules.md#Module C. SSoT (Creativity Protocol)}}
+{{include: skills/pepper-prompt-engineer/references/conditional-modules.md#Module C. SSoT (Creativity Protocol)}}
 
 MODULE D. MULTI-MODAL INPUT
-{{include: anthropic/references/conditional-modules.md#Module D. Multi-modal Input}}
+{{include: skills/pepper-prompt-engineer/references/conditional-modules.md#Module D. Multi-modal Input}}
 
 DETECTION PIPELINE
-{{include: anthropic/references/conditional-modules.md#Detection pipeline (Step 4.5 of the workflow)}}
+{{include: skills/pepper-prompt-engineer/references/conditional-modules.md#Detection pipeline (Step 4.5 of the workflow)}}
 </conditional_modules>
 
 ==============================================================================
@@ -141,13 +141,13 @@ BLOCK 6. SCOPE CHECK (mega-task detection)
 
 <scope_check>
 TRIGGERS
-{{include: anthropic/references/scope-check.md#Triggers (any one)}}
+{{include: skills/pepper-prompt-engineer/references/scope-check.md#Triggers (any one)}}
 
 ON TRIGGER
-{{include: anthropic/references/scope-check.md#On trigger → output clarification}}
+{{include: skills/pepper-prompt-engineer/references/scope-check.md#On trigger → output clarification}}
 
 USER RESPONSE HANDLING
-{{include: anthropic/references/scope-check.md#User response handling}}
+{{include: skills/pepper-prompt-engineer/references/scope-check.md#User response handling}}
 </scope_check>
 
 ==============================================================================
@@ -155,15 +155,15 @@ BLOCK 7. QUESTION-ASKING STRATEGY
 ==============================================================================
 
 <question_strategy>
-{{include: anthropic/references/question-strategy.md#Critical gaps — ASK}}
+{{include: skills/pepper-prompt-engineer/references/question-strategy.md#Critical gaps — ASK}}
 
-{{include: anthropic/references/question-strategy.md#Decide yourself — LOG ASSUMPTION}}
+{{include: skills/pepper-prompt-engineer/references/question-strategy.md#Decide yourself — LOG ASSUMPTION}}
 
-{{include: anthropic/references/question-strategy.md#How to ask}}
+{{include: skills/pepper-prompt-engineer/references/question-strategy.md#How to ask}}
 
-{{include: anthropic/references/question-strategy.md#Forbidden questions}}
+{{include: skills/pepper-prompt-engineer/references/question-strategy.md#Forbidden questions}}
 
-{{include: anthropic/references/question-strategy.md#Golden rule}}
+{{include: skills/pepper-prompt-engineer/references/question-strategy.md#Golden rule}}
 </question_strategy>
 
 ==============================================================================
@@ -172,21 +172,21 @@ BLOCK 8. FORMATTING THE INNER PROMPT PER TARGET_MODEL
 
 <target_formatting>
 CURRENT GENERATIONS
-{{include: anthropic/references/target-models.md#Current generations}}
+{{include: skills/pepper-prompt-engineer/references/target-models.md#Current generations}}
 
 DISPLAY NAMES
-{{include: anthropic/references/target-models.md#Display names}}
+{{include: skills/pepper-prompt-engineer/references/target-models.md#Display names}}
 
 REASONING CONTROL
-{{include: anthropic/references/target-models.md#Reasoning control (applies to every target)}}
+{{include: skills/pepper-prompt-engineer/references/target-models.md#Reasoning control (applies to every target)}}
 
 FORMATTING RULES PER TARGET
-{{include: anthropic/references/target-models.md#Formatting rules per target}}
+{{include: skills/pepper-prompt-engineer/references/target-models.md#Formatting rules per target}}
 
 QUICK COMPARISON
-{{include: anthropic/references/target-models.md#Quick comparison}}
+{{include: skills/pepper-prompt-engineer/references/target-models.md#Quick comparison}}
 
-{{include: anthropic/references/target-models.md#Decision when target_model = "universal"}}
+{{include: skills/pepper-prompt-engineer/references/target-models.md#Decision when target_model = "universal"}}
 </target_formatting>
 
 ==============================================================================
@@ -194,7 +194,7 @@ BLOCK 9. WORKFLOW (10 steps after activation)
 ==============================================================================
 
 <workflow>
-{{include: anthropic/SKILL.md#The 10-step workflow}}
+{{include: skills/pepper-prompt-engineer/SKILL.md#The 10-step workflow}}
 </workflow>
 
 ==============================================================================
@@ -202,11 +202,11 @@ BLOCK 10. HARD RULES & COMMON PITFALLS
 ==============================================================================
 
 <hard_rules>
-{{include: anthropic/SKILL.md#Hard rules}}
+{{include: skills/pepper-prompt-engineer/SKILL.md#Hard rules}}
 </hard_rules>
 
 <common_pitfalls>
-{{include: anthropic/SKILL.md#Common pitfalls to avoid}}
+{{include: skills/pepper-prompt-engineer/SKILL.md#Common pitfalls to avoid}}
 </common_pitfalls>
 
 ==============================================================================
@@ -214,12 +214,12 @@ BLOCK 11. AGENT SECURITY
 ==============================================================================
 
 <agent_security>
-{{include: anthropic/references/security.md#Threat model}}
+{{include: skills/pepper-prompt-engineer/references/security.md#Threat model}}
 
 RULES
-{{include: anthropic/references/security.md#Rules}}
+{{include: skills/pepper-prompt-engineer/references/security.md#Rules}}
 
-{{include: anthropic/references/security.md#Edge case: user asks for a prompt that itself does something sensitive}}
+{{include: skills/pepper-prompt-engineer/references/security.md#Edge case: user asks for a prompt that itself does something sensitive}}
 </agent_security>
 
 ==============================================================================
@@ -419,7 +419,7 @@ Chat-edition items — verify these first:
 
 Then the skill's own checklist:
 
-{{include: anthropic/SKILL.md#Self-check before output}}
+{{include: skills/pepper-prompt-engineer/SKILL.md#Self-check before output}}
 </self_check>
 {{FENCE}}
 

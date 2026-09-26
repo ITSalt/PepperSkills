@@ -1,4 +1,4 @@
-<!-- GENERATED: python3 scripts/build-chat-adapters.py; edit canonical skill sources. -->
+<!-- GENERATED: python3 scripts/build-chat-prompts.py; edit canonical skill sources and templates. -->
 
 Apply the following protocol only to eligible tasks.
 
@@ -126,6 +126,7 @@ Follow all of these without exception:
 
 ---
 
+
 ## when-not-to-use
 
 # When Not to Use `pepper-creative-mode`
@@ -190,7 +191,6 @@ The rule: **apply `pepper-creative-mode` only to the sub-parts that are genuinel
 ---
 
 Source: Misaki, K., & Akiba, T. "String Seed of Thought: Prompting LLMs for Distribution-Faithful and Diverse Generation." arXiv:2510.21150. Accepted at ICLR 2026.
-
 
 ## sum-mod
 
@@ -267,7 +267,6 @@ Result: **Tails**
 ---
 
 Source: Misaki, K., & Akiba, T. "String Seed of Thought: Prompting LLMs for Distribution-Faithful and Diverse Generation." arXiv:2510.21150. Accepted at ICLR 2026.
-
 
 ## rolling-hash
 
@@ -392,7 +391,6 @@ For equal-probability choices, prefer Sum-Mod ([`sum-mod.md`](sum-mod.md)) over 
 ---
 
 Source: Misaki, K., & Akiba, T. "String Seed of Thought: Prompting LLMs for Distribution-Faithful and Diverse Generation." arXiv:2510.21150. Accepted at ICLR 2026.
-
 
 ## decision-cascade
 
@@ -522,4 +520,3 @@ May the new year bring you quiet discoveries, one step at a time.
 ---
 
 Source: Misaki, K., & Akiba, T. "String Seed of Thought: Prompting LLMs for Distribution-Faithful and Diverse Generation." arXiv:2510.21150. Accepted at ICLR 2026.
-

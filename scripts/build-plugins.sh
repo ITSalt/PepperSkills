@@ -6,8 +6,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 PYTHON="${PYTHON:-python3}"
 "$PYTHON" scripts/sync-plugin-manifests.py --check
-"$PYTHON" scripts/build-chat-adapters.py --check
-"$PYTHON" scripts/build-chat-prompt.py --check
+"$PYTHON" scripts/build-chat-prompts.py --check
 
 if [[ $# -gt 0 ]]; then
   PLUGINS=("$@")
