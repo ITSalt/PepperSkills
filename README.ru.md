@@ -11,6 +11,18 @@
 | [`pepper-prompt-engineer`](./plugins/pepper-prompt-engineer/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`plugins/pepper-prompt-engineer/`](./plugins/pepper-prompt-engineer/) |
 | [`pepper-ru-web-compliance`](./plugins/pepper-ru-web-compliance/) | Проверка сайта на соответствие требованиям РФ: записка для юриста и план правок для разработчика. | [`plugins/pepper-ru-web-compliance/`](./plugins/pepper-ru-web-compliance/) |
 
+## Релизы
+
+| Продукт | Версия |
+| --- | --- |
+| `pepper-creative-mode` | [2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.0) |
+| `pepper-prompt-engineer` | [2.5.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.0) |
+| `pepper-ru-web-compliance` | [2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.0.0) |
+
+В каждом релизе: ZIP скилла, ZIP плагина и SHA256SUMS. Загрузка всех трёх ZIP скиллов проверена в Claude web 26 сентября 2026 года.
+
+Подробнее: [переходный выпуск](./docs/releases/2026-09-26-transition.md).
+
 ## Установка
 
 Все способы установки, команды, таблица совместимости и общая папка скиллов
@@ -19,7 +31,7 @@
 | Поверхность | Способ |
 | --- | --- |
 | Codex, Claude Code | Marketplace или отдельный каталог скиллов |
-| Claude Chat и Cowork | ZIP-загрузка скилла после приёмки клиента |
+| Claude Chat и Cowork | ZIP скилла; загрузка проверена в Claude web |
 | Cursor | Cursor marketplace или поддерживаемый локальный плагин |
 | API и другие поля промптов | Сгенерированный чат-адаптер |
 

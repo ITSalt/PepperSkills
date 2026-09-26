@@ -130,6 +130,14 @@ marketplaces и публичный каталог. Документация оп
 
 ## Claude Chat, Cowork и ZIP
 
+Готовые пакеты (выберите свой продукт):
+
+- [pepper-creative-mode 2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.0)
+- [pepper-prompt-engineer 2.5.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.0)
+- [pepper-ru-web-compliance 2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.0.0)
+
+В разделе Assets скачайте `<name>.zip` для загрузки скилла или `<name>.plugin.zip` для плагина. `SHA256SUMS` содержит контрольные суммы обоих архивов.
+
 Custom skills используют ZIP с одной верхней папкой `<name>/`, содержащей `SKILL.md`
 и ресурсы. Загружайте пакет skill, а не весь PepperSkills. Standalone-архивы —
 `<name>.zip`, пакеты плагинов — `<name>.plugin.zip`. Локальная `~/.claude/skills`
@@ -140,8 +148,10 @@ Custom skills используют ZIP с одной верхней папкой
 Корневые `.skill` — прежние зафиксированные сборки из ревизии репозитория
 `v1.4.1-1-g4128fe6` (commit `4128fe6`); они не пересобираются и не соответствуют
 текущим версиям плагинов. Новые сборки находятся в `dist/<name>/<version>/`.
-Загрузка и публикация замещающих ZIP — условия выпуска; используйте проверенный
-опубликованный пакет, когда он доступен. Прежние Releases и теги сохраняются.
+Все три опубликованных ZIP скиллов приняты через Upload and replace в Claude web
+26 сентября 2026 года. При совпадении имени выберите замену, чтобы обновить существующий
+скилл. Это проверка импорта и обновления, а не выполнения всех сценариев в Chat/Cowork
+или Desktop. Прежние Releases и теги сохраняются.
 
 ## Чат-адаптеры
 

@@ -129,6 +129,14 @@ do not replace or edit the entire plugin cache.
 
 ## Claude Chat, Cowork, and ZIP files
 
+Download the package for your product:
+
+- [pepper-creative-mode 2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.0)
+- [pepper-prompt-engineer 2.5.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.0)
+- [pepper-ru-web-compliance 2.0.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.0.0)
+
+Under Assets, choose `<name>.zip` for skill upload or `<name>.plugin.zip` for the plugin. `SHA256SUMS` covers both archives.
+
 Custom skills use a ZIP with one top-level `<name>/` directory containing `SKILL.md`
 and resources. Upload the skill package, not the whole PepperSkills repository.
 Standalone archives are `<name>.zip`; plugin packages are `<name>.plugin.zip`.
@@ -138,9 +146,11 @@ For scripted skills, check that code execution is enabled in that environment.
 
 Root `.skill` files are frozen previous builds from repository revision
 `v1.4.1-1-g4128fe6` (commit `4128fe6`); they are never rebuilt and do not represent the
-current plugin versions. New builds go to `dist/<name>/<version>/`. Replacement ZIP
-upload and publication are release gates; use an accepted published package when
-available. Old releases and tags remain available throughout the transition.
+current plugin versions. New builds go to `dist/<name>/<version>/`. All three published skill ZIPs
+were accepted through Upload and replace in Claude web on 2026-09-26. If the name
+already exists, choose replacement to update the existing skill. This verifies
+import and update, not every execution scenario in Chat/Cowork or Desktop.
+Old releases and tags remain available throughout the transition.
 
 ## Chat adapters
 
