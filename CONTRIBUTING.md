@@ -86,30 +86,45 @@ By contributing, you agree that your contributions will be licensed under the
 
 ## Generated plugin artifacts
 
-`plugins/<name>/plugin.json` is canonical metadata. Compatibility adapters in
-`.codex-plugin`, `.claude-plugin`, `.cursor-plugin` are generated, not edited.
-The vendored schema in `scripts/schemas/agent-plugin-1.0.0.json` comes from
-https://agent-plugins.org/schemas/1.0.0/plugin.schema.json (retrieved 2026-09-21).
-Builds validate the official schema offline and reject adapter drift.
+Each product has one editable skill at `plugins/<name>/skills/<name>/`. The
+plugin's `plugin.json` is canonical for product metadata and version. The
+`.codex-plugin`, `.claude-plugin`, `.cursor-plugin` files, chat adapters,
+OpenAI `submission/listing.json`, plugin LICENSE copies, and transition
+`INSTALL.md` pointers are generated. Edit their sources or templates, then
+regenerate them; do not hand-edit generated files.
+
+The vendored schema in `scripts/schemas/agent-plugin-1.0.0.json` is checked
+offline. `submission/listing-extra.json` contains only OpenAI submission fields
+that do not exist in the manifest interface. It may not override manifest data.
 
 ```bash
-uv run --no-project --with jsonschema scripts/sync-plugin-manifests.py
-uv run --no-project plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/gen_checklist.py
-python3 scripts/build-chat-adapters.py
-python3 scripts/build-chat-prompt.py
-uv run --no-project --with jsonschema bash scripts/build-skills.sh
-uv run --no-project --with jsonschema bash scripts/build-plugins.sh
+python -m pip install -r scripts/requirements-build.txt
+python scripts/sync-skill-versions.py --write
+python scripts/sync-plugin-manifests.py --write
+python scripts/sync-plugin-metadata.py --write
+python scripts/build-chat-prompts.py --write
+python plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/gen_checklist.py --write
+bash scripts/build-skills.sh
+bash scripts/build-plugins.sh
 ```
 
-Plugin version describes the distribution package. Skill `metadata.version`
-describes the skill protocol and may differ: e.g. package 2.0.0 contains
-prompt-engineer 2.4.0. Generated chat adapters use current skill sections and
-references; changes to them require regeneration before packaging.
+`plugin.json` owns the shipped version; `sync-skill-versions.py` updates only
+`metadata.version` in the corresponding `SKILL.md` frontmatter. Current product
+versions are 2.0.0 for Creative Mode and Compliance and 2.5.0 for Prompt
+Engineer. Future release tags use `<name>-v<version>`; existing historical tags
+remain unchanged.
 
-Full local release check:
+The root skill paths are transition links for Phase A. Do not remove them or
+repoint user installations automatically. Removing legacy paths is a separate
+Phase B change after client ZIP acceptance, publication of replacement packages
+for all products, and a transition release. See the [installation guide](docs/installation-and-updates.md)
+and [migration report](docs/history/repository-structure-2026-09-26.ru.md).
+
+Full local check (network calls are blocked and recorded):
 
 ```bash
-uv run --no-project --with jsonschema --with pyyaml bash scripts/check.sh
+python -m pip install -r scripts/requirements-build.txt
+bash scripts/check.sh
 ```
 
 Live browser and PDF checks are separate and require Chromium, as documented

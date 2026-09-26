@@ -42,11 +42,11 @@ PASS по трансграничной передаче.
 - Локальный цикл создания, обновления и удаления симлинка проверен в /tmp.
 - Контрольный PDF: 4 страницы, текст/URL сохранены, обрезки и наложения не обнаружены.
 
-[Лог проверок](qa/modernization-2026-09-21/check.log),
-[браузерные результаты](qa/modernization-2026-09-21/browser-results.json),
-[submission-результаты](qa/modernization-2026-09-21/submission-results.json),
-[SHA-256 архивов](qa/modernization-2026-09-21/archive-sha256.json),
-[контрольный PDF](qa/modernization-2026-09-21/fixture-report.pdf).
+[Лог проверок](../qa/modernization-2026-09-21/check.log),
+[браузерные результаты](../qa/modernization-2026-09-21/browser-results.json),
+[submission-результаты](../qa/modernization-2026-09-21/submission-results.json),
+[SHA-256 архивов](../qa/modernization-2026-09-21/archive-sha256.json),
+[контрольный PDF](../qa/modernization-2026-09-21/fixture-report.pdf).
 PDF относится к синтетическому локальному сайту, не к реальному клиенту.
 
 Повторная локальная проверка:
@@ -56,12 +56,12 @@ uv run --no-project --with jsonschema --with pyyaml bash scripts/check.sh
 ```
 
 Браузерная проверка — по инструкции в
-[комплекте submission](../plugins/pepper-ru-web-compliance/submission/README.md).
+[комплекте submission](../../plugins/pepper-ru-web-compliance/submission/README.md).
 
 ## Что осталось перед публичным выпуском
 
-Подготовлены [карточка](../plugins/pepper-ru-web-compliance/submission/listing.json),
-[логотип](../plugins/pepper-ru-web-compliance/assets/logo.png), support/privacy/terms
+Подготовлены [карточка](../../plugins/pepper-ru-web-compliance/submission/listing.json),
+[логотип](../../plugins/pepper-ru-web-compliance/assets/logo.png), support/privacy/terms
 и воспроизводимые фикстуры. Privacy/terms — локальные проекты; их URL в карточке
 планируемые. Предложенные регионы US, CA, GB, DE, FR требуют подтверждения издателем.
 Нужны публикация документов и подтверждённая Developer Identity в OpenAI Platform.

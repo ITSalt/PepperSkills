@@ -39,8 +39,8 @@
 
 Полный цикл установки и обновления: [`docs/installation-and-updates.ru.md`](./docs/installation-and-updates.ru.md).
 
-Проект новой структуры и карта переноса: [`docs/repository-structure.ru.md`](./docs/repository-structure.ru.md).
-Это предложение; приведённые выше текущие пути пока сохраняются.
+Результат перехода этапа A: [отчёт по структуре](./docs/history/repository-structure-2026-09-26.ru.md).
+Исходное предложение сохранено в [`docs/history/`](./docs/history/).
 
 ## Лицензия
 

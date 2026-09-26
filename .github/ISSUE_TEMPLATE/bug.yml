@@ -7,16 +7,16 @@ body:
     id: skill
     attributes:
       label: Skill
-      description: Which skill folder is affected?
-      placeholder: itsalt-creative-mode
+      description: Which product is affected?
+      placeholder: pepper-creative-mode
     validations:
       required: true
   - type: input
-    id: platform
+      id: platform
     attributes:
-      label: Platform / variant
-      description: Anthropic, OpenAI, or both?
-      placeholder: anthropic/SKILL.md
+      label: Client surface
+      description: Codex, Claude, Cursor, chat adapter, or another supported client?
+      placeholder: plugins/<name>/skills/<name>/SKILL.md
     validations:
       required: true
   - type: input

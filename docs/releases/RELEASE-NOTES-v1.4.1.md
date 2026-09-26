@@ -41,4 +41,4 @@ Instructions и вызов через API.
 - **GPT** — `openai/system-prompt.md` в Instructions, `openai/manual-checklist.md`
   в Knowledge.
 
-Полное описание — [`anthropic/INSTALL.md`](./pepper-ru-web-compliance/anthropic/INSTALL.md).
+Полное описание — [`anthropic/INSTALL.md`](../../pepper-ru-web-compliance/anthropic/INSTALL.md).

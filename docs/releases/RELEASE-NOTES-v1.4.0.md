@@ -69,6 +69,6 @@ Apple, Telegram), плашки иноагентов и запрещённых о
 
 ---
 
-Документация: [README](./pepper-ru-web-compliance/README.ru.md) ·
-[технический разбор](./docs/ru-web-compliance-deep-dive.ru.md) ·
-[происхождение материалов](./pepper-ru-web-compliance/NOTICE.md)
+Документация: [README](../../plugins/pepper-ru-web-compliance/README.ru.md) ·
+[технический разбор](../ru-web-compliance-deep-dive.ru.md) ·
+[происхождение материалов](../../plugins/pepper-ru-web-compliance/NOTICE.md)

@@ -5,5 +5,7 @@
 It is vendored so builds validate offline, without fetching schemas at load time.
 
 The canonical metadata is each plugin's root `plugin.json`. Run
-`sync-plugin-manifests.py` to generate the compatibility adapters, or `--check`
-to validate the schema and reject drift without modifying files.
+`python scripts/sync-plugin-manifests.py --write` to generate compatibility
+adapters, or use `--check` to validate the schema and reject drift without
+modifying files. Generated client manifests, LICENSE copies, chat adapters,
+and submission listing are checked by `scripts/check.sh`.
