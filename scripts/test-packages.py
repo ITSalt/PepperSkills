@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import random
+import re
 import shutil
 import stat
 import subprocess
@@ -18,9 +19,32 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def check_document_paths(document, package_root):
+    """Check actual local Markdown links and resource paths outside command examples."""
+    text = document.read_text(encoding='utf-8')
+    text = re.sub(r'^```.*?^```[^\n]*$', '', text, flags=re.M | re.S)
+    targets = re.findall(r'\]\(([^)]+)\)', text)
+    targets += re.findall(r'`((?:(?:skills|scripts|assets|references|examples|evals)/)[^`\s]+)`', text)
+    for target in targets:
+        if re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:', target) or target.startswith('#'):
+            continue
+        target = target.split('#', 1)[0]
+        resolved = (document.parent / target).resolve()
+        assert resolved.is_relative_to(package_root.resolve()), (document, target, 'outside package')
+        assert resolved.exists(), (document, target, 'missing local resource')
+
+
 def main():
     plugins = sorted(p for p in (ROOT / 'plugins').glob('pepper-*') if (p / 'plugin.json').is_file())
-    archives = sorted((ROOT / 'dist').glob('pepper-*/*/*.zip'))
+    archives = []
+    for plugin in plugins:
+        version = json.loads((plugin / 'plugin.json').read_text(encoding='utf-8'))['version']
+        directory = ROOT / 'dist' / plugin.name / version
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o755, directory
+        product_archives = sorted(directory.glob('*.zip'))
+        expected = ''.join(f'{sha(p)}  {p.name}\n' for p in product_archives)
+        assert (directory / 'SHA256SUMS').read_text(encoding='ascii') == expected, directory
+        archives.extend(product_archives)
     assert len(archives) == len(plugins) * 2, f'Expected two ZIPs per product; found {len(archives)}'
     for archive in archives:
         name = archive.name.split('.plugin.zip')[0] if archive.name.endswith('.plugin.zip') else archive.stem
@@ -49,6 +73,11 @@ def main():
                 manifest = json.loads((root / 'plugin.json').read_text(encoding='utf-8'))
                 assert manifest['name'] == name
                 assert (root / 'skills' / name / 'SKILL.md').is_file()
+                skill_root = root / 'skills' / name
+                submission = root / 'submission/run_tests.py'
+                if submission.is_file():
+                    subprocess.run([sys.executable, str(submission), '--out', str(destination / 'results')],
+                                   cwd=root, check=True, stdout=subprocess.DEVNULL)
                 for asset in ('logo', 'composerIcon'):
                     rel = manifest.get('extensions', {}).get('com.openai', {}).get('interface', {}).get(asset)
                     if rel:
@@ -56,14 +85,17 @@ def main():
             else:
                 assert (root / 'SKILL.md').is_file()
                 assert (root / 'LICENSE').is_file()
-                skill_checks = [root / 'scripts/selftest.py', root / 'scripts/test_modernization.py',
-                                root / 'scripts/run_evals.py']
-                for script in skill_checks:
-                    if script.is_file():
-                        command = [sys.executable, str(script)]
-                        if script.name == 'run_evals.py':
-                            command.append('--check-only')
-                        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+                skill_root = root
+            for document in [root / 'LICENSE', root / 'NOTICE.md', skill_root / 'SKILL.md']:
+                if document.is_file():
+                    check_document_paths(document, root)
+            for script_name in ('selftest.py', 'test_modernization.py', 'run_evals.py'):
+                script = skill_root / 'scripts' / script_name
+                if script.is_file():
+                    command = [sys.executable, str(script)]
+                    if script.name == 'run_evals.py':
+                        command.append('--check-only')
+                    subprocess.run(command, cwd=skill_root, check=True, stdout=subprocess.DEVNULL)
             print(f'PASS package {archive.relative_to(ROOT)}')
 
     # Recreate identical source files in different orders, modes, timestamps, umasks, and TZ.
@@ -83,11 +115,17 @@ def main():
                 destination.touch()
             (copied_root / 'LICENSE').write_bytes((ROOT / 'LICENSE').read_bytes())
             output = tmp / f'dist-{seed}'
+            kind = 'skill' if seed == 17 else 'plugin'
+            # Poison old siblings: a single-kind invocation must refresh both ZIPs.
+            for source in archives:
+                destination = output / source.relative_to(ROOT / 'dist')
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(b'STALE ARCHIVE')
             old_umask = __import__('os').umask(0o077 if seed == 17 else 0o027)
             env = __import__('os').environ.copy()
             env['TZ'] = 'Pacific/Honolulu' if seed == 17 else 'Europe/Moscow'
             try:
-                subprocess.run([sys.executable, str(ROOT / 'scripts/package.py'), '--kind', 'all',
+                subprocess.run([sys.executable, str(ROOT / 'scripts/package.py'), '--kind', kind,
                                 '--repo-root', str(copied_root), '--output-root', str(output)],
                                check=True, env=env)
             finally:
@@ -95,6 +133,7 @@ def main():
             for source in archives:
                 relative = source.relative_to(ROOT / 'dist')
                 rebuilt = output / relative
+                assert stat.S_IMODE(rebuilt.parent.stat().st_mode) == 0o755
                 assert sha(source) == sha(rebuilt), f'archive changed with source environment: {source.name}'
     print('PASS reproducible ZIP metadata across file order, mtime, mode, umask, TZ, and source roots')
 

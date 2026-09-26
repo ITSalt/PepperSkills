@@ -23,9 +23,10 @@ def main():
         from jsonschema import Draft202012Validator
     except ImportError:
         sys.exit('Build dependency missing: use uv run --no-project --with jsonschema scripts/sync-plugin-manifests.py')
-    validator = Draft202012Validator(json.loads(SCHEMA.read_text()))
+    validator = Draft202012Validator(json.loads(SCHEMA.read_text(encoding='utf-8')))
+    stale = []
     for plugin in sorted((ROOT / 'plugins').glob('pepper-*')):
-        manifest = json.loads((plugin / 'plugin.json').read_text())
+        manifest = json.loads((plugin / 'plugin.json').read_text(encoding='utf-8'))
         validator.validate(manifest)
         if manifest['name'] != plugin.name:
             sys.exit(f'name mismatch: {plugin}')
@@ -37,13 +38,17 @@ def main():
             path = plugin / rel
             content = json.dumps(data, ensure_ascii=False, indent=2) + '\n'
             if args.check:
-                if not path.exists() or path.read_text() != content:
-                    sys.exit(f'stale adapter: {path}')
+                if not path.exists() or path.read_text(encoding='utf-8') != content:
+                    stale.append(path)
             else:
                 path.parent.mkdir(exist_ok=True)
-                path.write_text(content)
-        print(f'valid + synchronized: {plugin.name}')
+                path.write_text(content, encoding='utf-8')
+        if not any(plugin in p.parents for p in stale):
+            print(f'valid + synchronized: {plugin.name}')
+    for path in stale:
+        print(f'stale adapter: {path}', file=sys.stderr)
+    return 1 if stale else 0
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

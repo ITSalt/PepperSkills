@@ -130,7 +130,7 @@ python3 scripts/detect.py --artifacts artifacts/ --out findings.json [--inn ИН
 отдельно в `semantic-review.json` в каталоге артефактов, затем повторяется detect.
 Формат: `references/semantic-review.md`. Проверяющий указывает источники и
 подтверждённое основание каждой пары «сервис / цель». Цитаты должны дословно
-находиться в артефактах. Перед браузерным запуском установите Chromium по INSTALL.md.
+находиться в артефактах. Перед браузерным запуском установите Chromium по `scripts/README.md`.
 
 ### 5. Документы
 

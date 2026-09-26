@@ -62,7 +62,10 @@ def build_skill(plugin: Path, out: Path):
     for license_name in ('LICENSE', 'NOTICE.md'):
         source = plugin / license_name
         if source.is_file():
-            entries.append((f'{name}/{license_name}', source.read_bytes()))
+            data = source.read_bytes()
+            if license_name == 'NOTICE.md':
+                data = data.replace(f'skills/{name}/'.encode('utf-8'), b'')
+            entries.append((f'{name}/{license_name}', data))
     with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
         for rel, data in sorted(entries, key=lambda item: item[0]):
             zf.writestr(zip_info(rel, data), data)
@@ -90,20 +93,18 @@ def build_all(repo: Path, kind: str, names: list[str], output_root: Path):
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp_dir = Path(tempfile.mkdtemp(prefix=f'.{version}.build-', dir=target.parent))
         try:
-            if target.is_dir() and kind != 'all':
-                other = target / (f'{name}.plugin.zip' if kind == 'skill' else f'{name}.zip')
-                if other.is_file():
-                    shutil.copyfile(other, tmp_dir / other.name)
-            if kind in ('skill', 'all'):
-                build_skill(plugin, tmp_dir / f'{name}.zip')
-            if kind in ('plugin', 'all'):
-                build_plugin(plugin, tmp_dir / f'{name}.plugin.zip')
+            # Every invocation refreshes the pair: never carry forward a stale sibling.
+            build_skill(plugin, tmp_dir / f'{name}.zip')
+            build_plugin(plugin, tmp_dir / f'{name}.plugin.zip')
+            tmp_dir.chmod(0o755)
             manifest_lines = []
             for archive in sorted(tmp_dir.glob('*.zip'), key=lambda p:p.name):
+                archive.chmod(0o644)
                 digest = hashlib.sha256(archive.read_bytes()).hexdigest()
                 manifest_lines.append(f'{digest}  {archive.name}')
                 products[f'{name}/{version}/{archive.name}'] = digest
             (tmp_dir / 'SHA256SUMS').write_text('\n'.join(manifest_lines) + '\n', encoding='ascii')
+            (tmp_dir / 'SHA256SUMS').chmod(0o644)
             backup = None
             if target.exists():
                 backup = target.with_name(target.name + '.previous')

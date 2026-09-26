@@ -10,3 +10,6 @@ plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md linguist-generated
 plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md linguist-generated
 plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md linguist-generated
 plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md linguist-generated
+plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/references/checklist.md linguist-generated
+plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/rules.json linguist-generated
+plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/signatures.json linguist-generated

@@ -202,7 +202,7 @@ def render(data: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def emit_json_twins() -> None:
+def json_twins() -> dict:
     """Собирает JSON-двойники rules.yaml и signatures.yaml.
 
     Детекторы читают их стандартной библиотекой, если на машине нет PyYAML.
@@ -211,15 +211,15 @@ def emit_json_twins() -> None:
     поэтому разойтись они не могут.
     """
     import json
+    outputs = {}
     for name in ("rules.yaml", "signatures.yaml"):
         src = ROOT / "scripts" / name
         if not src.exists():
             continue
         data = yaml.safe_load(src.read_text(encoding="utf-8"))
         dst = src.with_suffix(".json")
-        dst.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n",
-                       encoding="utf-8")
-        print(f"записано: scripts/{dst.name}")
+        outputs[dst] = json.dumps(data, ensure_ascii=False, indent=1) + "\n"
+    return outputs
 
 
 def main() -> int:
@@ -233,21 +233,19 @@ def main() -> int:
     data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
     rendered = render(data)
 
-    if args.check:
-        current = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
-        if current != rendered:
-            print("checklist.md устарел: перегенерируйте через gen_checklist.py",
-                  file=sys.stderr)
-            return 1
-        print("checklist.md актуален")
-        return 0
-
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(rendered, encoding="utf-8")
-    emit_json_twins()
-    print(f"записано: {OUT.relative_to(ROOT)} ({len(rendered.splitlines())} строк, "
-          f"{len(data['rules'])} правил)")
-    return 0
+    outputs = {OUT: rendered, **json_twins()}
+    stale = []
+    for path, content in outputs.items():
+        if args.check:
+            if not path.exists() or path.read_text(encoding="utf-8") != content:
+                stale.append(path)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            print(f"записано: {path.relative_to(ROOT)}")
+    for path in stale:
+        print(f"{path.relative_to(ROOT)} устарел: gen_checklist.py --write", file=sys.stderr)
+    return 1 if stale else 0
 
 
 if __name__ == "__main__":

@@ -9,17 +9,26 @@
 | `collect.py` | 0. Сбор | URL сайта | `artifacts/` — DOM, текст, формы, сеть, cookie, скриншоты, инфраструктура |
 | `registries.py` | 1. Реестры | — | кэш нормализованных госреестров |
 | `detect.py` | 2. Детекторы | `artifacts/` + реестры | `findings.json` |
-| `gen_checklist.py` | сервис | `rules.yaml` | `references/checklist.md` |
+| `gen_checklist.py` | сервис | `rules.yaml`, `signatures.yaml` | `references/checklist.md`, JSON-двойники |
 
 `rules.yaml` — единственный источник правды по правилам. `signatures.yaml` —
 данные детекторов: домены, паттерны, маппинг «домен → юрисдикция оператора».
 
 ## Установка
 
+Нужен Python 3.10+. Базовый сбор и детекторы используют стандартную библиотеку;
+`requirements.txt` не устанавливает Playwright. Для браузерного сбора и PDF
+добавьте его отдельно в окружение, из которого запускаете скрипты. Команды ниже
+выполняются из корня распакованного скилла:
+
 ```bash
-pip install -r scripts/requirements.txt
-python -m playwright install chromium
+python3 -m pip install playwright
+python3 -m playwright install chromium
 ```
+
+Для разработки: `gen_checklist.py --write` требует PyYAML; `--check` проверяет
+checklist и оба JSON-файла без записи. В поставке JSON позволяет детекторам
+работать без PyYAML.
 
 Без playwright `collect.py` переходит в режим degraded и помечает это в
 `manifest.json`. Детекторы обязаны читать этот флаг и выставлять `UNKNOWN`
