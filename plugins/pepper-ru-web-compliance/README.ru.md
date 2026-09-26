@@ -35,3 +35,11 @@ uv run --no-project --with playwright scripts/render.py --findings /tmp/findings
 ```
 
 Use the same user and `PLAYWRIGHT_BROWSERS_PATH` for installation and execution.
+
+Установка и обновление: [русская инструкция](../../docs/installation-and-updates.ru.md) · [English guide](../../docs/installation-and-updates.md).
+
+| Поверхность | Канонический путь |
+| --- | --- |
+| Skill | `skills/pepper-ru-web-compliance/` |
+| Чат-адаптеры | `adapters/chat/` |
+| Манифест плагина | `plugin.json` |

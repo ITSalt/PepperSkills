@@ -1,8 +1,5 @@
 # PepperSkills
 
-Repository restructuring proposal (Russian): [design and migration map](./docs/repository-structure.ru.md).
-The migration has not been applied; existing source paths remain in use.
-
 A library of portable skills and Agent Plugins. Plugins use client installation;
 standalone skills can be linked from a repository clone.
 
@@ -16,18 +13,20 @@ standalone skills can be linked from a repository clone.
 
 ## Install
 
-- **Plugin** — use the marketplace files in `.agents/plugins/`, `.claude-plugin/`,
-  or `.cursor-plugin/` and install one directory from `plugins/`.
-- **Clone + symlink** — link `plugins/<name>/skills/<name>` into the project or
-  user skill directory supported by the agent.
-- **Shared registry** — expose the skill under `~/.agents/skills/`; add a
-  per-skill link for clients with a different discovery directory. Check each
-  client's supported paths before adding links.
-- **OpenAI review** — run `scripts/build-plugins.sh` and submit a skills-only
-  archive through the OpenAI plugin submission portal.
+See the [installation guide](./docs/installation-and-updates.md) for supported
+clients, marketplace setup, shared skill directories, and chat prompts.
 
-To rebuild `.skill` archives, run `scripts/build-skills.sh`. To build portable
-plugin archives, run `scripts/build-plugins.sh`.
+| Surface | Distribution |
+| --- | --- |
+| Codex, Claude Code | Plugin marketplace or standalone skill directory |
+| Claude Chat and Cowork | Skill ZIP upload, after client acceptance |
+| Cursor | Cursor marketplace or supported local plugin directory |
+| Chat APIs and other prompt fields | Generated chat adapter |
+
+The Russian guide also has a [transition map](./docs/installation-and-updates.ru.md)
+for users with links to the former `anthropic/` and `openai/` paths.
+The Russian [repository migration report](./docs/history/repository-structure-2026-09-26.ru.md)
+documents the staged cleanup.
 
 ## Layout
 

@@ -13,31 +13,19 @@
 
 ## Установка
 
-- **Плагин** — используй marketplace соответствующего клиента и пакет из
-  `plugins/`. Локальный marketplace и публичный каталог — разные каналы.
-- **Общая папка + симлинки** — подключи `plugins/<name>/skills/<name>` к
-  `~/.agents/skills/<name>`. Для Claude Code добавь ссылку из
-  `~/.claude/skills/<name>`; для других клиентов проверь поддерживаемый путь.
-- **Проект, менеджер skills, ZIP или чат** — выбери способ по
-  [инструкции установки](./docs/installation-and-updates.ru.md).
-- **OpenAI review** — собери `scripts/build-plugins.sh pepper-ru-web-compliance`
-  и загрузи получившийся архив в портал Skills only.
+Все способы установки, команды, таблица совместимости и общая папка скиллов
+описаны в [инструкции по установке](./docs/installation-and-updates.ru.md).
 
-Собрать `.skill`-архивы для совместимой загрузки: `scripts/build-skills.sh`.
-Собрать переносимые плагины: `scripts/build-plugins.sh`.
+| Поверхность | Способ |
+| --- | --- |
+| Codex, Claude Code | Marketplace или отдельный каталог скиллов |
+| Claude Chat и Cowork | ZIP-загрузка скилла после приёмки клиента |
+| Cursor | Cursor marketplace или поддерживаемый локальный плагин |
+| API и другие поля промптов | Сгенерированный чат-адаптер |
 
-## Структура
-
-Каждая группа скиллов — самодостаточная папка:
-
-```
-plugins/<name>/
-├── README.md         # описание скилла (English)
-├── README.ru.md      # описание скилла (Русский)
-├── plugin.json       # переносимый Agent Plugins manifest
-├── skills/<name>/    # единый источник SKILL.md, scripts и references
-└── adapters/chat/    # сгенерированные инструкции для чатов без исполнения кода
-```
+Для владельцев симлинков на старые `anthropic/` и `openai/` в инструкции есть
+[карта перехода](./docs/installation-and-updates.ru.md#переход-со-старых-путей).
+Решение и этапы миграции — в [отчёте](./docs/history/repository-structure-2026-09-26.ru.md).
 
 ## Версии документации
 

@@ -20,3 +20,11 @@ uv run --no-project --with playwright scripts/render.py --findings /tmp/findings
 ```
 
 Use the same user and `PLAYWRIGHT_BROWSERS_PATH` for installation and execution.
+
+Installation and update models: [English guide](../../docs/installation-and-updates.md) · [Русская версия](../../docs/installation-and-updates.ru.md).
+
+| Surface | Canonical location |
+| --- | --- |
+| Skill | `skills/pepper-ru-web-compliance/` |
+| Chat adapters | `adapters/chat/` |
+| Plugin manifest | `plugin.json` |

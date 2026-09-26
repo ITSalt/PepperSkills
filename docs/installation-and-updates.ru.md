@@ -1,9 +1,7 @@
 # Установка, использование и обновление
 
 Проверено по документации 26 сентября 2026. Команды ниже относятся к
-**текущему** дереву `plugins/<name>/skills/<name>/`.
-[Новая структура](repository-structure.ru.md) пока предложена, но не внедрена.
-Установки на этой машине в ходе исследования не выполнялись.
+каноническому дереву `plugins/<name>/skills/<name>/`.
 
 ## Что устанавливаем
 
@@ -84,6 +82,7 @@ Codex читает напрямую       └── ~/.claude/skills/<name> → 
 при конфликте сначала выясните, кто ею управляет.
 
 ```bash
+(
 set -eu
 pepper_repo="$HOME/projects/PepperSkills"
 pepper_skill="pepper-prompt-engineer"
@@ -100,6 +99,7 @@ mkdir -p "$HOME/.claude/skills"
 test ! -e "$HOME/.claude/skills/$pepper_skill"
 test ! -L "$HOME/.claude/skills/$pepper_skill"
 ln -s "$HOME/.agents/skills/$pepper_skill" "$HOME/.claude/skills/$pepper_skill"
+)
 ```
 
 Проверка и обновление ручного клона:
@@ -221,3 +221,47 @@ Prompt Engineer — `chat-prompt.md`; Creative Mode — `system-prompt.md` и
 Клиентская установка PepperSkills не выполнялась. Для каждого заявленного
 клиента и ОС нужен отдельный цикл: установка → вызов → обновление → отключение.
 После миграции команды этого документа обновляются одновременно с исходниками.
+
+## Переход со старых путей PepperSkills
+
+После обновления клона используйте новые пути из таблицы ниже. Установка через
+симлинк не переезжает сама: старый путь в корне репозитория остаётся для
+совместимости этого этапа, но новые ссылки следует направить на канонические
+папки. Следующая команда меняет только распознанные симлинки PepperSkills;
+обычные каталоги, внешние ссылки и неизвестные цели она оставляет нетронутыми.
+
+| Старый путь | Новый путь |
+| --- | --- |
+| `<name>/anthropic` | `plugins/<name>/skills/<name>` |
+| `<name>/openai` | `plugins/<name>/adapters/chat` |
+| `pepper-prompt-engineer/chat-prompt.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md` |
+
+Пример для ручной общей установки в `~/.agents/skills` (Bash или Zsh):
+
+```bash
+(
+set -eu
+pepper_repo="$HOME/projects/PepperSkills"
+pepper_name="pepper-prompt-engineer"
+pepper_link="$HOME/.agents/skills/$pepper_name"
+pepper_new="$pepper_repo/plugins/$pepper_name/skills/$pepper_name"
+if [ -L "$pepper_link" ]; then
+  pepper_target=$(readlink "$pepper_link")
+  case "$pepper_target" in
+    */"$pepper_name"/anthropic|*/plugins/"$pepper_name"/skills/"$pepper_name")
+      test -f "$pepper_new/SKILL.md"
+      rm "$pepper_link"
+      ln -s "$pepper_new" "$pepper_link"
+      ;;
+    *) printf 'Оставляю неизвестную ссылку: %s -> %s\n' "$pepper_link" "$pepper_target" >&2 ;;
+  esac
+else
+  printf 'Не симлинк, оставляю без изменений: %s\n' "$pepper_link" >&2
+fi
+)
+```
+
+Перед повторением для других продуктов замените `pepper_name`. Проверьте
+результат через `readlink` и вызовите skill в новой сессии. Если вы ссылались на
+корневой `anthropic/INSTALL.md`, инструкция теперь находится в этом документе;
+старый путь на этапе A содержит краткую ссылку на документацию.
