@@ -14,7 +14,8 @@
 ## Checklist
 
 - [ ] I read [CONTRIBUTING.md](../CONTRIBUTING.md).
-- [ ] Both `anthropic/` and `openai/` variants are updated when relevant.
+- [ ] Canonical sources in `plugins/<name>/` are updated; regenerate checked-in adapters when relevant.
+- [ ] Transition compatibility paths remain valid unless this change is an approved Phase B release.
 - [ ] Internal links are relative and resolve.
 - [ ] I ran the affected examples against a current model and the behavior matches the documentation.
 - [ ] No personal data, internal URLs, or secrets in the diff.

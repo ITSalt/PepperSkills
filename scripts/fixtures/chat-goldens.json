@@ -1,0 +1,54 @@
+{
+  "baseline_commit": "e2c7d4f",
+  "header_excluded": true,
+  "cases": {
+    "plugins/pepper-creative-mode/adapters/chat/custom-instructions.md": {
+      "baseline_sha256": "e786fcd8a02403e1ecf1c1844c0c0b5f706e7cad9040edea60424b925731a787",
+      "intentional_changes": [
+        {
+          "before": "See [`references/when-not-to-use.md`](references/when-not-to-use.md) for edge cases, the QwQ-32B anomaly, and fallback guidance for mixed tasks.\n",
+          "after": "See the “when-not-to-use” reference in the full skill edition for edge cases, the QwQ-32B anomaly, and fallback guidance for mixed tasks.\n"
+        }
+      ]
+    },
+    "plugins/pepper-creative-mode/adapters/chat/system-prompt.md": {
+      "baseline_sha256": "2e0fc2875713177036468f006c1a8717a50e18acac8b1596e142f186a7e54e02",
+      "intentional_changes": [
+        {
+          "before": "See [приложение «when-not-to-use»](references/when-not-to-use.md) for edge cases, the QwQ-32B anomaly, and fallback guidance for mixed tasks.\n",
+          "after": "See appendix “when-not-to-use” for edge cases, the QwQ-32B anomaly, and fallback guidance for mixed tasks.\n"
+        },
+        {
+          "before": "- **Sum-Mod** ([приложение «sum-mod»](references/sum-mod.md)) — Use when all N outcomes have equal probability. Formula: `sum(ord(c) for c in string) mod N`. Map the result (0-indexed) to the Nth option.\n\n- **Rolling Hash** ([приложение «rolling-hash»](references/rolling-hash.md)) — Use when probabilities are unequal or arbitrary. Formula: `h = 0; for c in string: h = (h*31 + ord(c)) mod M` (M >= 10000). Split `[0, M)` into intervals sized by target probabilities; the interval containing `h` is the choice.\n\n- **Decision Cascade** ([приложение «decision-cascade»](references/decision-cascade.md)) — Use for open-ended creative tasks. Decompose the output into components, define candidate lists per component, pick each component by applying Sum-Mod to a non-overlapping segment of the string, then assemble.\n",
+          "after": "- **Sum-Mod** (appendix “sum-mod”) — Use when all N outcomes have equal probability. Formula: `sum(ord(c) for c in string) mod N`. Map the result (0-indexed) to the Nth option.\n\n- **Rolling Hash** (appendix “rolling-hash”) — Use when probabilities are unequal or arbitrary. Formula: `h = 0; for c in string: h = (h*31 + ord(c)) mod M` (M >= 10000). Split `[0, M)` into intervals sized by target probabilities; the interval containing `h` is the choice.\n\n- **Decision Cascade** (appendix “decision-cascade”) — Use for open-ended creative tasks. Decompose the output into components, define candidate lists per component, pick each component by applying Sum-Mod to a non-overlapping segment of the string, then assemble.\n"
+        }
+      ]
+    },
+    "plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md": {
+      "baseline_sha256": "853853b43a3a271ed56c4fec4cf2c0957f09d677d0a9d0b0a697811d64f6a7e1",
+      "intentional_changes": [
+        {
+          "before": "> the skill, then run `python3 scripts/build-chat-prompt.py`.\n",
+          "after": "> the skill, then run `python3 scripts/build-chat-prompts.py --write`.\n"
+        }
+      ]
+    },
+    "plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md": {
+      "baseline_sha256": "e4b80efa8db7fe5a0dab1af34762f5be112095952051af9808004b721ee5bd52",
+      "intentional_changes": []
+    },
+    "plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md": {
+      "baseline_sha256": "4b0ffbe333a5ec8f2eac59f4a9074c10d569bcdf795807afb89c1791c3b78dd1",
+      "intentional_changes": []
+    },
+    "plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md": {
+      "baseline_sha256": "52970fec2272bf76683d5edc240f0d315856e8e6afa6ce2b932a51d74c477ae0",
+      "intentional_changes": [
+        {
+          "before": "[приложение «legitimate-interest»](./references/legitimate-interest.md). Пункт\n",
+          "after": "приложение «legitimate-interest». Пункт\n"
+        }
+      ]
+    }
+  }
+}

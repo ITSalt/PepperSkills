@@ -1,50 +1,57 @@
 # PepperSkills
 
-A library of portable prompt-engineering skills. Each skill ships in two
-ecosystems side-by-side — **Anthropic (Claude)** and **OpenAI (GPT)** — so the
-two formats can be compared and adapted.
+A library of portable skills and Agent Plugins. Plugins use client installation;
+standalone skills can be linked from a repository clone.
 
 ## Skills
 
 | Skill | Description | Folder |
 |-------|-------------|--------|
-| [`pepper-creative-mode`](./pepper-creative-mode/) | Distribution-faithful sampling and diverse generation via self-seeded randomness. | [`pepper-creative-mode/`](./pepper-creative-mode/) |
-| [`pepper-prompt-engineer`](./pepper-prompt-engineer/) | CRAFT+ prompt engineer: turns task descriptions into production-ready, target-model-specific prompts. | [`pepper-prompt-engineer/`](./pepper-prompt-engineer/) |
-| [`pepper-ru-web-compliance`](./pepper-ru-web-compliance/) | Audits a website against Russian legal requirements: a note for the lawyer and a remediation plan for a developer agent. | [`pepper-ru-web-compliance/`](./pepper-ru-web-compliance/) |
+| [`pepper-creative-mode`](./plugins/pepper-creative-mode/) | Distribution-faithful sampling and diverse generation via self-seeded randomness. | [`plugins/pepper-creative-mode/`](./plugins/pepper-creative-mode/) |
+| [`pepper-prompt-engineer`](./plugins/pepper-prompt-engineer/) | CRAFT+ prompt engineer: turns task descriptions into production-ready, target-model-specific prompts. | [`plugins/pepper-prompt-engineer/`](./plugins/pepper-prompt-engineer/) |
+| [`pepper-ru-web-compliance`](./plugins/pepper-ru-web-compliance/) | Audits a website against Russian legal requirements: a note for the lawyer and a remediation plan for a developer agent. | [`plugins/pepper-ru-web-compliance/`](./plugins/pepper-ru-web-compliance/) |
 
 ## Install
 
-- **Claude Desktop / claude.ai** — download the `.skill` archive for the
-  skill you want from the [latest release](https://github.com/ITSalt/PepperSkills/releases/latest)
-  and upload it via *Customize → Skills → Add → Upload skill*. Skills that ship
-  scripts also need *Settings → Capabilities → Code execution and file creation*
-  (on Team and Enterprise an admin enables it in *Organization settings →
-  Skills*).
-- **Claude Code** — copy the unpacked `<skill>/anthropic/` folder (renamed
-  to match `name:` in `SKILL.md`) into `~/.claude/skills/` (personal) or
-  `<project>/.claude/skills/` (per-project). Each skill's
-  `anthropic/INSTALL.md` walks through both paths.
-- **OpenAI / ChatGPT / GPT API** — copy the contents of `openai/system-prompt.md`
-  (full) or `openai/custom-instructions.md` (compact, <1500 chars) into the
-  corresponding field.
+See the [installation guide](./docs/installation-and-updates.md) for supported
+clients, marketplace setup, shared skill directories, and chat prompts.
 
-To rebuild the `.skill` archives from source, run `scripts/build-skills.sh`.
+| Surface | Distribution |
+| --- | --- |
+| Codex, Claude Code | Plugin marketplace or standalone skill directory |
+| Claude Chat and Cowork | Skill ZIP upload, after client acceptance |
+| Cursor | Cursor marketplace or supported local plugin directory |
+| Chat APIs and other prompt fields | Generated chat adapter |
+
+The Russian [repository migration report](./docs/history/repository-structure-2026-09-26.ru.md)
+documents the staged cleanup.
+
+## Transition paths
+
+| Old path | Canonical path |
+| --- | --- |
+| `<name>/anthropic/` | `plugins/<name>/skills/<name>/` |
+| `<name>/openai/` | `plugins/<name>/adapters/chat/` |
+| `pepper-prompt-engineer/chat-prompt.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md` |
+| `pepper-prompt-engineer/chat-prompt.template.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.template.md` |
+| `<name>/anthropic/INSTALL.md` | `docs/installation-and-updates.md`, `docs/installation-and-updates.ru.md` |
+
+Root `.skill` files are frozen previous builds from repository revision
+`v1.4.1-1-g4128fe6` (commit `4128fe6`). They are not rebuilt and do not represent
+current plugin versions; new archives are built in `dist/<name>/<version>/`.
 
 ## Layout
 
-Every skill group is a self-contained folder:
+Every plugin is a self-contained folder:
 
 ```
-<skill-group>/
-├── README.md         # skill overview (English)
-├── README.ru.md      # skill overview (Russian)
-├── anthropic/        # Claude variant — Anthropic Skill spec
-│   ├── SKILL.md      #   YAML frontmatter + body
-│   ├── examples/
-│   └── references/
-└── openai/           # GPT variant — OpenAI prompt format
-    ├── system-prompt.md         # full API / Custom GPT prompt
-    └── custom-instructions.md   # compact ChatGPT Custom Instructions
+plugins/<plugin-name>/
+├── plugin.json
+├── skills/<plugin-name>/SKILL.md
+├── adapters/chat/
+├── README.md
+├── README.ru.md
+└── CHANGELOG.md
 ```
 
 ## Language versions

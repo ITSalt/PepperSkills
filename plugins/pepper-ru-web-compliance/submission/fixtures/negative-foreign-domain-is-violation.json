@@ -1,0 +1,11 @@
+{
+  "policy": "Подключён CDN",
+  "requests": [
+    "https://cdn.example.org/image.png"
+  ],
+  "expected": {
+    "PDN-009": [
+      "UNKNOWN"
+    ]
+  }
+}

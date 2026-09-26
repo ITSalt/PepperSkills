@@ -1,0 +1,130 @@
+valid + synchronized: pepper-creative-mode
+valid + synchronized: pepper-prompt-engineer
+valid + synchronized: pepper-ru-web-compliance
+checked: plugins/pepper-creative-mode/adapters/chat/system-prompt.md
+checked: plugins/pepper-creative-mode/adapters/chat/custom-instructions.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md
+chat-prompt.md is up to date.
+checklist.md актуален
+совпадения по реестру
+  ok   «вот так» не срабатывает на «вот такой результат»
+  ok   «Вот Так» в кавычках находится
+  ok   «Вот Так» после слова «издание» находится
+  ok   «Действие» не срабатывает на «действия»
+  ok   «Действие» в кавычках находится
+  ok   «СИЧ-С14» находится без кавычек
+  ok   многословное название находится в тексте
+  ok   исключённая запись не даёт совпадения
+  ok   weak_phrase отличает обиходную фразу от короткого названия
+признаки авторизации
+  ok   «вход» не находится внутри «входные»
+  ok   «вход» находится отдельным словом
+  ok   подписи ссылок извлекаются из разметки
+  ok   текст абзаца не попадает в подписи ссылок
+полнота отчёта
+  ok   статус есть у каждого правила
+  ok   все статусы из допустимого набора
+  ok   без признаков входа AUTH-004 — не применимо
+авторизация без страницы входа
+  ok   ссылка «Войти» без страницы входа даёт UNKNOWN, а не нарушение
+границы сайта
+  ok   поддомен считается тем же сайтом
+  ok   похожий чужой домен не считается тем же сайтом
+  ok   составной суффикс разбирается правильно
+  ok   поддомен — не сторонний приёмник данных
+доступ к политике
+  ok   страница политики не нарушает требование ссылкой на саму себя
+форма плашки иноагента
+  ok   без загруженного реестра форма плашки остаётся без вывода
+  ok   у INF-004 есть инструкция ручной проверки
+подвал и ссылки отчёта
+  ok   название скилла есть в записке
+  ok   автор есть в записке
+  ok   репозиторий есть в записке
+  ok   канал есть в записке
+  ok   почта есть в записке
+  ok   ссылка из инструкции кликабельна в HTML
+  ok   служебное обоснование не попадает в отчёт
+типографика сумм
+  ok   разряды числа склеены неразрывным пробелом
+  ok   в строке таблицы знака рубля нет — он в заголовке колонки
+  ok   раскладка wide: валюта в заголовке
+  ok   раскладка wide: сумма не рвётся
+  ok   раскладка stacked: валюта в заголовке
+  ok   раскладка stacked: сумма не рвётся
+  ok   раскладка twoline: валюта в заголовке
+  ok   раскладка twoline: сумма не рвётся
+контрольные суммы реквизитов
+  ok   валидный ИНН юрлица принят
+  ok   испорченный ИНН отклонён
+  ok   телефон не проходит как ИНН
+JSON-двойники данных
+  ok   rules.json совпадает с rules.yaml
+  ok   signatures.json совпадает с signatures.yaml
+основание обработки аналитики
+  ok   заявленный законный интерес распознан
+  ok   упоминание возражения не подтверждает основание или работающий отказ
+  ok   аналитический запрос отличён от отсутствия трекеров
+квалификация cookie и трекеров
+  ok   техническая страница без аналитики не требует баннер автоматически
+  ok   отсутствие баннера при аналитике требует квалификации, а не FAIL
+  ok   аналитика без баннера требует проверки основания
+  ok   иностранный домен фиксируется как факт для правовой проверки
+
+все проверки пройдены
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.163s
+
+OK
+Schema OK — 11 scenarios well-formed.
+
+PASS positive-cookie-no-optional-tracking
+PASS positive-consent-gating
+PASS positive-legitimate-interest
+PASS positive-remediation
+PASS positive-manual-mode
+PASS negative-no-banner-fail
+PASS negative-foreign-domain-is-violation
+PASS negative-legitimate-interest-is-consent
+valid + synchronized: pepper-creative-mode
+valid + synchronized: pepper-prompt-engineer
+valid + synchronized: pepper-ru-web-compliance
+checked: plugins/pepper-creative-mode/adapters/chat/system-prompt.md
+checked: plugins/pepper-creative-mode/adapters/chat/custom-instructions.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md
+chat-prompt.md is up to date.
+built: pepper-creative-mode.skill (20K, 14 entries)
+wrote plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md (59,975 bytes, 8,833 words)
+built: pepper-prompt-engineer.skill (64K, 24 entries)
+built: pepper-ru-web-compliance.skill (200K, 38 entries)
+valid + synchronized: pepper-creative-mode
+valid + synchronized: pepper-prompt-engineer
+valid + synchronized: pepper-ru-web-compliance
+checked: plugins/pepper-creative-mode/adapters/chat/system-prompt.md
+checked: plugins/pepper-creative-mode/adapters/chat/custom-instructions.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md
+checked: plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md
+chat-prompt.md is up to date.
+built: /Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/pepper-ru-web-compliance.plugin.zip
+built: /Users/maxnikitin/projects/PepperSkills/plugins/pepper-creative-mode/pepper-creative-mode.plugin.zip
+built: /Users/maxnikitin/projects/PepperSkills/plugins/pepper-prompt-engineer/pepper-prompt-engineer.plugin.zip
+Schema OK — 11 scenarios well-formed.
+
+......
+----------------------------------------------------------------------
+Ran 6 tests in 0.270s
+
+OK
+PASS archive pepper-creative-mode/pepper-creative-mode.skill
+PASS archive pepper-prompt-engineer/pepper-prompt-engineer.skill
+PASS archive pepper-ru-web-compliance/pepper-ru-web-compliance.skill
+PASS archive plugins/pepper-creative-mode/pepper-creative-mode.plugin.zip
+PASS archive plugins/pepper-prompt-engineer/pepper-prompt-engineer.plugin.zip
+PASS archive plugins/pepper-ru-web-compliance/pepper-ru-web-compliance.plugin.zip
+PASS filesystem symlink create/update/remove (not client acceptance)

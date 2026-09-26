@@ -1,0 +1,43 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "pepper-ru-web-compliance",
+  "version": "2.0.0",
+  "description": "Технический аудит сайта по требованиям РФ с доказательствами и планом исправлений.",
+  "author": {
+    "name": "ITSalt",
+    "email": "info@itsalt.ru",
+    "url": "https://github.com/ITSalt/PepperSkills"
+  },
+  "homepage": "https://github.com/ITSalt/PepperSkills/tree/main/plugins/pepper-ru-web-compliance",
+  "repository": "https://github.com/ITSalt/PepperSkills",
+  "license": "MIT",
+  "keywords": [
+    "russia",
+    "privacy",
+    "152-fz",
+    "compliance",
+    "website-audit"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "RU Web Compliance",
+        "shortDescription": "Проверка сайта и план правок по требованиям РФ",
+        "longDescription": "Собирает технические доказательства, проверяет персональные данные, cookie, трекеры, реестры и формирует записку с планом для разработчика.",
+        "developerName": "ITSalt",
+        "category": "Productivity",
+        "websiteURL": "https://github.com/ITSalt/PepperSkills",
+        "capabilities": [
+          "Analyze",
+          "Generate"
+        ],
+        "defaultPrompt": [
+          "Проверь сайт по требованиям РФ и составь план исправлений."
+        ],
+        "logo": "./assets/logo.png",
+        "composerIcon": "./assets/logo.png",
+        "brandColor": "#173E35"
+      }
+    }
+  }
+}

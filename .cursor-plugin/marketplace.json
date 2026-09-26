@@ -1,0 +1,10 @@
+{
+  "name": "pepperskills",
+  "owner": {"name": "ITSalt", "email": "info@itsalt.ru"},
+  "metadata": {"description": "Portable PepperSkills plugins"},
+  "plugins": [
+    {"name":"pepper-ru-web-compliance","source":"./plugins/pepper-ru-web-compliance"},
+    {"name":"pepper-creative-mode","source":"./plugins/pepper-creative-mode"},
+    {"name":"pepper-prompt-engineer","source":"./plugins/pepper-prompt-engineer"}
+  ]
+}

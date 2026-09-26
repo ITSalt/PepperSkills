@@ -1,0 +1,10 @@
+{
+  "policy": "Назначение сайта не установлено",
+  "requests": [],
+  "degraded": true,
+  "expected": {
+    "CK-001": [
+      "UNKNOWN"
+    ]
+  }
+}

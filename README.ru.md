@@ -1,50 +1,45 @@
 # PepperSkills
 
-Библиотека портативных скиллов для prompt engineering. Каждый скилл
-поставляется параллельно в двух экосистемах — **Anthropic (Claude)** и
-**OpenAI (GPT)** — чтобы форматы можно было сравнивать и адаптировать.
+Библиотека портативных скиллов и устанавливаемых Agent Plugins. Каждый плагин
+можно поставить отдельно из marketplace или подключить из клона репозитория.
 
 ## Скиллы
 
 | Скилл | Описание | Папка |
 |-------|----------|-------|
-| [`pepper-creative-mode`](./pepper-creative-mode/) | Честное сэмплирование из распределения и разнообразная генерация через self-seeded randomness. | [`pepper-creative-mode/`](./pepper-creative-mode/) |
-| [`pepper-prompt-engineer`](./pepper-prompt-engineer/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`pepper-prompt-engineer/`](./pepper-prompt-engineer/) |
-| [`pepper-ru-web-compliance`](./pepper-ru-web-compliance/) | Проверка сайта на соответствие требованиям РФ: записка для юриста и план правок для разработчика. | [`pepper-ru-web-compliance/`](./pepper-ru-web-compliance/) |
+| [`pepper-creative-mode`](./plugins/pepper-creative-mode/) | Честное сэмплирование из распределения и разнообразная генерация через self-seeded randomness. | [`plugins/pepper-creative-mode/`](./plugins/pepper-creative-mode/) |
+| [`pepper-prompt-engineer`](./plugins/pepper-prompt-engineer/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`plugins/pepper-prompt-engineer/`](./plugins/pepper-prompt-engineer/) |
+| [`pepper-ru-web-compliance`](./plugins/pepper-ru-web-compliance/) | Проверка сайта на соответствие требованиям РФ: записка для юриста и план правок для разработчика. | [`plugins/pepper-ru-web-compliance/`](./plugins/pepper-ru-web-compliance/) |
 
 ## Установка
 
-- **Claude в браузере и десктопе** — включи *Settings → Capabilities → Code
-  execution and file creation* (на Team и Enterprise это делает администратор
-  в *Organization settings → Skills*), скачай нужный `.skill`-архив из
-  [последнего релиза](https://github.com/ITSalt/PepperSkills/releases/latest)
-  и загрузи через *Customize → Skills → Add → Upload skill*.
-- **Claude Code** — скопируй распакованную папку `<skill>/anthropic/`
-  (переименованную под `name:` из `SKILL.md`) в `~/.claude/skills/`
-  (личный скилл) или `<project>/.claude/skills/` (проектный). Подробности —
-  в `anthropic/INSTALL.md` соответствующего скилла.
-- **OpenAI / ChatGPT / GPT API** — содержимое `openai/system-prompt.md`
-  (полная версия) или `openai/custom-instructions.md` (компактная, <1500
-  символов) копируется в соответствующее поле.
+Все способы установки, команды, таблица совместимости и общая папка скиллов
+описаны в [инструкции по установке](./docs/installation-and-updates.ru.md).
 
-Собрать `.skill`-архивы из исходников: `scripts/build-skills.sh`.
+| Поверхность | Способ |
+| --- | --- |
+| Codex, Claude Code | Marketplace или отдельный каталог скиллов |
+| Claude Chat и Cowork | ZIP-загрузка скилла после приёмки клиента |
+| Cursor | Cursor marketplace или поддерживаемый локальный плагин |
+| API и другие поля промптов | Сгенерированный чат-адаптер |
 
-## Структура
+Для владельцев симлинков на старые `anthropic/` и `openai/` в инструкции есть
+[карта перехода](./docs/installation-and-updates.ru.md#переход-со-старых-путей-pepperskills).
+Решение и этапы миграции — в [отчёте](./docs/history/repository-structure-2026-09-26.ru.md).
 
-Каждая группа скиллов — самодостаточная папка:
+## Пути на переходном этапе
 
-```
-<skill-group>/
-├── README.md         # описание скилла (English)
-├── README.ru.md      # описание скилла (Русский)
-├── anthropic/        # вариант для Claude — Anthropic Skill spec
-│   ├── SKILL.md      #   YAML frontmatter + тело
-│   ├── examples/
-│   └── references/
-└── openai/           # вариант для GPT — OpenAI prompt format
-    ├── system-prompt.md         # полный промпт для API / Custom GPT
-    └── custom-instructions.md   # компактная версия для ChatGPT Custom Instructions
-```
+| Старый путь | Канонический путь |
+| --- | --- |
+| `<name>/anthropic/` | `plugins/<name>/skills/<name>/` |
+| `<name>/openai/` | `plugins/<name>/adapters/chat/` |
+| `pepper-prompt-engineer/chat-prompt.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md` |
+| `pepper-prompt-engineer/chat-prompt.template.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.template.md` |
+| `<name>/anthropic/INSTALL.md` | `docs/installation-and-updates.md`, `docs/installation-and-updates.ru.md` |
+
+Корневые `.skill` — прежние зафиксированные сборки из ревизии репозитория
+`v1.4.1-1-g4128fe6` (commit `4128fe6`). Они не пересобираются и не соответствуют
+текущим версиям плагинов; новые архивы собираются в `dist/<name>/<version>/`.
 
 ## Версии документации
 
@@ -55,6 +50,9 @@
 
 См. [`CONTRIBUTING.md`](./CONTRIBUTING.md). Сообщения о безопасности — [`SECURITY.md`](./SECURITY.md).
 Кодекс поведения — [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
+
+Результат перехода этапа A: [отчёт по структуре](./docs/history/repository-structure-2026-09-26.ru.md).
+Исходное предложение сохранено в [`docs/history/`](./docs/history/).
 
 ## Лицензия
 

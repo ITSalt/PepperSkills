@@ -1,0 +1,18 @@
+{
+  "submissionType": "Skills only",
+  "supportURL": "https://github.com/ITSalt/PepperSkills/issues",
+  "privacyPolicyURL": "https://github.com/ITSalt/PepperSkills/blob/main/plugins/pepper-ru-web-compliance/submission/privacy.md",
+  "termsOfServiceURL": "https://github.com/ITSalt/PepperSkills/blob/main/plugins/pepper-ru-web-compliance/submission/terms.md",
+  "proposedRegions": [
+    "US",
+    "CA",
+    "GB",
+    "DE",
+    "FR"
+  ],
+  "regionsStatus": "proposal; confirm in submission portal",
+  "publicationStatus": "local draft; privacy and terms URLs are planned, not verified public",
+  "identityStatus": "requires verified publisher identity in OpenAI Platform",
+  "releaseNotes": "Portable schema validation, purpose-scoped basis evidence, independent refusal/revisit collection, report acceptance and packaging fixes.",
+  "tests": "../submission-tests.json"
+}

@@ -1,68 +1,12 @@
 #!/usr/bin/env bash
-# Build .skill ZIP archives for every pepper-* skill in this repository.
-#
-# Each archive contains a single root folder named after the skill, holding
-# everything from <skill>/anthropic/ (SKILL.md, references/, examples/, plus
-# optional INSTALL.md, scripts/, evals/). This is the layout Anthropic's
-# Skills spec requires so that the relative links inside SKILL.md resolve.
-#
-# Usage:
-#   scripts/build-skills.sh            # build all skills
-#   scripts/build-skills.sh <slug>...  # build only the given skill(s)
-
+# Build deterministic standalone skill ZIPs from canonical plugin directories.
 set -euo pipefail
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
-
-if [[ $# -gt 0 ]]; then
-  SKILLS=("$@")
-else
-  SKILLS=()
-  for dir in "$REPO_ROOT"/pepper-*/; do
-    [[ -d "${dir}anthropic" ]] || continue
-    SKILLS+=("$(basename "$dir")")
-  done
-fi
-
-if [[ ${#SKILLS[@]} -eq 0 ]]; then
-  echo "no pepper-*/anthropic skills found" >&2
-  exit 1
-fi
-
-for skill in "${SKILLS[@]}"; do
-  src="$REPO_ROOT/$skill/anthropic"
-  out="$REPO_ROOT/$skill/$skill.skill"
-
-  # Skills that ship a chat edition generate it from the same sources, so the two
-  # editions cannot drift apart. Regenerate before packaging.
-  if [[ -f "$REPO_ROOT/$skill/chat-prompt.template.md" ]]; then
-    python3 "$REPO_ROOT/scripts/build-chat-prompt.py"
-  fi
-
-  if [[ ! -d "$src" ]]; then
-    echo "skip: $skill has no anthropic/ directory" >&2
-    continue
-  fi
-
-  staging="$(mktemp -d -t pepper-skill-build.XXXXXX)"
-  mkdir -p "$staging/$skill"
-  cp -R "$src/." "$staging/$skill/"
-  find "$staging" -name '.DS_Store' -delete
-  # Байт-код Python в релизе не нужен и тащит в архив абсолютные пути машины,
-  # на которой собирали.
-  find "$staging" -name '__pycache__' -type d -prune -exec rm -rf {} +
-
-  # Локальные снапшоты госреестров в релиз не входят: данные протухают, а
-  # устаревший реестр даёт ложный PASS вместо честного UNKNOWN.
-  find "$staging" -path '*/assets/registries-snapshot/*.json' -delete
-
-  rm -f "$out"
-  (cd "$staging" && zip -r -X "$out" "$skill" >/dev/null)
-
-  size_human="$(du -h "$out" | awk '{print $1}')"
-  entry_count="$(unzip -l "$out" | tail -1 | awk '{print $2}')"
-  echo "built: ${skill}.skill (${size_human}, ${entry_count} entries)"
-
-  rm -rf "$staging"
-done
+PYTHON="${PYTHON:-python3}"
+export PYTHONDONTWRITEBYTECODE=1
+"$PYTHON" "$REPO_ROOT/scripts/sync-skill-versions.py" --check
+"$PYTHON" "$REPO_ROOT/scripts/sync-plugin-manifests.py" --check
+"$PYTHON" "$REPO_ROOT/scripts/sync-plugin-metadata.py" --check
+"$PYTHON" "$REPO_ROOT/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/gen_checklist.py" --check
+"$PYTHON" "$REPO_ROOT/scripts/build-chat-prompts.py" --check
+exec "$PYTHON" "$REPO_ROOT/scripts/package.py" --kind skill --repo-root "$REPO_ROOT" "$@"

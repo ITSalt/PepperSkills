@@ -1,8 +1,8 @@
 # Contributing to PepperSkills
 
 Thanks for your interest in contributing. PepperSkills is a curated library of
-portable prompt-engineering skills, each shipped in parallel for **Anthropic
-(Claude)** and **OpenAI (GPT)** so the two formats can be compared and adapted.
+portable Agent Plugins. Each plugin has one canonical skill source and small
+adapters for clients that expose different capabilities.
 
 ## Ways to contribute
 
@@ -27,31 +27,25 @@ A skill belongs here only if it meets all of:
 
 Internal / project-specific skills do not belong here.
 
-## Skill folder layout
+## Plugin folder layout
 
 Every skill is a self-contained folder named `<namespace>-<slug>`:
 
 ```
-<namespace>-<slug>/
-├── README.md         # skill overview (English, canonical)
-├── README.ru.md      # skill overview (Russian, optional)
-├── anthropic/
-│   ├── SKILL.md      # YAML frontmatter + body, follows Anthropic Skill spec
-│   ├── examples/     # one .md per worked example
-│   └── references/   # one .md per supporting reference doc
-└── openai/
-    ├── system-prompt.md         # full API / Custom GPT prompt
-    └── custom-instructions.md   # compact (<1500 chars) ChatGPT Custom Instructions
+plugins/<name>/
+├── plugin.json
+├── skills/<name>/SKILL.md
+├── adapters/chat/       # generated or provider-light chat material
+├── README.md
+├── README.ru.md
+└── CHANGELOG.md
 ```
 
-### Alternative: universal chat prompt
+### Chat adapters
 
-If the skill's mechanism is a single system prompt that behaves identically in
-any chat UI (Claude.ai / ChatGPT / Gemini / DeepSeek) without per-vendor
-adaptation, you may ship a top-level `chat-prompt.md` at the skill root **in
-place of** the `openai/` folder. The Anthropic `anthropic/SKILL.md` variant is
-still required so the skill remains installable inside Claude Code. See
-`pepper-prompt-engineer/` for a worked example.
+Chat-only material belongs in `adapters/chat/` and is generated from the
+canonical skill where possible. It is an adapter for environments without code,
+browser or network access; it is not a second editable skill implementation.
 
 When you add a skill, also add a row to the **Skills** table in the root
 `README.md` (and `README.ru.md` if you maintain a Russian translation).
@@ -89,3 +83,63 @@ Do not open a public issue for security problems. See [SECURITY.md](./SECURITY.m
 
 By contributing, you agree that your contributions will be licensed under the
 [MIT License](./LICENSE).
+
+## Generated plugin artifacts
+
+Each product has one editable skill at `plugins/<name>/skills/<name>/`. The
+plugin's `plugin.json` is canonical for product metadata and version. The
+`.codex-plugin`, `.claude-plugin`, `.cursor-plugin` files, chat adapters,
+OpenAI `submission/listing.json`, plugin LICENSE copies, and transition
+`INSTALL.md` pointers, compliance `references/checklist.md`, and the JSON twins
+of `rules.yaml` / `signatures.yaml` are generated. Edit their sources or templates, then
+regenerate them; do not hand-edit generated files.
+
+The vendored schema in `scripts/schemas/agent-plugin-1.0.0.json` is checked
+offline. `submission/listing-extra.json` contains only OpenAI submission fields
+that do not exist in the manifest interface. It may not override manifest data.
+
+```bash
+python -m pip install -r scripts/requirements-build.txt
+python scripts/sync-skill-versions.py --write
+python scripts/sync-plugin-manifests.py --write
+python scripts/sync-plugin-metadata.py --write
+python plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/gen_checklist.py --write
+python scripts/build-chat-prompts.py --write
+bash scripts/build-skills.sh  # or: bash scripts/build-plugins.sh
+```
+
+Both wrappers refresh the complete pair (`<name>.zip` and `<name>.plugin.zip`) and
+`SHA256SUMS` in `dist/<name>/<version>/`. The low-level `--kind` option is retained
+for compatibility, but never reuses a previously built sibling archive. Builders
+reject stale generation and only write distribution outputs.
+
+Chat templates declare their label language in a leading `<!-- chat-language: en -->`
+or `<!-- chat-language: ru -->` comment followed by a blank line. The marker is not
+included in generated output. Templates use `{{include: path#Heading}}` for selected source sections,
+`{{appendix: path}}` for explicitly selected full appendices, and `{{FENCE}}` for
+the outer prompt fence. Merely mentioning a reference does not append it. Changes
+to chat content must update the reviewed golden differences in
+`scripts/fixtures/chat-goldens.json` deliberately.
+
+`plugin.json` owns the shipped version; `sync-skill-versions.py` updates only
+`metadata.version` in the corresponding `SKILL.md` frontmatter. Current product
+versions are 2.0.0 for Creative Mode and Compliance and 2.5.0 for Prompt
+Engineer. Future release tags use `<name>-v<version>`; existing historical tags
+remain unchanged.
+
+The root skill paths are transition links for Phase A. Do not remove them or
+repoint user installations automatically. Removing legacy paths is a separate
+Phase B change after client ZIP acceptance, publication of replacement packages
+for all products, and a transition release. See the [installation guide](docs/installation-and-updates.md)
+and [migration report](docs/history/repository-structure-2026-09-26.ru.md).
+
+Full local check (network calls are blocked and recorded):
+
+```bash
+python -m pip install -r scripts/requirements-build.txt
+bash scripts/check.sh
+```
+
+Live browser and PDF checks are separate and require Chromium, as documented
+in the compliance plugin's submission/README.md. Filesystem symlink tests do
+not substitute for installation/update/disable acceptance in actual clients.

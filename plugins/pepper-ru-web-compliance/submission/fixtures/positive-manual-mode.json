@@ -1,0 +1,13 @@
+{
+  "policy": "Нет браузерных данных",
+  "requests": [],
+  "degraded": true,
+  "expected": {
+    "LI-001": [
+      "UNKNOWN"
+    ],
+    "CK-003": [
+      "UNKNOWN"
+    ]
+  }
+}
