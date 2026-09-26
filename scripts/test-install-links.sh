@@ -2,11 +2,16 @@
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 script="$repo/scripts/link-skill.sh"
+path_script="$repo/scripts/link-path.sh"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-mkdir -p "$tmp/plugins/pepper-test/skills/pepper-test" "$tmp/pepper-test"
+mkdir -p "$tmp/plugins/pepper-test/skills/pepper-test" "$tmp/plugins/pepper-test/adapters/chat" "$tmp/pepper-test"
 printf '# test skill\n' > "$tmp/plugins/pepper-test/skills/pepper-test/SKILL.md"
+printf '# chat adapter\n' > "$tmp/plugins/pepper-test/adapters/chat/system-prompt.md"
+printf '# prompt\n' > "$tmp/plugins/pepper-test/adapters/chat/chat-prompt.md"
 source="$(cd "$tmp/plugins/pepper-test/skills/pepper-test" && pwd -P)"
+chat_source="$(cd "$tmp/plugins/pepper-test/adapters/chat" && pwd -P)"
+file_source="$chat_source/chat-prompt.md"
 run_bash() { bash -c 'set -e; before=untouched; set +u; "$@"; test "$before" = untouched; [[ $- != *u* ]]' _ "$@"; }
 run_zsh() { zsh -c 'set -e; before=untouched; set +u; "$@"; test "$before" = untouched; [[ $- != *u* ]]' _ "$@"; }
 for shell_name in bash zsh; do
@@ -31,5 +36,23 @@ for shell_name in bash zsh; do
   ln -s "$tmp/unrelated" "$tmp/$shell_name/shared/unrelated"
   if "$runner" "$script" pepper-test "$tmp/$shell_name/shared/unrelated" "$source" 2>/dev/null; then exit 1; fi
   test "$(readlink "$tmp/$shell_name/shared/unrelated")" = "$tmp/unrelated"
+
+  # Chat aliases and prompt files receive the same type-checked migration.
+  chat_link="$tmp/$shell_name/shared/chat"
+  "$runner" "$path_script" chat pepper-test "$chat_link" "$chat_source"
+  test -f "$chat_link/system-prompt.md"
+  ln -s "$tmp/pepper-test/openai" "$tmp/$shell_name/shared/chat-legacy"
+  "$runner" "$path_script" chat pepper-test "$tmp/$shell_name/shared/chat-legacy" "$chat_source"
+  test "$(readlink "$tmp/$shell_name/shared/chat-legacy")" = "$chat_source"
+  ln -s "$tmp/pepper-test/openai" "$tmp/$shell_name/shared/chat-broken"
+  "$runner" "$path_script" chat pepper-test "$tmp/$shell_name/shared/chat-broken" "$chat_source"
+  test -f "$tmp/$shell_name/shared/chat-broken/system-prompt.md"
+
+  file_link="$tmp/$shell_name/shared/chat-prompt.md"
+  "$runner" "$path_script" file pepper-test "$file_link" "$file_source"
+  test -f "$file_link" && test "$(readlink "$file_link")" = "$file_source"
+  ln -s "$tmp/pepper-test/chat-prompt.md" "$tmp/$shell_name/shared/prompt-legacy"
+  "$runner" "$path_script" file pepper-test "$tmp/$shell_name/shared/prompt-legacy" "$file_source"
+  test "$(readlink "$tmp/$shell_name/shared/prompt-legacy")" = "$file_source"
 done
-echo 'PASS safe skill links in Bash and Zsh'
+echo 'PASS safe skill, chat, and prompt links in Bash and Zsh'

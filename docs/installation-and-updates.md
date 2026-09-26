@@ -125,6 +125,23 @@ instructions. During this transition the old location contains a short pointer t
 documentation. Client acceptance and publication of replacement packages are separate
 release checks; local files alone do not prove installation in a target client.
 
+For links to old `openai/` aliases or chat-prompt files, use the general helper
+with the matching path type. It checks the new target and replaces only a
+symlink whose old target matches a PepperSkills path:
+
+```bash
+(
+set -eu
+pepper_repo="$HOME/projects/PepperSkills"
+"$pepper_repo/scripts/link-path.sh" chat pepper-creative-mode \
+  "$HOME/.local/share/pepper-creative-mode" \
+  "$pepper_repo/plugins/pepper-creative-mode/adapters/chat"
+"$pepper_repo/scripts/link-path.sh" file pepper-prompt-engineer \
+  "$HOME/.local/share/pepper-prompt-engineer-chat.md" \
+  "$pepper_repo/plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md"
+)
+```
+
 ## References
 
 - [Agent Skills specification](https://agentskills.io/specification)

@@ -243,3 +243,20 @@ pepper_source="$pepper_repo/plugins/$pepper_name/skills/$pepper_name"
 результат через `readlink` и вызовите skill в новой сессии. Если вы ссылались на
 корневой `anthropic/INSTALL.md`, инструкция теперь находится в этом документе;
 старый путь на этапе A содержит краткую ссылку на документацию.
+
+Для ссылок на старые `openai/` и файлы чат-промптов используйте общий помощник
+с типом пути. Он проверяет существование новой цели и заменяет только ссылку,
+чья старая цель соответствует ожидаемому пути PepperSkills:
+
+```bash
+(
+set -eu
+pepper_repo="$HOME/projects/PepperSkills"
+"$pepper_repo/scripts/link-path.sh" chat pepper-creative-mode \
+  "$HOME/.local/share/pepper-creative-mode" \
+  "$pepper_repo/plugins/pepper-creative-mode/adapters/chat"
+"$pepper_repo/scripts/link-path.sh" file pepper-prompt-engineer \
+  "$HOME/.local/share/pepper-prompt-engineer-chat.md" \
+  "$pepper_repo/plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md"
+)
+```
