@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased — repository layout transition
+## 2026-09-26 — repository layout transition
+
+Published Creative Mode 2.0.0, Prompt Engineer 2.5.0 and RU Web Compliance 2.0.0.
+[Release links and acceptance record](docs/releases/2026-09-26-transition.md).
 
 | Previous path | Canonical path |
 | --- | --- |
