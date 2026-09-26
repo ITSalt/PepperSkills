@@ -15,12 +15,12 @@
   "logo": "./assets/logo.png",
   "composerIcon": "./assets/logo.png",
   "brandColor": "#173E35",
-  "submissionType": "Skills only",
   "publisher": {
     "name": "ITSalt",
     "email": "info@itsalt.ru",
     "url": "https://github.com/ITSalt/PepperSkills"
   },
+  "submissionType": "Skills only",
   "supportURL": "https://github.com/ITSalt/PepperSkills/issues",
   "privacyPolicyURL": "https://github.com/ITSalt/PepperSkills/blob/main/plugins/pepper-ru-web-compliance/submission/privacy.md",
   "termsOfServiceURL": "https://github.com/ITSalt/PepperSkills/blob/main/plugins/pepper-ru-web-compliance/submission/terms.md",
