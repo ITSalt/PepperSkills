@@ -135,7 +135,7 @@ class AuditRegression(unittest.TestCase):
                     self.assertNotIn('проверенное основание: UNKNOWN', md)
                     self.assertIn('Fixture policy', md)
                     self.assertIn('id="rule-li-001"', md)
-                    if status in ('PASS', 'NA', 'UNKNOWN'):
+                    if status in ('PASS', 'NA'):
                         self.assertIn('**Задач:** 0', render.plan_md(data))
                         self.assertNotIn('Уточнить основания и режим работы аналитики', render.plan_html(data))
                     else:

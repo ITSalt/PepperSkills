@@ -50,8 +50,8 @@ class ReportQuality(unittest.TestCase):
         evidence = [{'kind': 'request', 'detail': 'Обнаруженный запрос',
                      'url': 'https://tracker.example/collect?client=PRIVATE_TEST_ID'}]
         data = self.data(
-            self.finding('CK-005', fix_hint='Уточнить необходимость сервиса.', evidence=evidence),
-            self.finding('PDN-009', fix_hint='Уточнить страну получателя.', evidence=evidence))
+            self.finding('CK-005', manual_check='Уточнить необходимость сервиса.', evidence=evidence),
+            self.finding('PDN-009', manual_check='Уточнить страну получателя.', evidence=evidence))
         for plan in (render.plan_md(data), render.plan_html(data)):
             self.assertEqual(plan.count('Уточнить необходимость сервиса.'), 1)
             self.assertEqual(plan.count('Уточнить страну получателя.'), 1)
@@ -59,7 +59,7 @@ class ReportQuality(unittest.TestCase):
             self.assertIn('CK-005', plan)
             self.assertIn('PDN-009', plan)
         for report in (render.report_md(data), render.report_html(data)):
-            self.assertEqual(report.count('PRIVATE_TEST_ID'), 1)
+            self.assertNotIn('PRIVATE_TEST_ID', report)
             self.assertIn('Доказательство: см.', report)
 
     def test_every_task_has_action_even_without_fix_hint(self):
@@ -104,7 +104,7 @@ class ReportQuality(unittest.TestCase):
         self.assertEqual(rows['INF-003'].status, 'UNKNOWN')
         self.ctx.net['walk'].append({'url': 'https://external.example/telemetry', 'method': 'POST'})
         rows = detect.detect_endpoints(self.ctx)
-        self.assertEqual([r.status for r in rows], ['WARN', 'WARN'])
+        self.assertEqual([r.status for r in rows], ['UNKNOWN', 'UNKNOWN'])
 
     def test_current_complete_findings_and_missing_li(self):
         data = self.data(*(self.finding(r, status='NA') for r in self.ctx.rules))

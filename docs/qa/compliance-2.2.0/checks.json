@@ -1,0 +1,14 @@
+{
+  "native_form_methods": [
+    "GET",
+    "POST"
+  ],
+  "ajax_requests": 2,
+  "frame_attribution": true,
+  "unknown_localization": true,
+  "md_html": true,
+  "html_anchors": true,
+  "html_no_overflow": true,
+  "pdf_generated": true,
+  "scope": "Synthetic intercepted pages only; no metallik or external services audited"
+}

@@ -1,5 +1,13 @@
 # Changelog
 
+## RU Web Compliance 2.2.0 — 2026-09-28
+
+Network observations now retain context without payload values. POST requests
+and endpoint names no longer establish form submission or database location.
+Reports separate verification from confirmed fixes and use reviewed summaries,
+actions, sources and substantive acceptance criteria.
+[Validation and release packages](docs/releases/2026-09-28-compliance-2.2.0.md).
+
 ## Feedback follow-up — 2026-09-26
 
 Compliance 2.1.0 and listing-only patches Creative Mode 2.0.1 /
