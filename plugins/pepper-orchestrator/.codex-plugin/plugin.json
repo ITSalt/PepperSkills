@@ -1,7 +1,7 @@
 {
   "name": "pepper-orchestrator",
   "version": "0.1.0",
-  "description": "Single-orchestrator method for multi-repository programs: plan, work packages, owner queue and verified state in files.",
+  "description": "Preview: single-orchestrator method for multi-repository programs - plan, work packages, owner queue and verified state in files.",
   "author": {
     "name": "ITSalt",
     "email": "info@itsalt.ru",

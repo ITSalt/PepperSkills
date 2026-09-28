@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 0.1.0 — preview, unreleased
+
+Preview of the stage 1 core; formats and commands may change before 1.0.0.
 
 - Stage 1 core: canonical skill with a mode router and modes `init`, `plan`, `resume`, `owner`,
   `decide`.

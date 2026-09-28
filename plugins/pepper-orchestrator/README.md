@@ -1,5 +1,8 @@
 # Pepper Orchestrator
 
+> **Preview (0.1.0).** Stage 1 core: modes `init`, `plan`, `resume`, `owner`, `decide`.
+> Formats and commands may change before 1.0.0.
+
 Portable Agent Plugin for the single-orchestrator (hub-and-spoke) method: one orchestrator
 session plans work that spans several repositories, writes work packages for module sessions,
 verifies their results and keeps all state in versioned Markdown files. Merge, deploy, production
@@ -25,7 +28,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:owner` | owner queue as commands; on "done" verify and close |
 | `/pepper-orchestrator:decide <text>` | record D-n / A-n / Q-n or open an owner question P-n |
 
-Version 0.1.0 is the core (stage 1). Dispatch, review, verify, release and retro modes, reviewer
+Version 0.1.0 is a preview of the core (stage 1). Dispatch, review, verify, release and retro modes, reviewer
 and verifier subagents, and PreToolUse guards come in later versions; until then the skill follows
 the concept for those steps by instructions.
 
