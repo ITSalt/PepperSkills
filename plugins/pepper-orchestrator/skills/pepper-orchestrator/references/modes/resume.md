@@ -6,7 +6,9 @@ step. No argument, or the program name when several workspaces exist.
 ## Steps
 
 1. **Find the workspace.** `orch.py` searches upward for `orch.yaml`, then `features/*/orch.yaml`.
-   With several, ask which program or pass `--workspace`.
+   With several, ask which program and pass `--workspace <dir>` (before or after the
+   subcommand), or set `ORCH_WORKSPACE`. A new orchestrator session can start from
+   `orchestration/bootstrap-prompt.md` of the workspace.
 2. **Read state.** `status.md` (WP table, owner queue, top of the journal), the tail of
    `decisions.md`, `orch.yaml`. `orch.py queue` lists open owner items.
 3. **Reconcile with reality** (concept section 11), read-only, delegated when long:

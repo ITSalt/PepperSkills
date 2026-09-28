@@ -52,9 +52,16 @@ request. A short command such as `/pepper-orchestrator:plan` passes the mode exp
 Without a clear mode: if a workspace exists, run `resume`; otherwise propose `init`.
 
 Planned modes, not automated in this version: `dispatch`, `review`, `verify`, `release`, `retro`.
-When the program needs them, follow the concept directly: dispatch per sections 6, 7 and 18,
-review per section 8, verify per section 9, release per section 15. Record every result through
-`scripts/orch.py` as usual.
+When the program needs them, follow the concept directly: review per section 8, verify per
+section 9, release per section 15. Record every result through `scripts/orch.py` as usual.
+
+**Dispatch in this version:** give the owner the `Start command` from section 5 of the work
+package, exactly as written, then `orch.py set <WP> status DISPATCHING`. The command has no
+`--settings`: session settings files are not generated before a later version. Never add
+`--settings`, never point to a settings file and never invent one (a missing settings file makes
+the session fail to start). The command shape in concept section 18 applies only once
+`orchestration/settings/` exists. Until then the rules of concept section 12 reach the session as
+instructions in the work package.
 
 ## Tools
 
@@ -102,8 +109,8 @@ files and run Python. Client-specific capabilities are adapters:
   same work yourself, read-only, and keep only conclusions in context.
 - **Cross-session messaging** (Claude Code `SendMessage` / `ListAgents`): where it is missing, the
   owner relays the one-line pointers and `resume` learns READY from `gh pr list`.
-- **Session start commands** (`claude --name ... --settings ...`): elsewhere, give the owner the
-  start prompt from the work package to paste into a new session in the module repository.
+- **Session start commands** (`claude --name ...`): elsewhere, give the owner the start prompt
+  from the work package to paste into a new session in the module repository.
 
 ## Optional specification graph
 

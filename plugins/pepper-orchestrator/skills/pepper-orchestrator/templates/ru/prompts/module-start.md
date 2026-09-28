@@ -1,1 +1,0 @@
-cd {{REPO}} && claude --name {{SESSION}} "Прочитай {{WP_PATH}} и выполни. Ветка {{BRANCH}} от {{BASE}}, PR в {{BASE}}, не мержить. По готовности — сообщение {{COORDINATOR}}: [{{TAG}}] READY {{WP}} :: <sha> :: ref=<PR URL>"

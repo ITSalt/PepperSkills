@@ -37,7 +37,7 @@ free text. Requires a workspace; if none exists, run `init` first and say so.
 
 - Outcome: number of waves and packages, which are READY, which wait for answers.
 - P-n questions with recommendations, in the owner format.
-- Next step: dispatch of the READY packages (start commands come from the `Start prompt` section
-  of each package; concept section 18 has the command shape).
+- Next step: dispatch of the READY packages: the `Start command` from section 5 of each package,
+  copied as written. No `--settings` in this version; never invent a settings file.
 
 Do not start sessions, merge, deploy or write to databases in this mode.

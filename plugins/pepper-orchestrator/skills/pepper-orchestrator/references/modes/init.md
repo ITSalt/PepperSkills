@@ -39,5 +39,9 @@ a title and modules.
 - Next step: `plan <task>`.
 
 Session settings files (`orchestration/settings/<module>.json`) and PreToolUse guards are not
-generated in this version; the owner starts module sessions without `--settings` until then, and
-the rules of concept section 12 apply as instructions.
+generated in this version. The owner starts module sessions without `--settings` until then (the
+`Start command` of each work package); never write or reference a settings file by hand. The rules
+of concept section 12 apply as instructions.
+
+`orchestration/bootstrap-prompt.md` holds the first message for a new orchestrator session of this
+program; give it to the owner together with the outcome.

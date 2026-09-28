@@ -1,1 +1,0 @@
-cd {{REPO}} && claude --name {{SESSION}} "Read {{WP_PATH}} and implement it. Branch {{BRANCH}} from {{BASE}}, PR to {{BASE}}, do not merge. When done, send to {{COORDINATOR}}: [{{TAG}}] READY {{WP}} :: <sha> :: ref=<PR URL>"
