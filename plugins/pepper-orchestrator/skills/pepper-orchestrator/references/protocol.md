@@ -60,3 +60,16 @@ Rules that hold on every transport:
 
 Change a status only with `orch.py set <WP> status <STATUS> --evidence "<fact>"`: it updates the
 row and writes the journal line in one step.
+
+## Streams, locks and the merge queue
+
+- A stream is a module that is an area or a domain of a shared repository. Each stream session
+  works in its own worktree and branch; section 0 of its package prepares the worktree.
+- Locks live in the `<!-- orch:locks -->` table of `status.md`, one row per `<repo>:<name>`, where
+  the name is a shared path or a resource. Only the holder changes a shared path, pushes a
+  migration, verifies on the stand or runs the dev stack on fixed ports. `Waiting` lists packages
+  queued for the lock; release names the next one.
+- The merge queue lives in the `<!-- orch:merge -->` table. With `merge_policy: sequential` each
+  row names the package to rebase after; the owner merges one at a time and waits for the green
+  stand deploy and health check before the next.
+- A 0.1.0 workspace gets both tables with `orch.py upgrade`; nothing else changes.
