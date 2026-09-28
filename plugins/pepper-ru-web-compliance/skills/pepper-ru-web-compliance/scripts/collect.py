@@ -39,6 +39,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from network_evidence import payload_shape, safe_url
 
 SCHEMA_VERSION = 1
 USER_AGENT = (
@@ -517,19 +518,52 @@ class NetworkRecorder:
 
     def __init__(self) -> None:
         self.requests: list[dict[str, Any]] = []
+        self.cdp_requests = []
+        self.form_navigations = {}
+        self.cdp = None
 
     def attach(self, page, phase: str, page_url: str) -> None:
+        self.request_start = len(self.requests)
+        self.cdp_requests = []
+        self.form_navigations = {}
+        # CDP records the browser's navigation reason; URL names alone never
+        # establish that a request submitted a form. Collection does not submit forms.
+        try:
+            self.cdp = page.context.new_cdp_session(page)
+            self.cdp.send('Network.enable')
+            self.cdp.send('Page.enable')
+            self.cdp.on('Page.frameRequestedNavigation', self.on_navigation)
+            self.cdp.on('Network.requestWillBeSent', self.on_cdp_request)
+        except Exception:
+            self.cdp = None
+
         def on_request(request):
             try:
-                self.requests.append({
+                row = {
+                    "observation_version": 2,
+                    "request_id": f"{phase}:{len(self.requests) + 1}",
                     "phase": phase,
-                    "page": page_url,
+                    "page": safe_url(page.url) or safe_url(page_url),
                     "url": request.url,
                     "host": urllib.parse.urlparse(request.url).netloc,
                     "method": request.method,
                     "resource_type": request.resource_type,
                     "is_navigation": request.is_navigation_request(),
-                })
+                    "frame": None,
+                    "initiator": {"type": "unavailable"},
+                }
+                # Missing metadata must not discard the observed request.
+                try:
+                    row['frame'] = safe_url(request.frame.url)
+                except Exception:
+                    pass
+                try:
+                    content_type = request.headers.get('content-type', '')
+                    row['content_type'] = content_type.split(';')[0].lower()
+                    row['payload_shape'] = payload_shape(request.url, content_type, request.post_data)
+                except Exception:
+                    row['payload_shape'] = {'body_inspected': False, 'values_retained': False}
+                self.requests.append(row)
             except Exception:
                 pass
 
@@ -537,8 +571,39 @@ class NetworkRecorder:
         self.handler = on_request
         page.on("request", on_request)
 
+    def on_navigation(self, event):
+        self.form_navigations[event['frameId']] = event
+
+    def on_cdp_request(self, event):
+        request = event['request']
+        initiator = event.get('initiator') or {}
+        stack = (initiator.get('stack') or {}).get('callFrames') or []
+        meta = {'initiator': {'type': initiator.get('type', 'unavailable'),
+                             'script_url': safe_url(stack[0].get('url')) if stack else safe_url(initiator.get('url'))}}
+        nav = self.form_navigations.pop(event.get('frameId'), None) if event.get('type') == 'Document' else None
+        reasons = {'formSubmissionGet': 'GET', 'formSubmissionPost': 'POST'}
+        if (nav and reasons.get(nav.get('reason')) == request.get('method')
+                and safe_url(nav.get('url')) == safe_url(request.get('url'))):
+            meta['form_relation'] = {'confirmed': True, 'source': 'cdp:Page.frameRequestedNavigation',
+                                     'reason': nav['reason'], 'action': safe_url(nav['url'])}
+        self.cdp_requests.append((request['url'], request['method'], meta))
+
     def detach(self):
         self.page.remove_listener("request", self.handler)
+        # Reconcile after capture to tolerate either Playwright/CDP event order.
+        from collections import defaultdict, deque
+        meta = defaultdict(deque)
+        for url, method, item in self.cdp_requests:
+            meta[(url, method)].append(item)
+        for row in self.requests[self.request_start:]:
+            matches = meta[(row['url'], row['method'])]
+            if matches:
+                row.update(matches.popleft())
+        if self.cdp:
+            try:
+                self.cdp.detach()
+            except Exception:
+                pass
 
 
 def browser_collect(target: str, pages: list[str], out: Path,
@@ -651,6 +716,7 @@ def browser_collect(target: str, pages: list[str], out: Path,
                         full_page=False)
         manifest.banner = banner
 
+        after.detach()
         write_jsonl(out / "network" / "before_consent.jsonl", before.requests)
         write_jsonl(out / "network" / "after_consent.jsonl", after.requests)
         page.close()
@@ -688,6 +754,7 @@ def browser_collect(target: str, pages: list[str], out: Path,
             except Exception as exc:
                 art.error = f"{type(exc).__name__}: {exc}"
             finally:
+                walker.detach()
                 p.close()
             manifest.pages.append(asdict(art))
             page_dir = out / "pages" / art.slug

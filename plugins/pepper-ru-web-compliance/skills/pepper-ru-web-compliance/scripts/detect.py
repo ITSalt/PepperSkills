@@ -40,6 +40,8 @@ from typing import Any, Callable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import registries as reg  # noqa: E402
 from report_provenance import current_producer
+from network_evidence import classify_request, request_context, safe_url
+from review_contract import valid_action_review
 
 ROOT = Path(__file__).resolve().parent.parent
 RULES_PATH = ROOT / "scripts" / "rules.yaml"
@@ -79,6 +81,7 @@ class Evidence:
     url: str | None = None
     selector: str | None = None
     snippet: str | None = None
+    context: dict[str, Any] | None = None
 
 
 @dataclass
@@ -100,6 +103,7 @@ class Finding:
     fix_hint: str | None = None
     # Как проверить пункт руками. Нужна там, где скрипт вывода не даёт:
     # «не проверено» без инструкции — это перекладывание проблемы на читателя.
+    rule_evidence: list[str] = field(default_factory=list)
     manual_check: str | None = None
     # Чем правило проверяется (script | hybrid | llm | info_only) и как звучит
     # условие соблюдения. Нужно плану: критерий приёмки «прогнать detect.py»
@@ -318,6 +322,7 @@ def mk(ctx: Context, rule_id: str, status: str, summary: str,
         summary=summary,
         evidence=[asdict(e) for e in (evidence or [])],
         fix_hint=rule.get("fix_hint"),
+        rule_evidence=rule.get("evidence") or [],
         manual_check=extra.pop("manual_check", None) or rule.get("manual_check"),
         check=rule.get("check"),
         pass_criterion=(rule.get("status_logic") or {}).get("PASS"),
@@ -1425,47 +1430,43 @@ def detect_endpoints(ctx: Context) -> list[Finding]:
     if ctx.degraded:
         return [mk(ctx, rid, "UNKNOWN", "Без рендера приёмники форм не наблюдаются")
                 for rid in ("PDN-011", "INF-003")]
-    posts: dict[str, Evidence] = {}
-    # Встроенные плееры и CDN шлют POST-телеметрию, и считать её отправкой
-    # персональных данных нельзя: правило про приёмники форм, а не про любой POST.
-    media_specs = ctx.sig["trackers"]["foreign_infra"]
-    media_hosts = {s["host"] for s in media_specs}
-    media_patterns = ("googlevideo.com", "youtube.com", "ytimg.com", "vimeocdn.com",
-                      "doubleclick.net", "google-analytics.com", "googletagmanager.com",
-                      "googleapis.com", "gstatic.com")
+    ev = []
+    seen = set()
     for req in ctx.all_requests():
-        if req.get("method") != "POST":
+        category, basis = classify_request(req)
+        # Keep same-origin and GET data flows too. A payload field is only a
+        # candidate, not proof of personal data or a form submission.
+        if not (category != "unknown" or req.get("method") not in ("GET", "HEAD")
+                or req.get("resource_type") in ("xhr", "fetch", "ping", "other")
+                or (req.get("payload_shape") or {}).get("known_fields")):
             continue
-        if req.get("resource_type") not in (None, "xhr", "fetch", "document", "other"):
+        url = safe_url(req.get("url"))
+        if not url:
             continue
-        host = host_of(req["url"])
-        if not host or first_party(req["url"], ctx.target):
+        context = request_context(req)
+        key = (url, req.get("method"), req.get("phase"), req.get("page"), category)
+        if key in seen:
             continue
-        if host in media_hosts or any(p in host for p in media_patterns):
-            continue
-        posts.setdefault(host, Evidence(
-            kind="request", detail=f"POST на сторонний хост {host}",
-            url=req["url"][:200]))
-    actions = [(p.get("slug"), f.get("action")) for p in ctx.pages
-               for f in (p.get("forms") or [])
-               if (f.get("action") or "").startswith("http")
-               and not first_party(f["action"], ctx.target)]
-
-    ev = list(posts.values())[:6] + [
-        Evidence(kind="dom", detail=f"форма отправляется на {a}", selector=s)
-        for s, a in actions[:4]]
-    if ev:
-        return [mk(ctx, "PDN-011", "WARN",
-                   "Наблюдаются сторонние POST или action форм; место первичной записи не установлено",
-                   ev, needs_llm=True),
-                mk(ctx, "INF-003", "WARN",
-                   "Сторонние запросы требуют проверки назначения, получателя и страны", ev, needs_llm=True)]
+        seen.add(key)
+        detail = f"{req.get('method', '?')}: {basis}"
+        if context['observation_version'] != 2:
+            detail += "; старый журнал без расширенных сведений о запросе"
+        elif not context['metadata_complete']:
+            detail += "; часть контекста запроса недоступна"
+        ev.append(Evidence(kind="request", detail=detail, url=url, context=context))
+    for page in ctx.pages:
+        for form in page.get("forms") or []:
+            action = urllib.parse.urljoin(page.get("url") or ctx.target, form.get("action") or "")
+            ev.append(Evidence(kind="dom", url=safe_url(action), selector=page.get("slug"),
+                detail="В разметке указан адрес формы; фактическая отправка и хранение не подтверждены"))
     return [mk(ctx, "PDN-011", "UNKNOWN",
-               "Сторонние приёмники форм не наблюдались; размещение базы данных не установлено",
-               needs_llm=True),
+               "Локализация хранения не подтверждена. Сетевые запросы и адреса форм "
+               "не устанавливают состав персональных данных и размещение баз",
+               ev, needs_llm=True),
             mk(ctx, "INF-003", "UNKNOWN",
-               "Страна приёмников не подтверждена; собственный домен не определяет географию хранения",
-               needs_llm=True)]
+               "Назначение запросов и страна хранения требуют подтверждения; "
+               "домен и HTTP-метод не определяют географию базы",
+               ev, needs_llm=True)]
 
 
 
@@ -1586,6 +1587,8 @@ def attach_semantic_reviews(ctx: Context, findings: list[Finding]):
         if not isinstance(activities, list) or not all(isinstance(a, dict) for a in activities):
             continue
         if not isinstance(item["evidence"], list):
+            continue
+        if not valid_action_review(item):
             continue
         required = {(a["service"], a["purpose"]) for a in f.processing_activities}
         verified = {(a.get("service"), a.get("purpose")) for a in activities

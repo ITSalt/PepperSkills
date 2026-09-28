@@ -1,0 +1,192 @@
+PASS offline guard denies and records DNS attempts in child Python processes
+current: pepper-creative-mode 2.0.1
+current: pepper-prompt-engineer 2.5.1
+current: pepper-ru-web-compliance 2.2.0
+valid + synchronized: pepper-creative-mode
+valid + synchronized: pepper-prompt-engineer
+valid + synchronized: pepper-ru-web-compliance
+PASS OpenAI final listing limits, including Cyrillic and overlong package-valid text
+PASS checkpoint chat golden: plugins/pepper-creative-mode/adapters/chat/custom-instructions.md
+PASS checkpoint chat golden: plugins/pepper-creative-mode/adapters/chat/system-prompt.md
+PASS checkpoint chat golden: plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md
+PASS explicit template languages and localized missing references
+совпадения по реестру
+  ok   «вот так» не срабатывает на «вот такой результат»
+  ok   «Вот Так» в кавычках находится
+  ok   «Вот Так» после слова «издание» находится
+  ok   «Действие» не срабатывает на «действия»
+  ok   «Действие» в кавычках находится
+  ok   «СИЧ-С14» находится без кавычек
+  ok   многословное название находится в тексте
+  ok   исключённая запись не даёт совпадения
+  ok   weak_phrase отличает обиходную фразу от короткого названия
+признаки авторизации
+  ok   «вход» не находится внутри «входные»
+  ok   «вход» находится отдельным словом
+  ok   подписи ссылок извлекаются из разметки
+  ok   текст абзаца не попадает в подписи ссылок
+полнота отчёта
+  ok   статус есть у каждого правила
+  ok   все статусы из допустимого набора
+  ok   без признаков входа AUTH-004 — не применимо
+авторизация без страницы входа
+  ok   ссылка «Войти» без страницы входа даёт UNKNOWN, а не нарушение
+границы сайта
+  ok   поддомен считается тем же сайтом
+  ok   похожий чужой домен не считается тем же сайтом
+  ok   составной суффикс разбирается правильно
+  ok   поддомен — не сторонний приёмник данных
+доступ к политике
+  ok   страница политики не нарушает требование ссылкой на саму себя
+форма плашки иноагента
+  ok   без загруженного реестра форма плашки остаётся без вывода
+  ok   у INF-004 есть инструкция ручной проверки
+подвал и ссылки отчёта
+  ok   название скилла есть в записке
+  ok   автор есть в записке
+  ok   репозиторий есть в записке
+  ok   канал есть в записке
+  ok   почта есть в записке
+  ok   ссылка из инструкции кликабельна в HTML
+  ok   служебное обоснование не попадает в отчёт
+типографика сумм
+  ok   разряды числа склеены неразрывным пробелом
+  ok   в строке таблицы знака рубля нет — он в заголовке колонки
+  ok   раскладка wide: валюта в заголовке
+  ok   раскладка wide: сумма не рвётся
+  ok   раскладка stacked: валюта в заголовке
+  ok   раскладка stacked: сумма не рвётся
+  ok   раскладка twoline: валюта в заголовке
+  ok   раскладка twoline: сумма не рвётся
+контрольные суммы реквизитов
+  ok   валидный ИНН юрлица принят
+  ok   испорченный ИНН отклонён
+  ok   телефон не проходит как ИНН
+JSON-двойники данных
+  ok   rules.json совпадает с rules.yaml
+  ok   signatures.json совпадает с signatures.yaml
+основание обработки аналитики
+  ok   заявленный законный интерес распознан
+  ok   упоминание возражения не подтверждает основание или работающий отказ
+  ok   аналитический запрос отличён от отсутствия трекеров
+квалификация cookie и трекеров
+  ok   техническая страница без аналитики не требует баннер автоматически
+  ok   отсутствие баннера при аналитике требует квалификации, а не FAIL
+  ok   аналитика без баннера требует проверки основания
+  ok   иностранный домен фиксируется как факт для правовой проверки
+
+все проверки пройдены
+........
+----------------------------------------------------------------------
+Ran 8 tests in 0.265s
+
+OK
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.525s
+
+OK
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.470s
+
+OK
+Schema OK — 11 scenarios well-formed.
+
+PASS positive-cookie-no-optional-tracking
+PASS positive-consent-gating
+PASS positive-legitimate-interest
+PASS positive-remediation
+PASS positive-manual-mode
+PASS negative-no-banner-fail
+PASS negative-foreign-domain-is-violation
+PASS negative-legitimate-interest-is-consent
+PASS safe skill, chat, and prompt links in Bash and Zsh
+PASS published commands: installation-and-updates.md block 1 / bash
+PASS published commands: installation-and-updates.md block 2 / bash
+PASS published commands: installation-and-updates.md block 3 / bash
+PASS published commands: installation-and-updates.ru.md block 1 / bash
+PASS published commands: installation-and-updates.ru.md block 2 / bash
+PASS published commands: installation-and-updates.ru.md block 3 / bash
+PASS published commands: installation-and-updates.md block 1 / zsh
+PASS published commands: installation-and-updates.md block 2 / zsh
+PASS published commands: installation-and-updates.md block 3 / zsh
+PASS published commands: installation-and-updates.ru.md block 1 / zsh
+PASS published commands: installation-and-updates.ru.md block 2 / zsh
+PASS published commands: installation-and-updates.ru.md block 3 / zsh
+current: pepper-creative-mode 2.0.1
+current: pepper-prompt-engineer 2.5.1
+current: pepper-ru-web-compliance 2.2.0
+valid + synchronized: pepper-creative-mode
+valid + synchronized: pepper-prompt-engineer
+valid + synchronized: pepper-ru-web-compliance
+packaged: pepper-creative-mode 2.0.1 (skill)
+packaged: pepper-prompt-engineer 2.5.1 (skill)
+packaged: pepper-ru-web-compliance 2.2.0 (skill)
+current: pepper-creative-mode 2.0.1
+current: pepper-prompt-engineer 2.5.1
+current: pepper-ru-web-compliance 2.2.0
+valid + synchronized: pepper-creative-mode
+valid + synchronized: pepper-prompt-engineer
+valid + synchronized: pepper-ru-web-compliance
+packaged: pepper-creative-mode 2.0.1 (plugin)
+packaged: pepper-prompt-engineer 2.5.1 (plugin)
+packaged: pepper-ru-web-compliance 2.2.0 (plugin)
+Compatibility archive matches pepper-ru-web-compliance 2.2.0
+........
+----------------------------------------------------------------------
+Ran 8 tests in 0.282s
+
+OK
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.544s
+
+OK
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.479s
+
+OK
+........
+----------------------------------------------------------------------
+Ran 8 tests in 0.268s
+
+OK
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.524s
+
+OK
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.484s
+
+OK
+packaged: pepper-creative-mode 2.0.1 (skill)
+packaged: pepper-prompt-engineer 2.5.1 (skill)
+packaged: pepper-ru-web-compliance 2.2.0 (skill)
+packaged: pepper-creative-mode 2.0.1 (plugin)
+packaged: pepper-prompt-engineer 2.5.1 (plugin)
+packaged: pepper-ru-web-compliance 2.2.0 (plugin)
+PASS package dist/pepper-creative-mode/2.0.1/pepper-creative-mode.plugin.zip
+PASS package dist/pepper-creative-mode/2.0.1/pepper-creative-mode.zip
+PASS package dist/pepper-prompt-engineer/2.5.1/pepper-prompt-engineer.plugin.zip
+PASS package dist/pepper-prompt-engineer/2.5.1/pepper-prompt-engineer.zip
+PASS package dist/pepper-ru-web-compliance/2.2.0/pepper-ru-web-compliance.plugin.zip
+PASS package dist/pepper-ru-web-compliance/2.2.0/pepper-ru-web-compliance.zip
+PASS reproducible ZIP metadata across file order, mtime, mode, umask, TZ, and source roots
+PASS read-only stale rejection: template
+PASS read-only stale rejection: reference
+PASS read-only stale rejection: version
+PASS read-only stale rejection: license
+PASS read-only stale rejection: listing-extra
+PASS read-only stale rejection: interface
+PASS read-only stale rejection: install-pointer
+PASS read-only stale rejection: rules-json
+PASS read-only stale rejection: signatures-json
+PASS manifest check reports every stale adapter without writing
+PASS builders without legacy paths

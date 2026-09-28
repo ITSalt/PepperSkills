@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+from review_contract import valid_action_review
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -47,6 +48,9 @@ def consistency_issues(data):
         f = rows.get(rule, {})
         return (f.get('semantic_review') or {}).get('status', f.get('status'))
     issues = []
+    for row in rows.values():
+        if row.get('semantic_review') and not valid_action_review(row['semantic_review']):
+            issues.append(row['rule_id'] + ': неполное или несогласованное действие смысловой оценки.')
     basis = rows.get('PDN-013', {})
     review = basis.get('semantic_review') or {}
     consent_claimed = ('соглас' in basis.get('summary', '').lower() or
