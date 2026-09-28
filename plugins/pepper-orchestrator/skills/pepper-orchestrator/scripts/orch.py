@@ -296,7 +296,11 @@ class Workspace:
         Resolved once per Workspace so that Repo objects compare by identity."""
         if not hasattr(self, '_streams'):
             self._streams = streams.resolve(self.config)
-        return self._streams
+        return self._streams[:3]
+
+    def stream_warnings(self):
+        self.streams()
+        return self._streams[3]
 
     @property
     def lang(self):
@@ -404,7 +408,7 @@ def cmd_init(args):
             if not match or match.group(2) not in repo_ids:
                 raise OrchError(f'--{kind} must be id=REPO_ID:GLOB[,GLOB...] with a --repo id: {spec}')
             areas.append({'id': match.group(1), 'kind': kind, 'repo': match.group(2),
-                          'paths': [g.strip() for g in match.group(3).split(',') if g.strip()],
+                          'paths': streams.split_top(match.group(3)),
                           'session': f'{program}-{match.group(1)}'})
     parent = root.resolve().parent
     while not parent.exists():
@@ -415,6 +419,12 @@ def cmd_init(args):
          for spec in args.module or [] for m in [spec.split('=', 1)[0]] if '=' in spec])
     if conflict:
         raise OrchError(conflict)
+    for a in areas:
+        for pattern in a['paths']:
+            try:
+                streams.expand_braces(pattern)
+            except streams.StreamError as error:
+                raise OrchError(f'--{a["kind"]} {a["id"]}: {error}')
     tag = (args.tag or program.split('-')[0]).upper()
     title = args.title or program
     base = {'PROGRAM': program, 'PROGRAM_TITLE': title, 'TAG': tag, 'LANG': lang,
@@ -451,6 +461,8 @@ def cmd_init(args):
     ws = Workspace(root)
     ws.journal(f'workspace created ({lang})', evidence='orch.py init')
     print(f'workspace: {root}')
+    for warning in lint_warnings(ws):
+        print(f'warning: {warning}')
     for r in repos:
         if not r['detected']:
             print(f'note: repo {r["id"]}: branch_prefix not found in the repository convention; '
@@ -745,7 +757,10 @@ def lint(ws):
     for dup in sorted({n for n in lock_names if lock_names.count(n) > 1}):
         errors.append(f'status.md: lock {dup} appears twice')
     for r in tables.get('locks', []):
-        if r['holder'] not in wp_ids:
+        if r['holder'] == FREE:
+            if not waiting_of(r):
+                errors.append(f'status.md: free lock {r["lock"]} without a queue should be removed')
+        elif r['holder'] not in wp_ids:
             errors.append(f'status.md: lock {r["lock"]} held by unknown WP {r["holder"]}')
         if not re.fullmatch(r'[a-z0-9][a-z0-9-]*:.+', r['lock']):
             errors.append(f'status.md: lock name must be <repo>:<name>: {r["lock"]}')
@@ -785,9 +800,21 @@ def lint(ws):
     return errors
 
 
+def lint_warnings(ws):
+    """Non-blocking findings: 0.1.0 modules sharing a checkout, workspace in a module's main checkout."""
+    warnings = list(ws.stream_warnings())
+    _, modules, _ = ws.streams()
+    warning = streams.main_checkout_warning(ws.root, modules.values())
+    if warning:
+        warnings.append(warning)
+    return warnings
+
+
 def cmd_lint(args):
     ws = Workspace(find_workspace(args.workspace))
     errors = lint(ws)
+    for warning in lint_warnings(ws):
+        print(f'lint: warning: {warning}', file=sys.stderr)
     for error in errors:
         print(f'lint: {error}', file=sys.stderr)
     if not errors:
@@ -810,10 +837,12 @@ def cmd_commit(args):
     if git(ws.root, 'rev-parse', '--is-inside-work-tree', check=False).returncode:
         raise OrchError(f'{ws.root} is not inside a git repository')
     repos, modules, _ = ws.streams()
-    all_repos = list({id(m.repo): m.repo for m in modules.values()}.values()) + list(repos.values())
+    all_repos = list({m.repo.key: m.repo for m in modules.values()}.values()) + list(repos.values())
     conflict = streams.module_repo_conflict(ws.root, all_repos)
     if conflict:
         raise OrchError(conflict + '; nothing committed')
+    for warning in lint_warnings(ws):
+        print(f'lint: warning: {warning}', file=sys.stderr)
     git(ws.root, 'add', '-A', '--', '.')
     if not git(ws.root, 'diff', '--cached', '--name-only', '--', '.').stdout.strip():
         print('commit: nothing to commit')
@@ -905,43 +934,114 @@ def lock_key(repo, name):
     return f'{repo.id}:{name}'
 
 
-def acquire(ws, key, repo_id, wp, note='—'):
-    """Take a lock; returns the other holder when it is busy (and queues wp)."""
-    rows = locks(ws)
-    held = [r for r in rows if r['lock'] == key]
-    if held and held[0]['holder'] == wp:
-        return None
-    if held:
-        holder = held[0]['holder']
-        waiting = [w for w in held[0]['waiting'].split(', ') if w and w != '—']
-        if wp not in waiting:
-            waiting.append(wp)
+FREE = '—'
 
-            def queue(body):
-                out = []
-                for line in body:
-                    cells = split_row(line)
-                    if cells and cells[0] == key:
-                        cells[4] = cell(', '.join(waiting))
-                        line = '| ' + ' | '.join(cells) + ' |'
-                    out.append(line)
-                return out
-            ws.rewrite_table(ws.status, 'locks', queue)
-        return holder
-    line = row([key, repo_id, wp, now_utc(), '—', note])
+
+def waiting_of(lock):
+    return [w for w in lock['waiting'].split(', ') if w and w != FREE]
+
+
+def lock_kind(repo, name):
+    """'resource' or 'path'; anything else is refused (typos must not create new locks)."""
+    if name in repo.resources:
+        return 'resource'
+    try:
+        if any(streams.patterns_overlap(name, shared) for shared in repo.shared_paths):
+            return 'path'
+    except streams.StreamError as error:
+        raise OrchError(str(error))
+    raise OrchError(f'unknown lock {name!r} in repo {repo.id}: not one of its resources '
+                    f'({", ".join(repo.resources) or "none"}) and not within its shared_paths '
+                    f'({", ".join(repo.shared_paths) or "none"})')
+
+
+def lock_conflicts(ws, repo, name, wp):
+    """Locks of the same repository held by others that collide with name (paths by glob)."""
+    kind = lock_kind(repo, name)
+    found = []
+    for lock in locks(ws):
+        if lock['repo'] != repo.id or lock['holder'] in (wp, FREE):
+            continue
+        other = lock['lock'].split(':', 1)[-1]
+        other_kind = 'resource' if other in repo.resources else 'path'
+        if kind == other_kind and (other == name or (kind == 'path' and streams.patterns_overlap(other, name))):
+            found.append(lock)
+    return found
+
+
+def update_lock(ws, key, change=None, remove=False):
+    def transform(body):
+        out = []
+        for line in body:
+            cells = split_row(line)
+            if cells and cells[0] == key:
+                if remove:
+                    continue
+                values = dict(zip(TABLES['locks'][1], cells))
+                values.update(change or {})
+                line = '| ' + ' | '.join(cell(values[c]) if c in (change or {}) else values[c]
+                                         for c in TABLES['locks'][1]) + ' |'
+            out.append(line)
+        return out
+    ws.rewrite_table(ws.status, 'locks', transform)
+
+
+def queue_wp(ws, lock, wp):
+    waiting = waiting_of(lock)
+    if wp not in waiting:
+        update_lock(ws, lock['lock'], {'waiting': ', '.join(waiting + [wp])})
+
+
+def leave_queues(ws, repo, wp):
+    """wp got what it waited for: drop it from every queue of the repository."""
+    for lock in locks(ws):
+        if lock['repo'] != repo.id or wp not in waiting_of(lock):
+            continue
+        rest = [w for w in waiting_of(lock) if w != wp]
+        if lock['holder'] == FREE and not rest:
+            update_lock(ws, lock['lock'], remove=True)
+        else:
+            update_lock(ws, lock['lock'], {'waiting': ', '.join(rest) or FREE})
+
+
+def acquire(ws, repo, name, wp, note='—'):
+    """Take a lock; when it (or an overlapping one) is busy, queue wp and return the holders."""
+    key = lock_key(repo, name)
+    busy = lock_conflicts(ws, repo, name, wp)
+    if busy:
+        for lock in busy:
+            queue_wp(ws, lock, wp)
+        return sorted({lock['holder'] for lock in busy})
+    exact = [lock for lock in locks(ws) if lock['lock'] == key]
+    if exact and exact[0]['holder'] == wp:
+        return []
+    if exact:  # a free row that keeps its queue
+        waiting = waiting_of(exact[0])
+        if waiting and wp not in waiting:
+            queue_wp(ws, exact[0], wp)
+            return [f'queue ({waiting[0]} first)']
+        update_lock(ws, key, {'holder': wp, 'since': now_utc(), 'note': note,
+                              'waiting': ', '.join(w for w in waiting if w != wp) or FREE})
+        leave_queues(ws, repo, wp)
+        return []
+    line = row([key, repo.id, wp, now_utc(), FREE, note])
     ws.rewrite_table(ws.status, 'locks', lambda body: body + [line])
-    return None
+    leave_queues(ws, repo, wp)
+    return []
 
 
 def release(ws, key, wp):
+    """Release a lock held by wp; a lock with a queue stays as a free row keeping the queue."""
     rows = [r for r in locks(ws) if r['lock'] == key]
     if not rows:
         raise OrchError(f'lock {key} is not held')
     if rows[0]['holder'] != wp:
         raise OrchError(f'lock {key} is held by {rows[0]["holder"]}, not {wp}')
-    waiting = [w for w in rows[0]['waiting'].split(', ') if w and w != '—']
-    ws.rewrite_table(ws.status, 'locks',
-                     lambda body: [l for l in body if (split_row(l) or [''])[0] != key])
+    waiting = waiting_of(rows[0])
+    if waiting:
+        update_lock(ws, key, {'holder': FREE, 'since': now_utc(), 'note': f'released by {wp}'})
+    else:
+        update_lock(ws, key, remove=True)
     return waiting
 
 
@@ -957,8 +1057,8 @@ def resolve_lock_name(ws, name, wp, repo_id):
             raise OrchError(f'unknown repo {repo_id}')
         repo = candidates[repo_id]
     else:
-        all_repos = {id(m.repo): m.repo for m in modules.values()}
-        all_repos.update({id(r): r for r in repos.values()})
+        all_repos = {m.repo.key: m.repo for m in modules.values()}
+        all_repos.update({r.key: r for r in repos.values()})
         if len(all_repos) != 1:
             raise OrchError('several repositories: pass --wp or --repo')
         repo = next(iter(all_repos.values()))
@@ -975,17 +1075,19 @@ def cmd_lock(args):
         elif not rows:
             print('locks: none')
         for r in [] if args.json else rows:
-            print(f'{r["lock"]} | holder {r["holder"]} | since {r["since"]} | waiting {r["waiting"]}')
+            holder = 'free' if r['holder'] == FREE else f'holder {r["holder"]}'
+            print(f'{r["lock"]} | {holder} | since {r["since"]} | waiting {r["waiting"]}')
         return 0
     if not args.name or not args.wp:
         raise OrchError(f'lock {args.action} needs a lock name and --wp')
     repo, key = resolve_lock_name(ws, args.name, args.wp, args.repo)
+    name = key.split(':', 1)[1]
     if args.action == 'acquire':
-        holder = acquire(ws, key, repo.id, args.wp, args.note or '—')
-        if holder:
-            ws.journal(f'{args.wp} waits for lock {key} held by {holder}', wp=args.wp,
+        holders = acquire(ws, repo, name, args.wp, args.note or '—')
+        if holders:
+            ws.journal(f'{args.wp} waits for lock {key} ({", ".join(holders)})', wp=args.wp,
                        evidence='orch.py lock acquire')
-            print(f'lock {key}: busy, held by {holder}; {args.wp} queued', file=sys.stderr)
+            print(f'lock {key}: busy ({", ".join(holders)}); {args.wp} queued', file=sys.stderr)
             return 1
         ws.journal(f'lock {key} acquired', wp=args.wp, evidence=args.note or 'orch.py lock')
         print(f'lock {key}: held by {args.wp}')
@@ -1014,7 +1116,7 @@ def dispatch_problems(ws, wp):
             _, omodule, ometa = wp_context(ws, other)
         except OrchError:
             continue
-        if omodule.repo is not module.repo:
+        if omodule.repo.key != module.repo.key:
             continue
         if not module.worktree_mode or not omodule.worktree_mode:
             problems.append(f'{other} ({orow["status"]}) is writing in the same repository and one of '
@@ -1025,13 +1127,22 @@ def dispatch_problems(ws, wp):
             for a, b in streams.overlap_outside_shared(meta['paths'], ometa['paths'],
                                                        module.repo.shared_paths):
                 problems.append(f'paths overlap with {other} outside shared paths: {a} ~ {b}')
-    wanted = [lock_key(module.repo, n) for n in meta['shared'] + meta['resources']]
-    busy = {}
-    for lock in locks(ws):
-        if lock['lock'] in wanted and lock['holder'] != wp:
-            busy[lock['lock']] = lock['holder']
-    for key, holder in busy.items():
-        problems.append(f'lock {key} is held by {holder}')
+    wanted, busy = [], {}
+    for name in meta['shared'] + meta['resources']:
+        try:
+            conflicts = lock_conflicts(ws, module.repo, name, wp)
+        except OrchError as error:
+            problems.append(str(error))
+            continue
+        wanted.append(name)
+        for lock in conflicts:
+            busy[lock['lock']] = lock
+            problems.append(f'lock {lock["lock"]} is held by {lock["holder"]}'
+                            + (f' (overlaps {name})' if lock['lock'] != lock_key(module.repo, name) else ''))
+        exact = [l for l in locks(ws) if l['lock'] == lock_key(module.repo, name)]
+        if exact and exact[0]['holder'] == FREE and waiting_of(exact[0]) and wp not in waiting_of(exact[0]):
+            busy[exact[0]['lock']] = exact[0]
+            problems.append(f'lock {exact[0]["lock"]} is free but {waiting_of(exact[0])[0]} is first in its queue')
     return problems, wanted, busy, r, module
 
 
@@ -1045,8 +1156,8 @@ def cmd_dispatch(args):
         for problem in problems:
             print(f'dispatch refused: {problem}', file=sys.stderr)
         if not args.dry_run:
-            for key in busy:
-                acquire(ws, key, module.repo.id, wp)  # queues wp behind the holder
+            for lock in busy.values():
+                queue_wp(ws, lock, wp)
             ws.journal(f'dispatch of {wp} refused: ' + '; '.join(problems), wp=wp,
                        evidence='orch.py dispatch')
             if busy:
@@ -1060,8 +1171,10 @@ def cmd_dispatch(args):
     if args.dry_run:
         print(f'dispatch {wp}: ok (dry run); locks to take: {", ".join(wanted) or "none"}')
         return 0
-    for key in wanted:
-        acquire(ws, key, module.repo.id, wp, 'dispatch')
+    for name in wanted:
+        if acquire(ws, module.repo, name, wp, 'dispatch'):
+            raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
+    wanted = [lock_key(module.repo, n) for n in wanted]
     evidence = 'TASK message to live session' if args.live else 'start command handed to the owner'
     cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='DISPATCHING', quiet=True,
                                evidence=evidence + (f'; locks {", ".join(wanted)}' if wanted else '')))
@@ -1119,7 +1232,7 @@ def cmd_merge(args):
             out.append(line)
         return out
     ws.rewrite_table(ws.status, 'merge', transform)
-    released, kept = [], []
+    released, kept, waiting = [], [], []
     if args.action == 'done' and ws.has_table(ws.status, 'locks'):
         resources = {lock_key(module.repo, n) for n in module.repo.resources}
         for lock in locks(ws):
@@ -1128,7 +1241,8 @@ def cmd_merge(args):
             if lock['lock'] in resources:
                 kept.append(lock['lock'])
             else:
-                release(ws, lock['lock'], args.wp)
+                for w in release(ws, lock['lock'], args.wp):
+                    waiting.append(f'{w} (waits for {lock["lock"]})')
                 released.append(lock['lock'])
     ws.journal(f'{args.wp} {new_status} in the merge queue' +
                (f'; released {", ".join(released)}' if released else ''), wp=args.wp,
@@ -1137,6 +1251,8 @@ def cmd_merge(args):
     print(f'{args.wp}: {new_status}' + (f'; released {", ".join(released)}' if released else ''))
     if kept:
         print(f'still held (release after verification): {", ".join(kept)}')
+    if waiting:
+        print(f'waiting for the released locks (dispatch them now): {", ".join(waiting)}')
     if nxt:
         print(f'next: rebase {nxt[0]["wp"]} on the new base after the green deploy and health check')
     return 0
@@ -1157,7 +1273,7 @@ def cmd_overlap(args):
     items = sorted(live.items())
     for i, (a, (ra, ma, meta_a)) in enumerate(items):
         for b, (rb, mb, meta_b) in items[i + 1:]:
-            if ma.repo is not mb.repo:
+            if ma.repo.key != mb.repo.key:
                 continue
             for x, y in streams.overlap_outside_shared(meta_a['paths'], meta_b['paths'],
                                                        ma.repo.shared_paths):
@@ -1181,7 +1297,7 @@ def cmd_overlap(args):
                 continue
             shared = module.repo.shared_paths
             for f in files:
-                touched.setdefault((id(module.repo), f), []).append(wp)
+                touched.setdefault((module.repo.key, f), []).append(wp)
                 if streams.matches_any(f, shared) or streams.matches_any(f, meta['shared']):
                     if not streams.matches_any(f, meta['shared']):
                         findings.append(('actual', f'{wp}: shared path {f} changed but not declared'))
@@ -1196,11 +1312,11 @@ def cmd_overlap(args):
             branches = {}
             for wp, (r, module, meta) in items:
                 if r['status'] in streams.ACTIVE and meta['branch']:
-                    branches.setdefault(id(module.repo), []).append(meta['branch'])
+                    branches.setdefault(module.repo.key, []).append(meta['branch'])
             seen = {}
             for module in modules.values():
-                seen[id(module.repo)] = module.repo
-            seen.update({id(r): r for r in repos.values()})
+                seen[module.repo.key] = module.repo
+            seen.update({r.key: r for r in repos.values()})
             for key, repo in seen.items():
                 if not repo.checks or not repo.local.is_dir():
                     continue
@@ -1229,8 +1345,8 @@ def cmd_overlap(args):
 def cmd_worktrees(args):
     ws = Workspace(find_workspace(args.workspace))
     repos, modules, _ = ws.streams()
-    seen = {id(m.repo): m.repo for m in modules.values()}
-    seen.update({id(r): r for r in repos.values()})
+    seen = {m.repo.key: m.repo for m in modules.values()}
+    seen.update({r.key: r for r in repos.values()})
     branches = {}
     for wp, r in ws.wp_rows().items():
         try:

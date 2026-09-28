@@ -56,6 +56,9 @@ TEXT = {
         'ref_pr': '<PR URL>',
         'ref_local': 'branch {branch}',
         'methodology_any': 'any, within this package',
+        'push_slot': ('- Pushing any branch of this repository deploys the stand: commit locally and do not push '
+                      'until the orchestrator gives you the stand slot (the `staging` lock); push once, then '
+                      'report.'),
         'shared_hint': 'Shared paths of this repository (declare the ones this package touches): {shared}.',
         'resources_hint': 'Resources of this repository that need a lock: {resources}.',
     },
@@ -86,6 +89,8 @@ TEXT = {
         'ref_pr': '<PR URL>',
         'ref_local': 'branch {branch}',
         'methodology_any': 'любые, в рамках пакета',
+        'push_slot': ('- Push любой ветки этого репозитория выкатывает стенд: коммить локально и не пушь, пока '
+                      'оркестратор не выдаст слот стенда (замок `staging`); запушь один раз и сообщи.'),
         'shared_hint': 'Общие пути этого репозитория (объяви те, что трогает пакет): {shared}.',
         'resources_hint': 'Ресурсы этого репозитория, требующие замка: {resources}.',
     },
@@ -96,10 +101,57 @@ class StreamError(Exception):
     pass
 
 
+# Work package ids: module ids may contain hyphens (WP-ADMIN-UI-01).
+WP_ID = r'\bWP-[A-Z0-9]+(?:-[A-Z0-9]+)*-\d+\b'
+
+
 # ---------------------------------------------------------------- globs
 
+GLOB_SYNTAX = ('path globs: `*` (within one directory), `**` (any depth), `?` (one character), '
+               '`{a,b}` (alternatives, may nest); `[` and `]` are literal characters')
+
+
+def split_top(text, sep=','):
+    """Split on sep outside braces: 'a/{x,y}/**,b' -> ['a/{x,y}/**', 'b']."""
+    parts, depth, current = [], 0, ''
+    for ch in text:
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        if ch == sep and depth == 0:
+            parts.append(current)
+            current = ''
+        else:
+            current += ch
+    parts.append(current)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def expand_braces(pattern):
+    """Expand `{a,b}` alternatives (nested allowed); unbalanced braces raise StreamError."""
+    if pattern.count('{') != pattern.count('}'):
+        raise StreamError(f'unbalanced braces in glob: {pattern}')
+    start = pattern.find('{')
+    if start < 0:
+        return [pattern]
+    depth = 0
+    for end in range(start, len(pattern)):
+        depth += {'{': 1, '}': -1}.get(pattern[end], 0)
+        if depth == 0:
+            break
+    else:
+        raise StreamError(f'unbalanced braces in glob: {pattern}')
+    head, body, tail = pattern[:start], pattern[start + 1:end], pattern[end + 1:]
+    options = split_top(body) if body else ['']
+    result = []
+    for option in options:
+        result.extend(expand_braces(head + option + tail))
+    return result
+
+
 def glob_regex(pattern):
-    """Translate a path glob (`**`, `*`, `?`) into an anchored regex."""
+    """Translate one brace-free path glob (`**`, `*`, `?`) into an anchored regex."""
     out, i = '', 0
     while i < len(pattern):
         if pattern.startswith('**/', i):
@@ -121,7 +173,7 @@ def glob_regex(pattern):
 
 
 def glob_match(path, pattern):
-    return bool(glob_regex(pattern).match(path))
+    return any(glob_regex(p).match(path) for p in expand_braces(pattern))
 
 
 def matches_any(path, patterns):
@@ -129,13 +181,17 @@ def matches_any(path, patterns):
 
 
 def static_prefix(pattern):
-    """Literal part of a glob before its first wildcard."""
-    match = re.search(r'[*?\[]', pattern)
+    """Literal part of a brace-free glob before its first wildcard (`[` is literal)."""
+    match = re.search(r'[*?]', pattern)
     return pattern if match is None else pattern[:match.start()]
 
 
 def patterns_overlap(a, b):
     """Conservative check whether two globs can match a common path."""
+    return any(_overlap_one(x, y) for x in expand_braces(a) for y in expand_braces(b))
+
+
+def _overlap_one(a, b):
     if a == b:
         return True
     pa, pb = static_prefix(a), static_prefix(b)
@@ -150,6 +206,11 @@ def patterns_overlap(a, b):
 
 def covered(pattern, shared):
     """True when every path the pattern can match lies inside the shared patterns."""
+    expanded = [s2 for s in shared for s2 in expand_braces(s)]
+    return all(_covered_one(p, expanded) for p in expand_braces(pattern))
+
+
+def _covered_one(pattern, shared):
     for s in shared:
         if pattern == s:
             return True
@@ -194,7 +255,13 @@ class Repo:
         self.checks = as_list(data.get('checks'))
         self.deploy_workflows = as_list(data.get('deploy_workflows'))
         self.base_deploys = str(data.get('base_deploys') or 'none')
+        self.push_deploys = bool(data.get('push_deploys'))
         self.implicit = implicit
+
+    @property
+    def key(self):
+        """Same checkout on disk: modules of one key never write at the same time unless streams."""
+        return os.path.normpath(os.path.expanduser(self.path))
 
     @property
     def local(self):
@@ -223,9 +290,9 @@ class Module:
 
 
 def resolve(config):
-    """Return (repos, modules, errors); the 0.1.0 form maps to implicit repos."""
+    """Return (repos, modules, errors, warnings); the 0.1.0 form maps to implicit repos."""
     program = str(config.get('program') or 'program')
-    errors, repos, modules = [], {}, {}
+    errors, warnings, repos, modules = [], [], {}, {}
     for data in config.get('repos') or []:
         if not isinstance(data, dict) or not data.get('id') or not data.get('path'):
             errors.append(f'orch.yaml: repo needs id and path: {data}')
@@ -235,6 +302,11 @@ def resolve(config):
             errors.append(f'orch.yaml: duplicate repo id {repo.id}')
         if repo.merge_policy not in MERGE_POLICIES:
             errors.append(f'orch.yaml: repo {repo.id}: merge_policy must be sequential or free')
+        for pattern in repo.shared_paths:
+            try:
+                expand_braces(pattern)
+            except StreamError as error:
+                errors.append(f'orch.yaml: repo {repo.id}: {error}')
         repos[repo.id] = repo
     implicit = {}
     for data in config.get('modules') or []:
@@ -244,7 +316,8 @@ def resolve(config):
         if ref in repos:
             repo = repos[ref]
         else:
-            key = os.path.normpath(os.path.expanduser(ref))
+            # 0.1.0 form: one implicit repository per (path, base), so each module keeps its base.
+            key = (os.path.normpath(os.path.expanduser(ref)), str(data.get('base') or 'main'))
             if key not in implicit:
                 implicit[key] = Repo({'id': str(data['id']), 'path': ref, 'base': data.get('base')},
                                      implicit=True, program=program)
@@ -255,26 +328,41 @@ def resolve(config):
         if module.kind != 'repo' and (repo.implicit or not data.get('paths')):
             errors.append(f'orch.yaml: module {module.id}: kind {module.kind} needs `repo: <repos id>` '
                           'and explicit paths')
+        for pattern in module.paths:
+            try:
+                expand_braces(pattern)
+            except StreamError as error:
+                errors.append(f'orch.yaml: module {module.id}: {error}')
         modules[module.id] = module
-    by_repo = {}
+    by_key = {}
     for module in modules.values():
-        by_repo.setdefault(id(module.repo), []).append(module)
-    for group in by_repo.values():
+        by_key.setdefault(module.repo.key, []).append(module)
+    for group in by_key.values():
         if len(group) < 2:
             continue
-        repo = group[0].repo
+        names = ', '.join(m.id for m in group)
         whole = [m.id for m in group if m.kind == 'repo']
+        if whole and all(m.repo.implicit for m in group):
+            warnings.append(f'orch.yaml: modules {names} (0.1.0 form) share repository {group[0].repo.path}: '
+                            'they are dispatched one at a time. To run them in parallel, add a `repos` '
+                            'entry and give each module kind area|domain, `repo: <repos id>` and paths')
+            continue
         if whole:
-            errors.append(f'orch.yaml: modules {", ".join(m.id for m in group)} share repository '
-                          f'{repo.path}; {", ".join(whole)} must become kind area|domain with paths '
+            errors.append(f'orch.yaml: modules {names} share repository {group[0].repo.path}; '
+                          f'{", ".join(whole)} must become kind area|domain with paths '
                           '(one writing session per worktree and branch)')
             continue
+        shared = [p for m in group for p in m.repo.shared_paths]
         for i, a in enumerate(group):
             for b in group[i + 1:]:
-                for pa, pb in overlap_outside_shared(a.paths, b.paths, repo.shared_paths):
+                try:
+                    pairs = overlap_outside_shared(a.paths, b.paths, shared)
+                except StreamError:
+                    continue  # reported above
+                for pa, pb in pairs:
                     errors.append(f'orch.yaml: modules {a.id} and {b.id} overlap outside shared_paths: '
                                   f'{pa} ~ {pb}')
-    return repos, modules, errors
+    return repos, modules, errors, warnings
 
 
 # ---------------------------------------------------------------- work package metadata
@@ -308,7 +396,7 @@ def wp_meta(path, module):
 
     paths = ticks(field('paths')) or (module.paths if module else ['**'])
     branch = (ticks(field('branch')) or [None])[0]
-    depends = re.findall(r'\bWP-[A-Z0-9]+-\d+\b', field('depends') or '')
+    depends = re.findall(WP_ID, field('depends') or '')
     return {'paths': paths, 'shared': ticks(field('shared')), 'resources': ticks(field('resources')),
             'depends': depends, 'branch': branch}
 
@@ -316,7 +404,9 @@ def wp_meta(path, module):
 # ---------------------------------------------------------------- git helpers
 
 def git(root, *args):
-    return subprocess.run(['git', '-C', str(root), *args], text=True, capture_output=True)
+    # --no-optional-locks: never race a session's own git for index.lock in its worktree.
+    return subprocess.run(['git', '--no-optional-locks', '-C', str(root), *args], text=True,
+                          capture_output=True)
 
 
 def has_remote(repo):
@@ -395,17 +485,80 @@ def current_branch(path):
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def _abs_git_path(path, flag):
+    """Absolute --git-common-dir / --git-dir, also on git older than 2.31."""
+    result = git(path, 'rev-parse', '--path-format=absolute', flag)
+    value = result.stdout.strip()
+    if result.returncode or not value or value.startswith('--'):
+        result = git(path, 'rev-parse', flag)
+        value = result.stdout.strip()
+        if result.returncode or not value:
+            return None
+    found = Path(value)
+    if not found.is_absolute():
+        found = Path(path) / found
+    return found.resolve()
+
+
+def common_dir(path):
+    return _abs_git_path(path, '--git-common-dir')
+
+
+def is_linked_worktree(path):
+    git_dir, common = _abs_git_path(path, '--git-dir'), common_dir(path)
+    return git_dir is not None and common is not None and git_dir != common
+
+
+def normalized_origin(path):
+    """remote.origin.url as host/owner/name (lowercase, no scheme, user or .git); local paths resolved."""
+    result = git(path, 'config', '--get', 'remote.origin.url')
+    url = result.stdout.strip()
+    if result.returncode or not url:
+        return None
+    match = re.match(r'^(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)[:/](.+?)(?:\.git)?/?$', url)
+    if match and not url.startswith(('/', '.', 'file:')):
+        return f'{match.group(1).lower()}/{match.group(2).lower()}'
+    local = url[len('file://'):] if url.startswith('file://') else url
+    return str((Path(path) / os.path.expanduser(local)).resolve())
+
+
+def same_repository(path, repo):
+    """True when path is the module repository: shared git common dir, or the same origin (a clone)."""
+    if not repo.local.is_dir():
+        return False
+    mine, theirs = common_dir(path), common_dir(repo.local)
+    if mine is not None and mine == theirs:
+        return True
+    origin = normalized_origin(path)
+    return origin is not None and origin == normalized_origin(repo.local)
+
+
 def module_repo_conflict(home, repos):
-    """P4: the workspace must never live in a checkout of a module's base branch."""
-    top = git_toplevel(home)
-    if top is None:
+    """P4: the workspace never lives in a checkout of a module repository, except on orch/<program>."""
+    if common_dir(home) is None:
         return None
     for repo in repos:
-        if repo.local.is_dir() and git_toplevel(repo.local) == top:
+        if same_repository(home, repo):
             branch = current_branch(home)
             if not (branch or '').startswith('orch/'):
-                return (f'the workspace would live in module repository {repo.path} on branch {branch}; '
-                        'use a separate home repository, or branch orch/<program> in its own worktree')
+                where = 'a linked worktree' if is_linked_worktree(home) else 'a checkout or clone'
+                return (f'the workspace would live in {where} of module repository {repo.path} on branch '
+                        f'{branch}; use a separate home repository, or branch orch/<program> in its own '
+                        'worktree or clone')
+    return None
+
+
+def main_checkout_warning(home, modules):
+    """P4/L7: orch/<program> in the main checkout while a whole-repository module uses that checkout."""
+    if common_dir(home) is None or is_linked_worktree(home):
+        return None
+    for module in modules:
+        if module.kind == 'repo' and module.repo.local.is_dir() and \
+                common_dir(home) == common_dir(module.repo.local) and \
+                git_toplevel(home) == git_toplevel(module.repo.local):
+            return (f'the workspace is on {current_branch(home)} in the main checkout of {module.repo.path}, '
+                    f'where the session of module {module.id} (kind repo) works and switches branches; '
+                    'move the workspace to its own worktree or clone')
     return None
 
 
@@ -454,6 +607,8 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord):
     if repo.resources:
         hints.append(t['resources_hint'].format(resources=', '.join(f'`{r}`' for r in repo.resources)))
     delivery = (t['delivery_pr'] if remote else t['delivery_local']).format(**fmt)
+    if remote and repo.push_deploys:
+        delivery = t['push_slot'] + '\n' + delivery
     return {
         'BRANCH': branch, 'KIND': module.kind, 'LINE': repo.base, 'WORKTREE': worktree,
         'PATHS': ', '.join(f'`{p}`' for p in module.paths),

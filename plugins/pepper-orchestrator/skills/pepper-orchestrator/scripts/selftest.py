@@ -370,6 +370,7 @@ def test_legacy_fixture(tmp):
 
 def make_monorepo(tmp):
     """Anonymous demo monorepo: apps/admin, apps/app, backend, shared lockfile and migrations."""
+    tmp.mkdir(parents=True, exist_ok=True)
     remote = tmp / 'mono.git'
     repo = tmp / 'mono'
     git(tmp, 'init', '-q', '--bare', str(remote))
@@ -521,6 +522,144 @@ def test_monorepo(tmp):
     assert run(home, 'commit', 'shop: streams demo').returncode == 0
     print('PASS monorepo: init areas/domain, worktree start commands, overlap, locks, dispatch, merge queue, P4')
 
+
+def test_p4_identity(tmp):
+    """P4 by git common dir and origin: worktree on orch/ allowed, base in worktree or clone refused."""
+    mono = make_monorepo(tmp / 'p4')
+    wt_ok = tmp / 'p4/wt-orch'
+    git(mono, 'worktree', 'add', '-q', '-b', 'orch/shop', str(wt_ok), 'main')
+    assert run(wt_ok, 'init', 'shop', '--lang', 'en', '--repo', f'mono={mono}').returncode == 0
+    wt_base = tmp / 'p4/wt-base'
+    git(mono, 'switch', '-q', '-c', 'side')  # free main for a linked worktree
+    git(mono, 'worktree', 'add', '-q', str(wt_base), 'main')
+    refused = run(wt_base, 'init', 'shop', '--lang', 'en', '--repo', f'mono={mono}', ok=False)
+    assert 'linked worktree of module repository' in refused.stderr, refused.stderr
+    clone = tmp / 'p4/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'p4/mono.git'), str(clone))
+    refused = run(clone, 'init', 'shop', '--lang', 'en', '--repo', f'mono={mono}', ok=False)
+    assert 'checkout or clone of module repository' in refused.stderr, refused.stderr
+    # commit is refused the same way when a workspace was copied onto a base worktree.
+    shutil.copytree(wt_ok / 'features/shop', wt_base / 'features/shop',
+                    ignore=shutil.ignore_patterns('.orch-backup'))
+    assert 'linked worktree' in run(wt_base, 'commit', 'x', ok=False).stderr
+    # L7: orch/ in the main checkout while a whole-repository module works there: warning.
+    solo = make_monorepo(tmp / 'p4solo')
+    git(solo, 'switch', '-q', '-c', 'orch/solo')
+    out = run(solo, 'init', 'solo', '--lang', 'en', '--module', f'core={solo}')
+    assert 'warning' in out.stdout and 'main checkout' in out.stdout, out.stdout
+    assert 'main checkout' in run(solo, 'lint').stderr
+    # git older than 2.31 echoes the unknown --path-format option and prints a relative path.
+    import streams
+    real = streams.git
+
+    def old_git(root, *args):
+        if '--path-format=absolute' in args:
+            rest = [a for a in args if a != '--path-format=absolute']
+            result = real(root, *rest)
+            relative = os.path.relpath(result.stdout.strip(), root)
+            return subprocess.CompletedProcess(args, 0, '--path-format=absolute\n' + relative + '\n', '')
+        return real(root, *args)
+    streams.git = old_git
+    try:
+        assert streams.common_dir(wt_base) == Path(real(mono, 'rev-parse', '--path-format=absolute',
+                                                        '--git-common-dir').stdout.strip()).resolve()
+    finally:
+        streams.git = real
+    print('PASS P4: common dir + origin (worktree on orch/ ok, base worktree and clone refused), L7 warning')
+
+
+def test_streams_edges(tmp):
+    mono = make_monorepo(tmp / 'edges')
+    home = tmp / 'edges/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'edge', '--lang', 'en', '--repo', f'mono={mono}',
+        '--area', 'web=mono:apps/{admin,app}/**', '--domain', 'admin-ui=mono:backend/src/billing/**')
+    ws = home / 'features/edge'
+    config = ws / 'orch.yaml'
+    assert 'paths: ["apps/{admin,app}/**"]' in config.read_text(encoding='utf-8'), 'braces kept by init'
+    assert run(home, 'init', 'bad', '--lang', 'en', '--repo', f'mono={mono}',
+               '--area', 'x=mono:apps/{admin/**', ok=False).returncode == 1
+    for old, new in (
+        ('    merge_policy: sequential\n    shared_paths',
+         '    merge_policy: sequential\n    push_deploys: true\n    shared_paths'),
+        ('    shared_paths: []', '    shared_paths: [pnpm-lock.yaml, "backend/migrations/**", "src/*.{ts,tsx}"]'),
+        ('    resources: []', '    resources: [staging, migrations]'),
+    ):
+        safe_edit.replace_once(config, old, new)
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, 'paths: ["backend/src/billing/**"]', 'paths: ["apps/app/**"]')
+    assert 'modules web and admin-ui overlap' in lint_errors(home), 'braces must expand for overlap'
+    config.write_text(original, encoding='utf-8')
+    # M3: a dependency on a module id with a hyphen is honoured.
+    run(home, 'new-wp', 'admin-ui', 'fees')
+    run(home, 'new-wp', 'web', 'fees-view')
+    view = ws / 'work-packages/WP-WEB-01-fees-view.md'
+    fill_header(view, 'Depends on', 'WP-ADMIN-UI-01')
+    run(home, 'set', 'WP-WEB-01', 'status', 'READY')
+    refusal = run(home, 'dispatch', 'WP-WEB-01', '--dry-run', ok=False).stderr
+    assert 'depends on WP-ADMIN-UI-01 (DRAFT)' in refusal, refusal
+    # Push = deploy: delivery tells the stream to wait for the stand slot.
+    assert 'do not push until the orchestrator gives you the stand slot' in view.read_text(encoding='utf-8')
+    # L1: path locks collide by glob; unknown resources are refused.
+    fees = ws / 'work-packages/WP-ADMIN-UI-01-fees.md'
+    fill_header(fees, 'Shared paths touched', '`backend/migrations/**`')
+    run(home, 'set', 'WP-ADMIN-UI-01', 'status', 'READY')
+    assert run(home, 'dispatch', 'WP-ADMIN-UI-01').returncode == 0
+    fill_header(view, 'Depends on', 'none')
+    fill_header(view, 'Shared paths touched', '`backend/migrations/0002_fees.sql`')
+    refusal = run(home, 'dispatch', 'WP-WEB-01', ok=False).stderr
+    assert 'mono:backend/migrations/** is held by WP-ADMIN-UI-01' in refusal, refusal
+    assert 'unknown lock' in run(home, 'lock', 'acquire', 'stagin', '--wp', 'WP-WEB-01', ok=False).stderr
+    assert 'unknown lock' in run(home, 'lock', 'acquire', 'docs/readme.md', '--wp', 'WP-WEB-01',
+                                 ok=False).stderr
+    # L2: merge done keeps the queue on a free row and names who waits; the queue is respected.
+    run(home, 'merge', 'add', 'WP-ADMIN-UI-01')
+    done = run(home, 'merge', 'done', 'WP-ADMIN-UI-01').stdout
+    assert 'WP-WEB-01 (waits for mono:backend/migrations/**)' in done, done
+    lock = json.loads(run(home, 'lock', 'list', '--json').stdout)[0]
+    assert lock['holder'] == '—' and lock['waiting'] == 'WP-WEB-01', lock
+    run(home, 'set', 'WP-ADMIN-UI-01', 'status', 'MERGED', '--evidence', 'merge verified')
+    run(home, 'new-wp', 'admin-ui', 'refunds')
+    refunds = ws / 'work-packages/WP-ADMIN-UI-02-refunds.md'
+    fill_header(refunds, 'Shared paths touched', '`backend/migrations/**`')
+    run(home, 'set', 'WP-ADMIN-UI-02', 'status', 'READY')
+    assert 'WP-WEB-01 is first in its queue' in run(home, 'dispatch', 'WP-ADMIN-UI-02', ok=False).stderr
+    assert run(home, 'dispatch', 'WP-WEB-01').returncode == 0
+    held = {l['lock']: (l['holder'], l['waiting']) for l in json.loads(run(home, 'lock', 'list', '--json').stdout)}
+    assert held == {'mono:backend/migrations/**': ('—', 'WP-ADMIN-UI-02'),
+                    'mono:backend/migrations/0002_fees.sql': ('WP-WEB-01', '—')}, held
+    # WP-WEB-01 left the queue when it got its lock; after its release WP-ADMIN-UI-02 goes next.
+    run(home, 'lock', 'release', 'backend/migrations/0002_fees.sql', '--wp', 'WP-WEB-01')
+    assert run(home, 'dispatch', 'WP-ADMIN-UI-02').returncode == 0
+    held = {l['lock']: (l['holder'], l['waiting']) for l in json.loads(run(home, 'lock', 'list', '--json').stdout)}
+    assert held == {'mono:backend/migrations/**': ('WP-ADMIN-UI-02', '—')}, held
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    print('PASS streams edges: braces, hyphen ids, push=deploy slot, glob locks, unknown lock, queue after merge')
+
+
+def test_legacy_shared_path(tmp):
+    """M4: 0.1.0 modules on one path: lint warns (commit works), each module keeps its base."""
+    home = tmp / 'legacy2'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'two', '--lang', 'en', '--module', 'api=~/projects/example-api',
+        '--module', 'lts=~/projects/example-api@release/1.x')
+    out = run(home, 'lint')
+    assert out.returncode == 0 and 'dispatched one at a time' in out.stderr, out.stderr
+    run(home, 'new-wp', 'lts', 'backport')
+    text = (home / 'features/two/work-packages/WP-LTS-01-backport.md').read_text(encoding='utf-8')
+    assert 'from release/1.x' in text or 'от release/1.x' in text or 'origin/release/1.x' in text, text
+    assert 'PR to release/1.x' in text
+    run(home, 'new-wp', 'api', 'fix')
+    run(home, 'set', 'WP-API-01', 'status', 'READY')
+    run(home, 'set', 'WP-LTS-01', 'status', 'READY')
+    assert run(home, 'dispatch', 'WP-API-01').returncode == 0
+    assert 'same repository' in run(home, 'dispatch', 'WP-LTS-01', '--dry-run', ok=False).stderr
+    assert 'commit:' in run(home, 'commit', 'two modules on one path').stdout
+    print('PASS 0.1.0 modules sharing a path: warning not error, own base, serialized dispatch')
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -534,6 +673,9 @@ def main():
         test_safe_edit_stdin(tmp / 'edit')
         test_legacy_fixture(tmp)
         test_monorepo(tmp)
+        test_p4_identity(tmp)
+        test_streams_edges(tmp)
+        test_legacy_shared_path(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 
