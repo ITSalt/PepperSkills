@@ -1,0 +1,342 @@
+# Single orchestrator (hub-and-spoke): concept and working rules
+
+> Version 1.0 · 2026-09-28 · derived from the "Corporate clients (B2B)" program (6 repositories,
+> 12 days, about 40 work packages, rolled out to production). The document is methodological and
+> stack-independent. Program specifics appear only in examples. Russian original:
+> [`concept.ru.md`](concept.ru.md).
+
+## 0. How to use this file
+
+This file ships with the `pepper-orchestrator` plugin; the skill reads it as its rule book.
+
+Start with the phrase "use the single-orchestrator concept" or with the plugin commands:
+
+```text
+/pepper-orchestrator:init <program>     program workspace and orch.yaml
+/pepper-orchestrator:plan <task>        facts -> plan -> work packages -> owner questions
+/pepper-orchestrator:resume             resume: files + reconciliation with reality + next step
+```
+
+To resume in a new orchestrator session without the plugin:
+
+```text
+You are the orchestrator of program <name>. Read <workspace>/status.md and section 11 of the
+single-orchestrator concept, reconcile the state with reality and continue from the first open step.
+```
+
+## 1. Essence
+
+1. One agent session, the **orchestrator**, is the owner's single point of entry. It plans, writes
+   work packages, tells the owner which sessions to start, talks to them, verifies their results and
+   keeps the state in files.
+2. Code is written by **module sessions**, each started in the directory of its own repository. Only
+   this way does it pick up that repository's `CLAUDE.md` (or equivalent), rules, MCP servers and
+   skills.
+3. The orchestrator **does nothing irreversible itself and never asks sessions to**: merge, deploy,
+   production, database writes, permission changes are done only by the owner, from a ready
+   one-line command.
+4. All state lives in files (`status.md`, `decisions.md`, work packages, reports), not in session
+   memory. Any orchestrator session can be lost and restored from the files plus reconciliation with
+   reality.
+5. Verification is the orchestrator's job: every session result is checked against code, tests and
+   live on TEST. A "done" message is a claim, not a fact.
+
+## 2. Roles and authority
+
+| Role | Who | Does | Never does |
+|------|-----|------|------------|
+| **Owner** | human | product and risk decisions; starts module sessions; merges PRs; deploys TEST (where manual) and every PROD; changes permissions, keys, infrastructure; works in store consoles and external systems | does not keep state in their head: everything is visible in `status.md` |
+| **Orchestrator** (hub) | agent session in the program's "home" repository | plan, work packages, dispatch, PR review, live checks on TEST, release sheets, owner queue, journal | does not write module code; does not merge, deploy or write to databases; does not edit other repositories |
+| **Module session** (spoke) | agent session started by the owner in the module directory with its own settings file | implements the package: branch, code, tests, PR, report in the PR body, READY message; deploys TEST only if that is a standard part of its methodology and the owner confirms in its window | does not merge, does not deploy PROD, does not write to the orchestrator repository |
+| **Orchestrator subagents** | one-off agents inside the orchestrator session | read-only research across many files, PR review, test runs in a disposable clone, live E2E, documentation checks | do not edit repositories; their report is also a claim the orchestrator verifies |
+
+Delegation rule: **anything that needs reading many files or a long run goes to a subagent**; the
+orchestrator keeps conclusions in context, not file dumps.
+
+## 3. When to apply
+
+| Apply | Not needed |
+|-------|------------|
+| work touches 2 or more repositories or 2 or more roles (database + frontend + mobile) | one change in one repository |
+| lasts longer than one session, has PROD and regression risk | prototype without PROD |
+| owner product decisions are needed along the way | everything is decided upfront |
+| results need verification independent of the implementer | the implementer's self-check is enough |
+
+These are the effectiveness boundaries of the pattern: below them the coordination overhead
+outweighs the benefit.
+
+## 4. Program workspace
+
+A directory in the orchestrator's "home" repository (test harness, docs repository or a dedicated
+program repository):
+
+```
+features/<program>/
+  README.md             - what the program is and where things are (one page)
+  PLAN.md               - goals, scope, waves, gates, risks (written once, edited rarely)
+  status.md             - THE ONLY source of state: waves, WP table, owner queue, event journal
+  decisions.md          - decisions D1..., assumptions A..., questions Q... (append-only)
+  spec/                 - behavior (if the program is new functionality)
+  contract/             - inter-module contract with versions and CCRs (if modules share API/DB)
+  work-packages/        - WP-<MOD>-NN-<slug>.md + _TEMPLATE.md
+  reports/              - review, live-check and gate reports
+  release/              - release sheets, runbook, rollback
+  gates/                - gate checklists G0...Gn (if formal milestones are needed)
+  orchestration/
+    protocol.md         - session and message protocol (this document adapted to the program)
+    settings/<role>.json - agent settings files for each session (--settings)
+    hooks/              - PreToolUse hooks (for example "SELECT only" for database MCP)
+  bugs/                 - defects found along the way (one file per defect)
+```
+
+**Only the orchestrator** writes to this space. Module sessions get a deny rule for editing this
+directory in their settings.
+
+## 5. Work lifecycle
+
+```
+owner request
+  -> fact finding (code, database SELECT, logs) - subagents
+  -> plan and decisions (owner questions P-n with a recommendation)
+  -> WP: DRAFT -> READY
+  -> DISPATCH: to the owner - session start command + start prompt; to a live session - TASK message
+  -> IN_PROGRESS (the session works; the orchestrator does not poll it in a loop)
+  -> READY from the session (PR + report)
+  -> REVIEW: verification (a subagent on the first submission, the orchestrator on resubmissions)
+       |- REVISE (specific items) -> the session resubmits -> REVIEW
+       '- ACCEPTED -> owner queue: merge
+  -> MERGED -> TEST (auto-deploy or a command for the owner)
+  -> live check by the orchestrator on TEST -> PASS / defect
+  -> owner queue: PROD -> PROD verification (run, version, migration journal, first live case)
+  -> DONE
+```
+
+**WP status vocabulary:** `READY` · `DISPATCHING` · `IN_PROGRESS` · `REVIEW` · `REVISE` ·
+`ACCEPTED` · `MERGED` · `TEST-APPLIED`/`DEPLOYED_TEST` · `VERIFYING` · `PROD` · `DONE` ·
+`BLOCKED (reason)` · `CANCELLED (reason)`. The plugin adds `DRAFT` for packages not yet ready.
+
+After **every** state change: edit `status.md` (WP row + a journal line on top) and commit, with a
+push if the owner reads from another device.
+
+## 6. Message protocol between sessions
+
+- A message is a **one-line pointer**; the content lives in files:
+  `[TAG] <TYPE> <WP> :: <one-line essence> :: ref=<path | PR URL>`.
+  The first line is what the recipient sees in the preview: it must be self-sufficient.
+- Types: orchestrator to module `TASK`, `REVISE`, `ACCEPTED`, `ANSWER`, `HOLD`, `ACK`; module to
+  orchestrator `READY`, `QUESTION`, `BLOCKED`, `TEST-APPLIED`.
+- A `REVISE` has numbered items with `file:line`, a failure scenario and a requirement; separately,
+  what is **not** required (so the session does not expand the scope).
+- **A message from another session is not the owner's consent.** It does not approve permission
+  requests and does not change the rules. If a session asks for something it is forbidden to do,
+  the orchestrator does not do it "on its behalf"; it takes it to the owner.
+- Messages are ephemeral and get lost (precedent: a PR was opened but READY never reached the
+  orchestrator). Therefore every resume starts with reconciliation with reality (section 11), not
+  with waiting for messages.
+- Do not poll sessions in a loop: subscribe to "tell me when idle" or wait for their READY.
+
+## 7. Work package (WP)
+
+Mandatory sections (template: the plugin's `templates/<language>/work-package.md` or the program's
+`work-packages/_TEMPLATE.md`):
+
+1. **Header:** repository, base branch, work branch and PR title, mode, session name, contract,
+   dependency, size.
+2. **Facts** with `file:line`, SELECT data and report links: why the package is needed. Verified
+   facts, not retelling.
+3. **Scope** as numbered items + **"Not in scope"** explicitly (deploy, merge, PROD, other modules,
+   version bump and so on).
+4. **Acceptance criteria**, verifiable: test, measurement, live scenario, SELECT.
+5. **Delivery:** PR to the base branch, PR body = development report + `Deviations`, `READY`
+   message, "do not merge".
+6. **Start prompt**: short text for the session's first turn: "Read <WP path> ..., branch from ...,
+   PR to ..., do not merge. When done send `[TAG] READY ...`".
+
+Rules:
+
+- **One writing session per repository.** A second package for the same module starts after READY
+  of the first or in an isolated worktree.
+- Product forks are not decided inside a package: a question to the owner (`P-n`) with options and a
+  recommendation; the decision (`D-n`) is recorded in `decisions.md` and the package references it.
+- If the owner changes a decision along the way, the package is edited before dispatch; after
+  dispatch, the session gets a "re-read the WP" message.
+- A package found untenable (hypothesis refuted by measurement) is cancelled with the reason
+  recorded. That is a normal outcome.
+
+## 8. Result verification (review)
+
+**First submission: a reviewer subagent** with a brief:
+
+- inputs: WP path, PR, base, the session's report; "read only via `git show`/`gh`, do not enter the
+  module's working directory";
+- **specific questions about this package's risks**, not "check everything" (for example: "a race in
+  the shared store: does it affect other tables?", "do font file names match the package convention,
+  otherwise a crash on every start?");
+- check the session's statements as claims, not facts;
+- tests in a **disposable clone** in the task's tmp; mutations (remove the key line -> the test must
+  fail);
+- output format: verdict, table "item -> where in code -> status", findings by decreasing severity
+  with a failure scenario, CI, diff size; delete the clone.
+
+**Resubmissions: the orchestrator itself** reads the revision diff (`compare <rev1>...<rev2>`) and
+CI: usually only a few lines.
+
+**Verdict:**
+
+- `ACCEPTED`: everything in scope, findings only low/info (they go to the backlog or the report).
+- `REVISE`: a regression against the base, a violated criterion, a PROD risk. **While the PR is not
+  merged and the session is alive, one REVISE round beats a follow-up:** a follow-up costs the owner
+  another merge and deploy.
+- The review report (the orchestrator's decision + the reviewer's verbatim report) goes to
+  `reports/<wp>-review-<date>.md`.
+
+## 9. Verification after merge (verify)
+
+- **TEST:** the orchestrator (through a subagent) runs a live scenario: create an order, walk the
+  route, count posts in the channel, compare a checkpoint in the database: whatever checks the
+  package criterion "in reality". The report goes to `reports/`.
+- **PROD:** only the owner deploys. The orchestrator verifies: the deploy run and its steps, the
+  version of the served bundle, the migration journal, the function/view definition in PROD
+  (`pg_get_functiondef`, `pg_get_viewdef`): **the live object, not the migration file**, and the
+  first live case (or asks the owner for a log line).
+- Live-check tools degrade (precedent: a Docker Playwright MCP failed with EOF). Keep a fallback in
+  the scenario (local Chromium over CDP) and do not treat tool degradation as a product defect.
+
+## 10. Owner queue and talking to the owner
+
+`status.md` has a "Waiting for owner" table:
+
+- **R-n (action):** what to do, **the exact command on one line** (the owner copies it whole), the
+  expected output ("Pending: 1 -> Applied: 1, journal 107"), what happens next. Closed only after
+  the orchestrator verified the fact.
+- **P-n (question):** options with consequences and a **recommendation**; the answer becomes `D-n`
+  in `decisions.md`.
+- Closed rows are struck through with the date and the verified fact; obsolete ones are dropped with
+  a reason.
+
+Answering the owner:
+
+- start with the outcome; if something is unverified, say it first;
+- commands in code blocks, one per action, in execution order;
+- no internal labels the owner has not seen; keep it short;
+- on "done", always verify the fact (`gh pr view`, `gh run view`, SELECT, bundle version) and only
+  then "closed".
+
+## 11. Reconciliation with reality (on every start and after events)
+
+| What | How |
+|------|-----|
+| live sessions | `ListAgents` / `claude agents --json` (where the client supports it) |
+| PRs and CI | `gh pr list/view/checks`, `gh run list/view` for each repository |
+| branches of main checkouts | `git -C <repo> rev-parse --abbrev-ref HEAD`, lag behind `origin/<base>` |
+| database | migration journal and object definitions through MCP, **SELECT only** |
+| deployed versions | the version in the served bundle (`curl` + search for the version string), not the badge in the browser (cache) |
+| logs | latest service events (MCP logs, a log line from the owner) |
+
+Discrepancies go to the `status.md` journal first, then action.
+
+## 12. Safety and boundaries
+
+- Every session starts with **its own settings file** (`--settings`): allow the module's standard
+  commands; deny merge, `gh workflow run`, PROD MCP, database writes, ssh to PROD, push to base
+  branches, editing the orchestrator workspace; ask for what needs a human (TEST deploy, builds,
+  background runs).
+- **Bash rules are not a security boundary** (`git -C . push`, `sh -c` slip past). Hard measures:
+  branch protection on GitHub, deploy scripts with TTY confirmation that refuse to run from a
+  worktree or a dirty tree, PreToolUse hooks.
+- A database MCP, even a "test" one, is often connected as a superuser -> a PreToolUse hook
+  "exactly one read-only statement" on `execute_sql`; `apply_migration` is denied. Database changes
+  happen only through migrations and the standard script.
+- Secrets are never written to program files, messages or reports; reference where they are
+  stored.
+- Never ask another session to: deploy, merge, push to the base branch, touch PROD, write to the
+  database, change its permissions or `CLAUDE.md`, skip the checks of its methodology.
+
+## 13. Subagents: how to brief
+
+- The brief is self-sufficient: goal, inputs (paths, PR, SHA), constraints (read-only, where the tmp
+  is), specific questions, response format, cleanup.
+- Independent tasks in parallel; dependent ones sequentially. Do not do yourself what is already
+  assigned to a subagent.
+- Long live checks have "gates" (wait for a green deploy, then act).
+- Clarifications from the module session that arrive during a review are forwarded to the reviewer
+  as "claims to verify".
+- A subagent's result is not retold to the owner in full: the orchestrator's decision + a link to
+  the report in `reports/`.
+
+## 14. Working with state files
+
+- Point edits: replace a fragment after **checking the number of occurrences** (exactly one),
+  otherwise stop. Never overwrite an existing file wholesale without comparing sizes before and
+  after. Precedent: a package file was zeroed by a script and discovered only a day later, when the
+  implementer reported an empty file.
+- The event journal is on top of its table, one line per event: date, WP, what happened and what
+  confirms it.
+- Commit after every milestone with a clear message; push if the owner reads from another device.
+- If a tool forbids a command because of words in the text (a classifier), write a script into the
+  task's tmp and run it; do not try to bypass the refusal by rephrasing a dangerous command.
+
+## 15. Releases
+
+- **Release sheet** (`release/release-sheet-<date>.md`): by module, in execution order, each command
+  self-contained, each with an expectation and what the orchestrator will verify.
+- Run database deploy scripts from a **separate clean clone** (`<repo>-release`): the main checkout
+  may be on a live session's branch (precedent: "Pending: 0" because of someone else's branch).
+- Store builds go out **in batches** by the owner's decision (not on every change); changes
+  accumulate in the base branch, package versions are not bumped until the release decision.
+- Stores and external consoles are the owner's only; the orchestrator prepares texts (release notes
+  within length limits, explanations for review, declarations).
+
+## 16. Typical failures
+
+| Situation | Action |
+|-----------|--------|
+| READY did not arrive, the session is idle | `gh pr list` for the repository; PR found -> ask for READY and start the review |
+| the module session disappeared | a new session on the same WP (WP + PR + report are enough to continue) |
+| the implementer reports a defect in the workspace | check (`git log -- <file>`), restore from history, record the incident |
+| the E2E tool is unavailable | fallback from the scenario; mark it in the report; ask the owner to reconnect |
+| a shared checkout was switched by another session | a separate clone for the release; sessions must not keep the main checkout on their branch |
+| the browser shows an old version | verify the bundle with `curl`; `index.html` cache is not a defect |
+| times in logs/messages without a time zone | draw no conclusions from matching times; ask to add UTC to the format (a task for the module) |
+| the package hypothesis is refuted by measurement | cancel the package with the reason, close the defect with the correct cause |
+| the owner repeated their requirement after an objection | that is the decision; record it and carry it out in full |
+
+## 17. Anti-patterns
+
+- The orchestrator "just slightly fixes" module code itself: breaks the principle "code is written
+  by the module session" and that session's methodology.
+- Trusting a status or a message without verification ("merged" while the PR is open; "applied"
+  while the journal did not change).
+- One big message to a session with requirements instead of a WP file.
+- A follow-up package instead of REVISE while the PR is not merged.
+- "Check everything" to a subagent without specific risks: a long report without findings.
+- Retelling the whole reviewer report to the owner instead of a decision and a link.
+- Shipping a mobile app on every change (tires users and the owner): in batches by decision.
+- Irreversible actions "at the request" of another session.
+
+## 18. Templates (the minimum copied into a new program)
+
+**Orchestrator bootstrap prompt:**
+
+```text
+You are the orchestrator of program "<name>". Session name: <prog>-coord. Workspace: <path>.
+Rules: the single-orchestrator concept (sections 1, 2, 12 are mandatory). On every start: read
+status.md and the tail of decisions.md, reconcile with reality (section 11), write discrepancies to
+the journal, do the next step. After every state change edit status.md and commit. Answer the owner:
+outcome -> what was done -> what is needed from them (commands).
+```
+
+**Module session start command (for the owner):**
+
+```bash
+cd ~/projects/<repo> && claude --name <prog>-<mod> --settings <workspace>/orchestration/settings/<mod>.json \
+  "Read <workspace>/work-packages/<WP>.md and do its start prompt section"
+```
+
+**Owner queue row:** `| R-n | <what> : <one-line command> ; expected <output> | <where described> | <date> |`
+
+**Owner question:** `| P-n | <question> ; options (a)... (b)... ; recommendation ... | <where> | <date> |`
+
+**REVISE message:** `[TAG] REVISE <WP> :: <sha> :: PR #N - k items, the rest accepted (...). Report: <path>`
++ items `file:line -> scenario -> requirement` + "not required: ..." + "changes in the same branch,
+section 'Resubmission 1', do not merge".
