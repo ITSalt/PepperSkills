@@ -17,7 +17,7 @@ standalone skills can be linked from a repository clone.
 | --- | --- |
 | `pepper-creative-mode` | [2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1) |
 | `pepper-prompt-engineer` | [2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1) |
-| `pepper-ru-web-compliance` | [2.1.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.0) |
+| `pepper-ru-web-compliance` | [2.1.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.1) |
 
 Each release contains a skill ZIP, a plugin ZIP, and SHA256SUMS. Claude web import/update was verified for the previous transition releases; these new packages require separate client acceptance.
 
@@ -48,9 +48,12 @@ documents the staged cleanup.
 | `pepper-prompt-engineer/chat-prompt.template.md` | `plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.template.md` |
 | `<name>/anthropic/INSTALL.md` | `docs/installation-and-updates.md`, `docs/installation-and-updates.ru.md` |
 
-Root `.skill` files are frozen previous builds from repository revision
-`v1.4.1-1-g4128fe6` (commit `4128fe6`). They are not rebuilt and do not represent
-current plugin versions; new archives are built in `dist/<name>/<version>/`.
+`pepper-ru-web-compliance/pepper-ru-web-compliance.skill` was refreshed to 2.1.1
+on 2026-09-28 and matches that version's standalone ZIP. Other `.skill` files
+remain frozen builds from commit `4128fe6`. For subsequent updates, use versioned
+ZIPs in `dist/<name>/<version>/` or the matching release assets. Before releasing,
+run `python3 scripts/sync-compat-archives.py --write` after building ZIPs; CI checks
+that the supported `.skill` download matches the current ZIP.
 
 ## Layout
 

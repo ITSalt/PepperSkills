@@ -142,7 +142,7 @@ marketplaces и публичный каталог. Документация оп
 
 - [pepper-creative-mode 2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1)
 - [pepper-prompt-engineer 2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1)
-- [pepper-ru-web-compliance 2.1.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.0)
+- [pepper-ru-web-compliance 2.1.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.1)
 
 В разделе Assets скачайте `<name>.zip` для загрузки скилла или `<name>.plugin.zip` для плагина. `SHA256SUMS` содержит контрольные суммы обоих архивов.
 
@@ -153,9 +153,12 @@ Custom skills используют ZIP с одной верхней папкой
 поверхности и проверьте вызов, обновление и отключение. Для скиллов со скриптами
 проверьте, что в этой среде включено выполнение кода.
 
-Корневые `.skill` — прежние зафиксированные сборки из ревизии репозитория
-`v1.4.1-1-g4128fe6` (commit `4128fe6`); они не пересобираются и не соответствуют
-текущим версиям плагинов. Новые сборки находятся в `dist/<name>/<version>/`.
+Архив `pepper-ru-web-compliance/pepper-ru-web-compliance.skill` обновлён
+28 сентября 2026 года до 2.1.1 и совпадает с standalone ZIP этой версии.
+Остальные `.skill` остаются прежними сборками из commit `4128fe6`.
+Для последующих обновлений используйте версионные ZIP или Assets релиза.
+При выпуске после сборки ZIP выполните `python3 scripts/sync-compat-archives.py --write`;
+CI отклоняет устаревший `.skill`.
 Предыдущие ZIP (Creative Mode 2.0.0, Prompt Engineer 2.5.0, Compliance 2.0.0)
 приняты через Upload and replace в Claude web 26 сентября 2026 года.
 Это подтверждение не распространяется автоматически на новые версии. При совпадении имени выберите замену, чтобы обновить существующий

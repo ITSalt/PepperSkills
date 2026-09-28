@@ -44,6 +44,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from report_provenance import consistency_issues, provenance_issues, provenance_line
+
 SCHEMA_VERSION = 1
 
 # «Требует проверки» читалось так, будто проверка ещё идёт. Формулировка должна
@@ -103,35 +105,18 @@ def colophon_lines(data: dict[str, Any]) -> list[str]:
         f"- Канал автора: {SKILL_CHANNEL}",
         f"- Вопросы и замечания по проверке: {SKILL_EMAIL}",
         "",
-        "Нормы и суммы санкций в документе актуальны на дату проверки "
-        f"({data['generated_at'][:10]}). Законодательство меняется — перед "
-        "использованием записки в переписке или в суде сверьтесь с актуальной "
-        "редакцией.",
+        "Нормы и санкции взяты из указанной версии правил; дата обхода не подтверждает их актуальность.",
     ]
 
 
 DISCLAIMER = (
-    "Настоящий документ — результат технической проверки сайта, а не юридическое "
-    "заключение. Статусы и суммы санкций носят справочный характер; окончательную "
-    "правовую квалификацию даёт юрист. Проверка охватывает только сам сайт и не "
-    "распространяется на внутренние процессы оператора, договоры с подрядчиками и "
-    "содержимое внешних площадок.")
+    "Техническая проверка сайта, не юридическое заключение. Правовую квалификацию "
+    "подтверждает юрист; внутренние процессы, договоры и внешние площадки не проверялись.")
 
 
 # --- Разбор сумм -------------------------------------------------------------
 
 
-def max_fine(finding: dict[str, Any]) -> int:
-    """Верхняя граница санкции для юрлица — для оценки риска в рублях.
-
-    Берётся максимум из строки вида «300 000 – 700 000 ₽». Оборотные штрафы
-    («1–3% выручки») в рублях не выражаются и в сумму не попадают: подменять
-    их придуманной цифрой значило бы занижать риск молча.
-    """
-    text = finding.get("liability") or ""
-    numbers = [int(n.replace(" ", "").replace(" ", ""))
-               for n in re.findall(r"\d[\d\s ]{4,}", text)]
-    return max(numbers) if numbers else 0
 
 
 NBSP = "\u00a0"
@@ -221,12 +206,11 @@ def summarise(data: dict[str, Any]) -> dict[str, Any]:
     fails = [f for f in findings if report_status(f) == "FAIL"]
     warns = [f for f in findings if report_status(f) == "WARN"]
     unknowns = [f for f in findings if report_status(f) == "UNKNOWN"]
-    exposure = sum(max_fine(f) for f in fails)
     turnover = [f for f in fails
                 if "выручки" in (f.get("liability") or "")
                 or f.get("severity") == "critical"]
     return {"fails": fails, "warns": warns, "unknowns": unknowns,
-            "exposure": exposure, "turnover_risk": turnover,
+            "turnover_risk": turnover,
             "passes": [f for f in findings if report_status(f) == "PASS"],
             "nas": [f for f in findings if report_status(f) == "NA"]}
 
@@ -311,6 +295,24 @@ def basis_lines(f):
     return list(dict.fromkeys(lines))
 
 
+
+def remediation(f):
+    if f.get("fix_hint"):
+        return f["fix_hint"]
+    if f.get("basis_recommendation"):
+        return f["basis_recommendation"]
+    return manual_hint(f)
+
+
+def basis_groups(data):
+    groups = {}
+    for finding in data['findings']:
+        lines = tuple(basis_lines(finding))
+        if lines:
+            groups.setdefault(lines, []).append(finding)
+    return [(members, lines) for lines, members in groups.items()]
+
+
 def grouped_actions(items):
     """Merge a shared remediation, retaining evidence and each rule's acceptance."""
     groups = {}
@@ -329,6 +331,7 @@ def grouped_actions(items):
         f["summary"] = " ".join(dict.fromkeys(m["summary"] for m in members))
         f["evidence"] = [e for m in members for e in m.get("evidence", [])]
         f["basis_evidence"] = [e for m in members for e in m.get("basis_evidence", [])]
+        f["fix_hint"] = " ".join(dict.fromkeys(remediation(m) for m in members))
         result.append(f)
     return result
 
@@ -348,6 +351,11 @@ def report_md(data: dict[str, Any]) -> str:
     add(f"**Дата проверки:** {data['generated_at'][:10]}  ")
     add(f"**Страниц проанализировано:** {data.get('pages_analysed', 0)}")
     add("")
+    add(provenance_line(data))
+    for issue in provenance_issues(data):
+        add("> **Несовместимые входные данные.** " + issue)
+    for issue in consistency_issues(data):
+        add("> **Противоречивые выводы.** " + issue)
     add("> " + DISCLAIMER)
     add("")
 
@@ -369,12 +377,9 @@ def report_md(data: dict[str, Any]) -> str:
         + (f", из них {len(awaiting)} ждут смыслового анализа документов."
            if awaiting else "."))
     add("")
-    if s["exposure"]:
-        add(f"Суммарная верхняя граница санкций по выявленным нарушениям — "
-            f"**{money(s['exposure'])}**. Оценка приблизительная: она складывается из "
-            f"максимумов по каждому составу и не учитывает оборотные штрафы, "
-            f"которые в рублях заранее не выражаются.")
-        add("")
+    add("Суммы по правилам не складываются: несколько находок могут относиться к одному эпизоду. "
+        "Условия повторности указаны отдельно в ответственности.")
+    add("")
     if data.get("degraded"):
         add(f"⚠️ Сбор данных шёл в ограниченном режиме "
             f"({data.get('degraded_reason') or 'без рендера страниц'}). "
@@ -385,9 +390,7 @@ def report_md(data: dict[str, Any]) -> str:
         add("### Требует внимания в первую очередь")
         add("")
         for f in sort_findings(s["fails"])[:5]:
-            fine = max_fine(f)
-            add(f"- **{f['title']}** ({f['rule_id']}) — {sentence(f['summary'])}"
-                + (f" Риск до {money(fine)}." if fine else ""))
+            add(f"- **{f['title']}** ({f['rule_id']}) — см. доказательства и план ниже.")
         add("")
 
     # --- Таблица по группам ---
@@ -414,16 +417,17 @@ def report_md(data: dict[str, Any]) -> str:
                 f"| {fine_amount(f)} | {f['summary']} |")
         add("")
 
-    qualified = [f for f in data["findings"] if basis_lines(f)]
+    qualified = basis_groups(data)
     if qualified:
         add("## Основания обработки и смысловая проверка")
         add("")
-        for f in qualified:
-            if report_status(f) in ("PASS", "NA"):
-                add(f'<a id="{anchor(f["rule_id"])}"></a>')
-            add(f"### {f['rule_id']}")
+        for members, lines in qualified:
+            for f in members:
+                if report_status(f) in ("PASS", "NA"):
+                    add(f'<a id="{anchor(f["rule_id"])}"></a>')
+            add("### " + ", ".join(f['rule_id'] for f in members))
             add("")
-            for line in basis_lines(f):
+            for line in lines:
                 add("- " + line.replace("\n", " "))
             add("")
 
@@ -432,6 +436,7 @@ def report_md(data: dict[str, Any]) -> str:
     if detailed:
         add("## Подробности по открытым пунктам")
         add("")
+        evidence_owner = {}
         for f in detailed:
             add(f'<a id="{anchor(f["rule_id"])}"></a>')
             add("")
@@ -458,6 +463,12 @@ def report_md(data: dict[str, Any]) -> str:
                 add("**Доказательства.**")
                 add("")
                 for e in f["evidence"]:
+                    key = json.dumps(e, sort_keys=True, ensure_ascii=False)
+                    if key in evidence_owner:
+                        owner = evidence_owner[key]
+                        add(f"- Доказательство: см. [{owner}](#{anchor(owner)}).")
+                        continue
+                    evidence_owner[key] = f['rule_id']
                     line = f"- {e['detail']}"
                     if e.get("url"):
                         line += f" — `{e['url']}`"
@@ -469,9 +480,6 @@ def report_md(data: dict[str, Any]) -> str:
                 add("")
             if f.get("source_note"):
                 add(f"**Источник данных.** {f['source_note']}")
-                add("")
-            if f.get("fix_hint"):
-                add(f"**Как устранить.** {f['fix_hint']}")
                 add("")
 
     # --- Что осталось проверить руками ---
@@ -522,7 +530,7 @@ def report_md(data: dict[str, Any]) -> str:
 # Порядок работ: сперва дорогое и простое. Разработчик, начавший с дешёвого,
 # оставляет клиента под самым крупным риском дольше, чем нужно.
 PRIORITY_BUCKETS = [
-    ("P0", "Критический риск, устраняется быстро", lambda f, e: f["severity"] == "critical"),
+    ("P0", "Критический риск", lambda f, e: f["severity"] == "critical"),
     ("P1", "Высокий риск", lambda f, e: f["severity"] == "high"),
     ("P2", "Средний риск", lambda f, e: f["severity"] == "medium"),
     ("P3", "Низкий риск и косметика", lambda f, e: True),
@@ -552,7 +560,7 @@ def plan_md(data: dict[str, Any]) -> str:
     add("")
     add("План предназначен для разработчика, ИИ-агента или подрядчика. В каждой "
         "задаче указаны факт, место изменения, действие и критерий приёмки. "
-        "Юридический текст и решения владельца помечены отдельным входом.")
+        "Для задач с пометкой «владелец/юрист» получите решение до реализации.")
     add("")
     add("## Порядок работ")
     add("")
@@ -577,8 +585,7 @@ def plan_md(data: dict[str, Any]) -> str:
             add(f"**Правила:** {action_rules(f)}")
             if needs_legal:
                 add("")
-                add("**Вход от владельца или юриста:** подтвердить цель, основание "
-                    "или юридическую формулировку до реализации.")
+                add("**Ответственный за решение:** владелец/юрист.")
             add("")
             add(f"**Что обнаружено.** {f['summary']}")
             add("")
@@ -606,20 +613,21 @@ def plan_md(data: dict[str, Any]) -> str:
 
 
 def describe_locations(finding: dict[str, Any]) -> list[str]:
-    """Места изменения в терминах, пригодных для исполнения."""
-    out: list[str] = []
-    for e in (finding.get("basis_evidence", []) + finding.get("evidence", []))[:12]:
-        if e.get("selector") and e.get("url"):
-            out.append(f"страница `{e['url']}`, элемент `{e['selector']}`")
-        elif e.get("url"):
-            out.append(f"`{e['url']}` — {e['detail']}")
-        elif e.get("selector"):
-            out.append(f"страница `{e['selector']}` — {e['detail']}")
+    """Keep addresses/selectors; do not repeat legal quotations or tracking parameters."""
+    out = []
+    for e in finding.get("basis_evidence", []) + finding.get("evidence", []):
+        url = e.get("url") or ""
+        if e.get("kind") == "request" and url:
+            parsed = urllib.parse.urlsplit(url)
+            url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+            location = "Подключение ресурса " + url
         else:
-            out.append(e["detail"])
-        if e.get("snippet"):
-            out.append("Цитата: " + e["snippet"])
-    return list(dict.fromkeys(out))
+            location = url
+        if e.get("selector"):
+            location += (", " if location else "") + "элемент " + e["selector"]
+        if location:
+            out.append(location)
+    return list(dict.fromkeys(out)) or ["Место изменения не установлено; уточнить у владельца по доказательствам правила."]
 
 
 def acceptance(finding: dict[str, Any]) -> str:
@@ -635,16 +643,11 @@ def acceptance(finding: dict[str, Any]) -> str:
         return " ".join(f"{', '.join(rules)}: {criterion}" for criterion, rules in criteria.items())
     rule = finding["rule_id"]
     if rule in {"LI-001", "CK-001", "CK-003", "CK-005", "PDN-009", "CK-002"}:
-        return ("Техническая приёмка: приложены свежие сетевые и cookie-доказательства "
-                "первого визита, согласия, отказа и повторного визита; неуспешные сценарии явно отмечены. "
-                "Документальная приёмка: проверяющий фиксирует цель, сервис, подтверждённое основание "
-                "и источники в отдельной semantic_review. Машинный WARN не требует искусственной замены на PASS."
-                + (" Для CK-002 сначала подтверждена применимость согласия; визуальная равнозначность "
-                   "кнопок остаётся UX-рекомендацией." if rule == "CK-002" else ""))
-    if finding.get("check") == "hybrid":
-        return ("Техническая приёмка: повторный прогон фиксирует актуальные наблюдения и источники. "
-                "Документальная приёмка: проверяющий подтверждает требование и сохраняет статус, "
-                "обоснование и цитаты в отдельной semantic_review; машинный PASS не требуется.")
+        return ("Сетевые и cookie-сценарии: первый визит, согласие, отказ, повторный визит после отказа. "
+                "Основание каждого сервиса подтверждено в semantic_review; неуспешные сценарии отмечены."
+                + (" Отказ работает; оформление кнопок оценивается отдельно." if rule == "CK-002" else ""))
+    if finding.get("check") in ("hybrid", "llm"):
+        return "Свежие доказательства и обоснованный итог сохранены в semantic_review; машинный PASS не требуется."
     script_checked = finding.get("check") in (None, "script", "hybrid")
     # Правило, которое скрипт не закрывает, прогоном не примешь: detect.py по
     # нему никогда не выставит PASS, и такой критерий отправляет разработчика
@@ -749,6 +752,8 @@ th { background:var(--card); font-weight:600; }
 .badge.NA{background:var(--na);}
 .finding { border:1px solid var(--line); border-radius:.5rem; padding:1rem 1.15rem;
            margin:1rem 0; }
+.finding h3 { margin:0 0 .5rem; }
+.finding, .meta { overflow-wrap:anywhere; }
 .finding.FAIL { border-left:4px solid var(--fail); }
 .finding.WARN { border-left:4px solid var(--warn); }
 .ev { background:var(--card); border-radius:.4rem; padding:.6rem .8rem; margin:.5rem 0;
@@ -810,8 +815,18 @@ pre.cmd { background:var(--card); border-radius:.4rem; padding:.7rem .8rem;
 .parttitle { margin-top:2.5rem; }
 .partbreak { page-break-before:always; height:0; }
 a { color:inherit; }
-@media print { body{font-size:11pt;} .wrap{max-width:none;padding:0;} h2{page-break-after:avoid;}
-               .finding{page-break-inside:avoid;} }
+@media print {
+  html { font-size:12px; }
+  body { font:9.5pt/1.4 Arial,sans-serif; padding:0; }
+  .wrap { max-width:none; padding:0; }
+  h1 { font-size:18pt; } h2 { font-size:13pt; margin-top:1.5rem; }
+  h3 { font-size:10.5pt; }
+  h2,h3,thead { break-after:avoid; }
+  tr,.finding { break-inside:avoid; }
+  .finding p { margin:.5rem 0; }
+  .finding { padding:.8rem; }
+  .badge { white-space:normal; }
+}
 @media (prefers-color-scheme: dark) {
   :root { --bg:#1b1b1b; --fg:#e8e8e8; --muted:#a8abb0; --line:#3a3a3a; --card:#252525;
           --fail:#f2b8b5; --warn:#f0c26b; --pass:#a6d4a8; }
@@ -920,11 +935,17 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
     add("<p>Документ состоит из двух частей. <b>Часть I</b> — аналитическая "
         "записка для владельца сайта и юриста. <b>Часть II</b> — план устранения "
         "для разработчика.</p>")
-    add(f"<h1 class=parttitle>Часть I. Аналитическая записка — "
-        f"{esc(site_name(data))}</h1>")
+    add("<h2 class=parttitle>Часть I. Результаты проверки</h2>")
     add(f"<div class=meta>{esc(data['target'])} · проверено {esc(data['generated_at'][:10])} · "
         f"страниц: {esc(data.get('pages_analysed', 0))}</div>")
+    add(f"<p class=meta>{esc(provenance_line(data))}</p>")
+    for issue in provenance_issues(data):
+        add(f"<div class=alert>Несовместимые входные данные. {esc(issue)}</div>")
+    for issue in consistency_issues(data):
+        add(f"<div class=alert>Противоречивые выводы. {esc(issue)}</div>")
     add(f"<div class=disclaimer>{esc(DISCLAIMER)}</div>")
+    add("<p class=hint>Суммы по правилам не складываются: находки могут относиться к одному эпизоду. "
+        "Условия повторности указаны отдельно в ответственности.</p>")
 
     alert = coverage_alert(data)
     if alert:
@@ -936,9 +957,6 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
                               ("unknown", "не проверено", len(s["unknowns"])),
                               ("pass", "соблюдается", len(s["passes"]))):
         add(f"<div class='kpi {cls}'><div class=n>{value}</div><div class=l>{label}</div></div>")
-    if s["exposure"]:
-        add(f"<div class='kpi fail'><div class=n>{esc(money(s['exposure']))}</div>"
-            f"<div class=l>верхняя граница санкций</div></div>")
     add("</div>")
 
     if data.get("degraded"):
@@ -957,20 +975,22 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
         add(f"<h3>{esc(title)}</h3>")
         add(checklist_table_html(sort_findings(items), detail_ids, layout))
 
-    qualified = [f for f in data["findings"] if basis_lines(f)]
+    qualified = basis_groups(data)
     if qualified:
         add("<h2>Основания обработки и смысловая проверка</h2>")
-        for f in qualified:
-            if report_status(f) in ("PASS", "NA"):
-                add(f'<a id="{anchor(f["rule_id"])}"></a>')
-            add(f"<h3>{esc(f['rule_id'])}</h3><ul>")
-            for line in basis_lines(f):
+        for members, lines in qualified:
+            for f in members:
+                if report_status(f) in ("PASS", "NA"):
+                    add(f'<a id="{anchor(f["rule_id"])}"></a>')
+            add("<h3>" + esc(", ".join(f['rule_id'] for f in members)) + "</h3><ul>")
+            for line in lines:
                 add(f"<li>{esc(line)}</li>")
             add("</ul>")
 
     detailed = sort_findings(s["fails"] + s["warns"])
     if detailed:
         add("<h2>Подробности по открытым пунктам</h2>")
+        evidence_owner = {}
         for f in detailed:
             add(f"<div class='finding {esc(report_status(f))}' id='{anchor(f['rule_id'])}'>")
             add(f"<h3><span class=rule-id>{esc(f['rule_id'])}</span> {esc(f['title'])} "
@@ -982,6 +1002,12 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
                 add(f"<p><b>Ответственность.</b> {esc(f['liability'])}</p>")
             add(f"<p><b>Обнаружено.</b> {esc(f['summary'])}</p>")
             for e in f.get("evidence", []):
+                key = json.dumps(e, sort_keys=True, ensure_ascii=False)
+                if key in evidence_owner:
+                    owner = evidence_owner[key]
+                    add(f"<p class=hint>Доказательство: см. <a href='#{anchor(owner)}'>{esc(owner)}</a>.</p>")
+                    continue
+                evidence_owner[key] = f['rule_id']
                 bits = esc(e["detail"])
                 if e.get("url"):
                     bits += f" — {esc(e['url'])}"
@@ -991,8 +1017,6 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
                 add(f"<div class=ev>{bits}{snippet}</div>")
             if f.get("source_note"):
                 add(f"<p><b>Источник данных.</b> {esc(f['source_note'])}</p>")
-            if f.get("fix_hint"):
-                add(f"<p><b>Как устранить.</b> {esc(f['fix_hint'])}</p>")
             add("</div>")
 
     if s["unknowns"]:
@@ -1022,10 +1046,7 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
         f"<li>Вопросы и замечания по проверке: "
         f"<a href='mailto:{SKILL_EMAIL}'>{esc(SKILL_EMAIL)}</a></li>"
         "</ul>")
-    add(f"<p>Нормы и суммы санкций актуальны на дату проверки "
-        f"({esc(data['generated_at'][:10])}). Законодательство меняется — перед "
-        f"использованием записки в переписке или в суде сверьтесь с актуальной "
-        f"редакцией.</p>")
+    add("<p>Нормы и санкции взяты из указанной версии правил; дата обхода не подтверждает их актуальность.</p>")
     add("</div>")
     add("</div></body></html>")
     return "".join(p)
@@ -1039,8 +1060,8 @@ def plan_html(data: dict[str, Any]) -> str:
     add("<div class=partbreak></div>")
     add("<h1>Часть II. План устранения</h1>")
     add(f"<div class=meta>Задач: {len(actionable)} · основание — часть I</div>")
-    add("<p>Документ предназначен для исполнения агентом-разработчиком. Задачи "
-        "отсортированы по убыванию риска; порядок не переставлять.</p>")
+    add("<p>Задачи отсортированы по риску. Для задач с пометкой «владелец/юрист» "
+        "получите решение до реализации.</p>")
 
     counter = 0
     assigned: set[str] = set()
@@ -1059,9 +1080,7 @@ def plan_html(data: dict[str, Any]) -> str:
                 f"{esc(action_rules(f))} · "
                 f"пункт части I</p>")
             if any(m["rule_id"] in NEEDS_LEGAL_INPUT for m in f.get("members", [f])):
-                add("<div class=warnbox>⚠️ <b>Нужен вход от заказчика.</b> Задача "
-                    "требует юридического текста или решения владельца. Разработчик "
-                    "реализует форму и размещение, но не сочиняет содержание.</div>")
+                add("<p class=hint>Ответственный за решение: владелец/юрист.</p>")
             add(f"<p><b>Что обнаружено.</b> {esc(sentence(f['summary']))}</p>")
             where = describe_locations(f)
             if where:
@@ -1077,8 +1096,7 @@ def plan_html(data: dict[str, Any]) -> str:
 
 
 RUNNING_DISCLAIMER = (
-    "Техническая проверка, не юридическое заключение. Ответственность за "
-    "решения, принятые по этому документу, несёт его получатель.")
+    "Техническая проверка, не юридическое заключение.")
 
 
 def pdf_header(data: dict[str, Any]) -> str:
@@ -1137,12 +1155,19 @@ def main() -> int:
     ap.add_argument("--out-dir", default="report")
     ap.add_argument("--format", default="md,html",
                     help="список через запятую: md, html, pdf")
+    ap.add_argument("--allow-legacy", action="store_true",
+                    help="просмотр старых findings с предупреждением о несовместимости")
     ap.add_argument("--layout", default="stacked",
                     choices=("stacked", "twoline", "wide"),
                     help="раскладка чек-листа в HTML и PDF")
     args = ap.parse_args()
 
     data = json.loads(Path(args.findings).read_text(encoding="utf-8"))
+    issues = provenance_issues(data) + consistency_issues(data)
+    if issues and not args.allow_legacy:
+        print("\n".join(issues), file=sys.stderr)
+        print("Повторите detect текущей версией. Для просмотра старого снимка: --allow-legacy.", file=sys.stderr)
+        return 2
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     formats = {f.strip() for f in args.format.split(",") if f.strip()}
@@ -1173,8 +1198,6 @@ def main() -> int:
     s = summarise(data)
     print(f"Нарушений: {len(s['fails'])} · требуют проверки: {len(s['warns'])} · "
           f"не проверено: {len(s['unknowns'])}", file=sys.stderr)
-    if s["exposure"]:
-        print(f"Верхняя граница санкций: {money(s['exposure'])}", file=sys.stderr)
     for p in written:
         print(f"  {p}", file=sys.stderr)
     return 0
