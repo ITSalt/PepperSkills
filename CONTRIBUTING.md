@@ -29,8 +29,9 @@ Internal / project-specific skills do not belong here.
 
 ### Agent-workflow plugins
 
-Plugins that coordinate agent sessions (planning, dispatch, review, verification) qualify when
-they have a **portable core and client adapters**:
+Plugins that coordinate agent sessions (planning, dispatch, review, verification) must meet
+criteria 2 and 3 above as written. Criterion 1 (portable) is met by a **portable core with
+client adapters**:
 
 - **Portable core** — roles, state files, protocol, templates and scripts that use only the Python
   standard library and common CLIs (`git`, `gh`). The core works in any client that can read
@@ -39,8 +40,9 @@ they have a **portable core and client adapters**:
   cross-session messaging, hooks, session start flags, short commands) lives in `agents/`,
   `hooks/`, `commands/` or `adapters/`. The core must not depend on an adapter: without it the
   skill still works, with the owner relaying what the adapter would automate.
-- **Cited** — a well-defined pattern whose effectiveness boundaries are documented in the skill
-  (when to apply it and when it is overhead).
+- For criterion 3, the documented effectiveness boundaries live in the skill (when to apply the
+  pattern and when it is overhead); criterion 2 means its modes can be run on a demo workspace
+  against current models.
 
 Project-specific details (repositories, trackers, environments) belong in the user's workspace
 configuration, not in the plugin.
@@ -142,8 +144,9 @@ to chat content must update the reviewed golden differences in
 
 `plugin.json` owns the shipped version; `sync-skill-versions.py` updates only
 `metadata.version` in the corresponding `SKILL.md` frontmatter. Current product
-versions are 2.0.1 for Creative Mode, 2.1.1 for Compliance, 2.5.1 for Prompt
-Engineer and 0.1.0 (unreleased) for Orchestrator. Future release tags use `<name>-v<version>`; existing historical tags
+versions are 2.0.1 for Creative Mode, 2.2.0 for Compliance, 2.5.1 for Prompt
+Engineer and 0.1.0 (preview, unreleased) for Orchestrator.
+Future release tags use `<name>-v<version>`; existing historical tags
 remain unchanged.
 
 The root skill paths are transition links for Phase A. Do not remove them or
