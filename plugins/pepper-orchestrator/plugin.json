@@ -1,0 +1,39 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "pepper-orchestrator",
+  "version": "0.1.0",
+  "description": "Preview: single-orchestrator method for multi-repository programs - plan, work packages, owner queue and verified state in files.",
+  "author": {
+    "name": "ITSalt",
+    "email": "info@itsalt.ru",
+    "url": "https://github.com/ITSalt/PepperSkills"
+  },
+  "homepage": "https://github.com/ITSalt/PepperSkills/tree/main/plugins/pepper-orchestrator",
+  "repository": "https://github.com/ITSalt/PepperSkills",
+  "license": "MIT",
+  "keywords": [
+    "orchestration",
+    "multi-repository",
+    "agent-workflow",
+    "planning",
+    "hub-and-spoke"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Pepper Orchestrator",
+        "shortDescription": "Multi-repo orchestration",
+        "longDescription": "Runs work that spans several repositories through one orchestrator session: verified facts, a plan, work packages for module sessions, an owner queue with ready commands, and all state in versioned Markdown files. Irreversible actions stay with the owner.",
+        "category": "Productivity",
+        "developerName": "ITSalt",
+        "capabilities": [
+          "Analyze",
+          "Generate"
+        ],
+        "defaultPrompt": [
+          "Plan this multi-repository change by the single-orchestrator concept."
+        ]
+      }
+    }
+  }
+}

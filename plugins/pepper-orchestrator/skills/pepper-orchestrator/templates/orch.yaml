@@ -1,0 +1,33 @@
+# Program configuration for the pepper-orchestrator workspace.
+# Read by orch.py (YAML subset: block maps and lists, flow [..] and {..}, scalars).
+
+# Prefix of session names and messages.
+program: {{PROGRAM}}
+title: {{PROGRAM_TITLE_YAML}}
+# [{{TAG}}] in messages and PR titles.
+tag: {{TAG}}
+# Language of owner-facing documents: en | ru.
+owner_language: {{LANG}}
+coordinator_session: {{COORDINATOR}}
+# true: orch.py commit also pushes (the owner reads from another device).
+push_after_milestone: false
+
+# One writing session per repository.
+modules: []
+# Example module:
+#  - id: db
+#    repo: ~/projects/example-database
+#    base: main
+#    session: {{PROGRAM}}-db
+#    tests: ["./scripts/test.sh"]
+#    deploy_test: owner-confirmed in module window
+#    deploy_prod: ./scripts/deploy.sh --target prod
+#    release_clone: ~/projects/example-database-release
+#    web_urls: {test: https://test.example.com, prod: https://example.com}
+
+environments: {}
+guards: {}
+# Optional source of facts: none | nacl. Tasks and statuses always stay in files.
+spec_graph: none
+# Live checks: playwright | none.
+e2e: none

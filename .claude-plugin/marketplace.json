@@ -5,6 +5,7 @@
   "plugins": [
     {"name":"pepper-ru-web-compliance","source":"./plugins/pepper-ru-web-compliance"},
     {"name":"pepper-creative-mode","source":"./plugins/pepper-creative-mode"},
-    {"name":"pepper-prompt-engineer","source":"./plugins/pepper-prompt-engineer"}
+    {"name":"pepper-prompt-engineer","source":"./plugins/pepper-prompt-engineer"},
+    {"name":"pepper-orchestrator","source":"./plugins/pepper-orchestrator"}
   ]
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.1.0 (preview)
+
+New plugin `pepper-orchestrator` (stage 1 core): single-orchestrator method for programs that
+span several repositories, with a stdlib-only workspace CLI, English and Russian templates and
+Claude Code short commands. The repository scope now admits agent-workflow plugins with a portable
+core and client adapters. Preview, not yet released.
+
 ## RU Web Compliance 2.2.0 — 2026-09-28
 
 Network observations now retain context without payload values. POST requests
