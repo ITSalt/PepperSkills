@@ -70,6 +70,8 @@ def replace_once(path, old: str, new: str) -> None:
     if count != 1:
         raise EditError(f'{path}: expected exactly one occurrence, found {count}')
     updated = original.replace(old_b, new_b, 1)
+    if not updated.strip():
+        raise EditError(f'{path}: refusing to leave the file empty or whitespace-only')
     expected = len(original) - len(old_b) + len(new_b)
     if len(updated) != expected:
         raise EditError(f'{path}: size mismatch before write')
@@ -86,6 +88,8 @@ def create(path, content: str) -> None:
     if path.exists():
         raise EditError(f'refusing to overwrite existing file: {path}')
     data = content.encode('utf-8')
+    if not data.strip():
+        raise EditError(f'refusing to create an empty or whitespace-only file: {path}')
     path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write(path, data)
     umask = os.umask(0)

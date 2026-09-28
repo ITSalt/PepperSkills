@@ -66,6 +66,22 @@ def test_safe_edit(tmp):
         pass
     else:
         raise AssertionError('create overwrote an existing file')
+    for empty in ('', '\n', ' \n\t'):
+        try:
+            safe_edit.create(tmp / 'sub/empty.md', empty)
+        except safe_edit.EditError:
+            pass
+        else:
+            raise AssertionError(f'created an empty file from {empty!r}')
+    whole = tmp / 'whole.md'
+    whole.write_text('only\n', encoding='utf-8')
+    try:
+        safe_edit.replace_once(whole, 'only\n', '\n')
+    except safe_edit.EditError:
+        pass
+    else:
+        raise AssertionError('replace_once emptied a file')
+    assert whole.read_text(encoding='utf-8') == 'only\n'
     safe_edit.create(tmp / 'sub/new.md', 'Юникод\n')
     assert (tmp / 'sub/new.md').read_text(encoding='utf-8') == 'Юникод\n'
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target),
@@ -151,6 +167,14 @@ def test_workflow(tmp, lang):
     assert '# WP-DB-01 — Orders table' in text and 'demo/wp-db-01-orders-table' in text
     assert '[DEMO] READY WP-DB-01' in text and str(wp_file.resolve()) in text
     assert '{{' not in text
+    start = text[text.index('### Start command'):]
+    command = start[start.index('```bash\n') + 8:start.index('\n```', start.index('```bash'))]
+    assert command.startswith('cd ~/projects/demo-db && claude --name demo-db "')
+    assert '--settings' not in command
+    bootstrap = (ws / 'orchestration/bootstrap-prompt.md').read_text(encoding='utf-8')
+    assert str(ws.resolve()) in bootstrap and '{{' not in bootstrap
+    utc_date = orch.dt.datetime.now(orch.dt.timezone.utc).date().isoformat()
+    assert f'| DRAFT | demo-db | — | {utc_date} |' in (ws / 'status.md').read_text(encoding='utf-8')
     assert (ws / 'work-packages/WP-DB-02-orders-index.md').is_file()
     run(repo, 'set', 'WP-DB-01', 'status', 'READY', '--evidence', 'reviewed')
     run(repo, 'set', 'WP-DB-01', 'status', 'BLOCKED', ok=False)
@@ -177,6 +201,10 @@ def test_workflow(tmp, lang):
     assert 'dropped: superseded by D-1' in status
     decisions = (ws / 'decisions.md').read_text(encoding='utf-8')
     assert '| D-1 |' in decisions and '| A-1 |' in decisions
+    run(repo, 'journal', 'text with <!-- orch:wp --> and <!-- orch:journal -->', '--wp', 'WP-DB-01')
+    run(repo, 'owner', 'add', 'R', 'marker <!-- orch:owner --> in text')
+    run(repo, 'owner', 'close', 'R-3', 'verified <!-- orch:owner -->')
+    assert run(repo, 'lint').returncode == 0, 'marker text in a cell broke the tables'
     run(repo, 'journal', 'reconciled with reality', '--evidence', 'gh pr list')
     _, _, journal = orch.Workspace(ws).table(ws / 'status.md', 'journal')
     assert journal[0]['event'] == 'reconciled with reality'
@@ -215,6 +243,8 @@ def test_lint_failures(repo, ws):
     (ws / 'reports').mkdir()
     (ws / 'reports/empty.md').write_text('', encoding='utf-8')
     expect('empty file')
+    (ws / 'reports/empty.md').write_text('\n', encoding='utf-8')
+    expect('empty file')
     (ws / 'reports/empty.md').write_text('token = ghp_' + 'a' * 36 + '\n', encoding='utf-8')
     expect('looks like a secret')
     (ws / 'reports/empty.md').write_text('db: postgres://user:pa55word@host/db\n', encoding='utf-8')
@@ -250,6 +280,8 @@ def test_discovery(tmp):
     run(repo, 'init', 'two')
     assert 'several workspaces' in run(repo, 'queue', ok=False).stderr
     assert run(repo, '--workspace', 'features/two', 'queue').returncode == 0
+    assert run(repo, 'queue', '--workspace', 'features/two').returncode == 0
+    assert run(repo, 'lint', '--workspace', 'features/one').returncode == 0
     assert run(repo / 'features/one/work-packages', 'lint').returncode == 0
     print('PASS workspace discovery: upward search, features/*, ambiguity, --workspace')
 

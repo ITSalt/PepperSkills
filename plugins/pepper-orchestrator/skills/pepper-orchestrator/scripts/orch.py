@@ -218,7 +218,8 @@ def parse_yaml(source):
 # ---------------------------------------------------------------- workspace
 
 def today():
-    return dt.date.today().isoformat()
+    """Calendar date in UTC, the same zone as the journal."""
+    return dt.datetime.now(dt.timezone.utc).date().isoformat()
 
 
 def now_utc():
@@ -226,7 +227,9 @@ def now_utc():
 
 
 def cell(text):
-    return ' '.join(str(text).split()).replace('|', '\\|') or '—'
+    """One table cell: single line, escaped pipes, no machine marker lookalikes."""
+    text = ' '.join(str(text).split()).replace('|', '\\|').replace('<!--', '&lt;!--')
+    return text or '—'
 
 
 def row(values):
@@ -351,7 +354,8 @@ def cmd_init(args):
     tag = (args.tag or program.split('-')[0]).upper()
     title = args.title or program
     base = {'PROGRAM': program, 'PROGRAM_TITLE': title, 'TAG': tag, 'LANG': lang,
-            'COORDINATOR': f'{program}-coord', 'DATE': today()}
+            'COORDINATOR': f'{program}-coord', 'DATE': today(),
+            'WORKSPACE': str(root.resolve())}
     modules = []
     for spec in args.module or []:
         match = re.fullmatch(r'([a-z0-9][a-z0-9-]*)=([^@]+)(?:@(.+))?', spec)
@@ -368,6 +372,7 @@ def cmd_init(args):
         'orchestration/protocol.md': source / 'protocol.md',
         'work-packages/_TEMPLATE.md': source / 'work-package.md',
         'bugs/_TEMPLATE.md': source / 'bug.md',
+        'orchestration/bootstrap-prompt.md': source / 'bootstrap-prompt.md',
     }
     module_rows = '\n'.join(row([m['id'], m['repo'], m['base'], m['session']]) for m in modules)
     for rel, template in files.items():
@@ -635,7 +640,7 @@ def lint(ws):
         rel = path.relative_to(ws.root)
         if safe_edit.BACKUP_DIR_NAME in rel.parts or '.git' in rel.parts or not path.is_file():
             continue
-        if path.stat().st_size == 0:
+        if not path.read_bytes().strip():
             errors.append(f'{rel}: empty file')
             continue
         try:
@@ -696,9 +701,13 @@ def cmd_commit(args):
 def build_parser():
     parser = argparse.ArgumentParser(prog='orch.py', description=__doc__.split('\n\n')[0])
     parser.add_argument('--workspace', help='workspace directory (contains orch.yaml)')
+    # Also accepted after the subcommand; SUPPRESS keeps the global value when absent.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument('--workspace', default=argparse.SUPPRESS,
+                        help='workspace directory (contains orch.yaml)')
     sub = parser.add_subparsers(dest='command', required=True)
 
-    p = sub.add_parser('init', help='create a program workspace')
+    p = sub.add_parser('init', parents=[common], help='create a program workspace')
     p.add_argument('program')
     p.add_argument('--dir', help='workspace directory (default: features/<program>)')
     p.add_argument('--title')
@@ -707,47 +716,47 @@ def build_parser():
     p.add_argument('--module', action='append', metavar='ID=REPO[@BASE]')
     p.set_defaults(func=cmd_init)
 
-    p = sub.add_parser('new-wp', help='create a work package')
+    p = sub.add_parser('new-wp', parents=[common], help='create a work package')
     p.add_argument('module')
     p.add_argument('slug')
     p.add_argument('--title')
     p.set_defaults(func=cmd_new_wp)
 
-    p = sub.add_parser('set', help='edit one cell of a WP row')
+    p = sub.add_parser('set', parents=[common], help='edit one cell of a WP row')
     p.add_argument('wp')
     p.add_argument('column', help=', '.join(SETTABLE))
     p.add_argument('text')
     p.add_argument('--evidence', help='journal evidence for a status change')
     p.set_defaults(func=cmd_set)
 
-    p = sub.add_parser('journal', help='add a journal line on top')
+    p = sub.add_parser('journal', parents=[common], help='add a journal line on top')
     p.add_argument('event')
     p.add_argument('--wp')
     p.add_argument('--evidence')
     p.set_defaults(func=cmd_journal)
 
-    p = sub.add_parser('owner', help='owner queue: add, close, drop')
+    p = sub.add_parser('owner', parents=[common], help='owner queue: add, close, drop')
     p.add_argument('action', choices=('add', 'close', 'drop'))
     p.add_argument('target', help='R|P for add; item id for close/drop')
     p.add_argument('text')
     p.add_argument('--where', help='where the item is described')
     p.set_defaults(func=cmd_owner)
 
-    p = sub.add_parser('queue', help='open owner items')
+    p = sub.add_parser('queue', parents=[common], help='open owner items')
     p.add_argument('--json', action='store_true')
     p.set_defaults(func=cmd_queue)
 
-    p = sub.add_parser('decide', help='append D-n, A-n or Q-n to decisions.md')
+    p = sub.add_parser('decide', parents=[common], help='append D-n, A-n or Q-n to decisions.md')
     p.add_argument('kind', help='D, A or Q')
     p.add_argument('text')
     p.add_argument('--source')
     p.add_argument('--closes', help='owner question P-n answered by this decision')
     p.set_defaults(func=cmd_decide)
 
-    p = sub.add_parser('lint', help='workspace integrity checks')
+    p = sub.add_parser('lint', parents=[common], help='workspace integrity checks')
     p.set_defaults(func=cmd_lint)
 
-    p = sub.add_parser('commit', help='lint, commit the workspace, push if configured')
+    p = sub.add_parser('commit', parents=[common], help='lint, commit the workspace, push if configured')
     p.add_argument('message')
     p.add_argument('--no-push', action='store_true')
     p.set_defaults(func=cmd_commit)
