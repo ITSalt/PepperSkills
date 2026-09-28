@@ -3,7 +3,10 @@
 ## 0.2.0 — preview, unreleased
 
 Preview of stage 2a: streams in one repository and dispatch. A 0.1.0 workspace works unchanged
-(`orch.py upgrade` only adds the two new tables when locks or the merge queue are needed).
+(`orch.py upgrade` only adds the two new tables when locks or the merge queue are needed). 0.1.0
+modules that share one repository path now get a `lint` warning (not an error) and are dispatched
+one at a time; each keeps its own base. To run them in parallel, add a `repos` entry and turn
+them into `kind: area|domain` modules with paths.
 
 - `orch.yaml`: `repos` block (base, branch prefix, worktree root and setup, merge policy, shared
   paths, resources, checks, deploy workflows) and modules of kind `area`, `domain` or `repo` with
@@ -20,8 +23,17 @@ Preview of stage 2a: streams in one repository and dispatch. A 0.1.0 workspace w
 - Work package template: stream, worktree, allowed and shared paths, migrations, resources, test
   database and ports, line, merge slot, methodology limits; generated worktree preparation,
   delivery (with or without a remote) and start command (`claude -w` for streams).
-- `safe_edit.py --stdin` (fragments in one block, no temporary files) and a backup fallback when
-  `.orch-backup/` cannot be written.
+- `safe_edit.py --stdin`: one or more OLD/NEW blocks, applied all or nothing, no temporary files;
+  `lint` rejects leftover marker lines; backup fallback when `.orch-backup/` cannot be written.
+- P4 identifies a module repository by git common directory and origin URL (linked worktrees and
+  clones included; git older than 2.31 supported); `orch/<program>` is the only allowed branch.
+- Globs support `{a,b}` (expanded for matching and overlaps; `init` keeps commas inside braces);
+  `[`/`]` are literal. Dependencies accept module ids with hyphens (`WP-ADMIN-UI-01`).
+- Locks: shared-path locks collide by glob; unknown resources and paths outside `shared_paths`
+  are refused; a released lock with a queue stays as a free row, the queue is respected, and a
+  package leaves every queue once it gets its lock; `merge done` names the waiting packages.
+- `push_deploys: true` on a repository: delivery sections tell sessions to commit locally and push
+  only with the stand slot. `git status` in session worktrees uses `--no-optional-locks`.
 - `plan` never writes an open P-n's recommendation as decided; the manifest description says
   where to start.
 - Concept 1.1 (EN and RU): rules P1-P5 in sections 4, 7 and 12, new section 19 on repositories

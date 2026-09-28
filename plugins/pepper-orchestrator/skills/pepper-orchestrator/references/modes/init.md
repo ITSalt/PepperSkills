@@ -7,9 +7,11 @@ a title and modules.
 
 1. **Choose the place (P4).** The workspace lives in the orchestrator's home repository: a
    separate repository for the program (recommended), a docs or test-harness repository, or
-   branch `orch/<program>` in its own worktree of a module repository. Never the checkout of a
-   module's base branch: a commit there may deploy the stand. `orch.py init` and `orch.py commit`
-   refuse that place. If the current directory is a module checkout, stop and propose the home
+   branch `orch/<program>` in its own worktree or clone of a module repository. Any other branch
+   of a module checkout, linked worktree or clone is refused by `orch.py init` and
+   `orch.py commit` (they compare the git common directory and the origin URL): a commit there may
+   deploy the stand. `orch/<program>` in the main checkout of a repository that also has a
+   whole-repository module gets a warning: that module's session switches branches there. If the current directory is a module checkout, stop and propose the home
    repository to the owner.
 2. **Refuse to overwrite.** If `features/<program>/` exists and is not empty, switch to `resume`.
 3. **Ask the owner's language explicitly** (`en` or `ru`) for owner-facing files. Do not infer it
@@ -17,7 +19,8 @@ a title and modules.
 4. **Find the modules.** From the request and a read-only look around:
    - **Whole repositories** (0.1.0 form): one module per repository, `--module id=PATH[@BASE]`.
    - **One repository with several streams** (monorepo, or areas and domains of one product):
-     one `--repo id=PATH[@BASE]` and one `--area` or `--domain id=REPO_ID:GLOB[,GLOB]` per stream.
+     one `--repo id=PATH[@BASE]` and one `--area` or `--domain id=REPO_ID:GLOB[,GLOB]` per stream
+   (globs: `*`, `**`, `?`, `{a,b}`; commas inside braces are kept).
      Propose areas and domains from the directory structure and from changes made together
      (`git -C <repo> log --name-only --since=3.months`), and give the owner the proposed paths to
      confirm as a P-n item. Paths are never a guess.
@@ -41,7 +44,9 @@ a title and modules.
    Default path: `features/<program>/`; override with `--dir`.
 7. **Complete `orch.yaml` by point edits** (`safe_edit.py --stdin`, never a rewrite): per repo
    `worktree_setup`, `merge_policy` (`sequential` if merges deploy the stand without CI),
-   `shared_paths`, `resources`, `checks`, `deploy_workflows`, `base_deploys`; per module
+   `shared_paths`, `resources`, `checks` (read-only commands; contract in `SKILL.md`),
+   `deploy_workflows`, `base_deploys`, `push_deploys: true` when a push of any branch deploys the
+   stand (packages then tell sessions to push only with the stand slot); per module
    `test_db`, `ports`, `tests {scoped, full}`, `methodology {name, allowed, forbidden}` (for a
    methodology whose commands merge or deploy, list those commands as forbidden); per 0.1.0
    module `tests`, deploy commands; `push_after_milestone`; `spec_graph` stays `none`.

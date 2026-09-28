@@ -24,9 +24,16 @@ repos: []
 #    merge_policy: sequential         # sequential | free
 #    shared_paths: [pnpm-lock.yaml, "**/package.json", "backend/migrations/**"]
 #    resources: [staging, migrations, dev-stack]
-#    checks: ["./scripts/check-migration-order.sh"]
+#    checks: ["./scripts/check-migration-order.sh"]   # read-only commands; see below
 #    deploy_workflows: [deploy.yml]   # read by resume to see who holds the stand
 #    base_deploys: prod               # prod | staging | none: what a merge into base deploys
+#    push_deploys: true               # a push of any branch deploys the stand: sessions push only with the stand slot
+#
+# Paths are globs: `*` (one directory), `**` (any depth), `?` (one character), `{a,b}`
+# (alternatives); `[` and `]` are literal.
+# checks: run by `orch.py overlap` through the shell in the repository's main checkout, env
+# ORCH_BASE_REF (base ref) and ORCH_BRANCHES (active package branches, space separated), timeout
+# 300 s; a non-zero exit is a finding. Checks must only read.
 
 # Modules: a whole repository (kind: repo, `repo: <path>`) or an area/domain of a repos entry.
 modules: []

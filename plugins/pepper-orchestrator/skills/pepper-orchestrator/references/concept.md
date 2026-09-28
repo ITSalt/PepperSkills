@@ -93,8 +93,9 @@ features/<program>/
 directory in their settings.
 
 **Where the workspace lives (P4).** Not in a module repository. Recommended: a separate "home"
-repository of the program; acceptable: branch `orch/<program>` in its own worktree. Never the
-checkout of a module's base branch: a commit there may deploy the stand.
+repository of the program; acceptable: branch `orch/<program>` in its own worktree or clone.
+Never another branch of a module checkout, worktree or clone: a commit there may deploy the stand.
+Not the main checkout either when a whole-repository module's session works in it.
 
 **Modules and streams.** A module is either a whole repository or a logical block inside one: an
 **area** (a section of the product) or a **domain**, with its own paths. Modules of one repository
@@ -377,7 +378,9 @@ an unmerged branch breaks the deploy for everyone.
 
 - Until the project changes its deploy, the stand is a **resource held by a lock**: sessions commit
   locally and push one at a time, only while holding the `staging` lock; live checks run only for
-  the lock holder.
+  the lock holder. The plugin marks such repositories with `push_deploys: true`, and every
+  package's delivery section then says "commit locally, do not push until you get the stand
+  slot".
 - The fix belongs to the project, not to the plugin: a package in that repository that deploys the
   stand only on command (manual dispatch or a dedicated branch prefix) and adds a concurrency group
   per environment. The orchestrator raises it as an owner question with a recommendation before

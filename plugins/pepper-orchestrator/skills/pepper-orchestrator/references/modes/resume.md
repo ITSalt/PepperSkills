@@ -17,7 +17,7 @@ step. No argument, or the program name when several workspaces exist.
    |------|-----|
    | live sessions | `ListAgents` or `claude agents --json` where available |
    | worktrees per repository | `orch.py worktrees`: branch, dirty tree, ahead/behind the base, package |
-   | PRs and CI | by branch: `gh pr list --repo <r> --head <branch> --state all`; by package id in the body: `gh pr list --repo <r> --search "<WP> in:body" --state all`; then `gh pr view`, `gh pr checks`, `gh run list` |
+   | PRs and CI | by branch: `gh pr list --repo <r> --head <branch> --state all`; by package id in the body: `gh pr list --repo <r> --search '"<WP>" in:body' --state all` (the id in quotes: GitHub splits it on hyphens otherwise); then `gh pr view`, `gh pr checks`, `gh run list` |
    | foreign writers | remote branches no package owns (`git -C <repo> branch -r`, for example cloud-session or other-agent branches), worktrees without a package, other sessions in `ListAgents` |
    | the stand | `gh run list --repo <r> --workflow <deploy_workflows entry> -L 5`: which branch deployed last, is it held by the `staging` lock holder |
    | branches of main checkouts | `git -C <repo> rev-parse --abbrev-ref HEAD`, lag behind `origin/<base>` |

@@ -43,9 +43,10 @@ action in a session; read other sections when a mode points to them.
     stand or running the dev stack on fixed ports is done only by the lock holder
     (`orch.py lock`). With `merge_policy: sequential`, merges go one at a time through the merge
     queue.
-11. **Never in a module's base checkout.** The workspace lives in a separate home repository (or
-    on branch `orch/<program>` in its own worktree), never in the checkout of a module's base
-    branch: a commit there may deploy the stand.
+11. **Never in a module's checkout.** The workspace lives in a separate home repository, or on
+    branch `orch/<program>` in its own worktree or clone of a module repository; never on another
+    branch of a module checkout, linked worktree or clone (`init` and `commit` refuse it, comparing
+    the git common directory and the origin URL): a commit there may deploy the stand.
 
 ## Modes
 
@@ -94,8 +95,8 @@ python3 SKILL_DIR/scripts/orch.py --help
 | `lint` | integrity: rows vs files, IDs, dates, journal order, secrets, empty files |
 | `commit "<message>"` | lint, commit only the workspace, push if configured |
 | `dispatch <WP> [--live] [--dry-run]` | checks READY, dependencies, writers, overlaps, locks; takes locks; prints the start command |
-| `overlap [--planned] [--no-checks]` | declared and actual path overlaps, undeclared shared paths, repository `checks` (read-only) |
-| `lock acquire\|release\|list <name> --wp <WP>` | locks on shared paths and resources; busy -> queued |
+| `overlap [--planned] [--no-checks]` | declared and actual path overlaps, undeclared or unlocked shared paths (git reads only); also runs the repository's `checks` commands unless `--no-checks` |
+| `lock acquire\|release\|list <name> --wp <WP>` | locks on shared paths (colliding by glob) and resources (only names from `resources`); busy -> queued; a released lock with a queue stays as a free row |
 | `merge add\|done\|drop\|list <WP>` | merge queue per repository; `done` releases path locks |
 | `worktrees` | worktrees of every repository: branch, dirty, ahead/behind, package (read-only) |
 | `upgrade` | add the locks and merge queue tables to a 0.1.0 `status.md` |
@@ -116,8 +117,16 @@ EOF
 
 Use it for prose sections (`PLAN.md`, work package bodies, `orch.yaml`).
 
+Paths in `orch.yaml` and work packages are globs: `*` (within one directory), `**` (any depth),
+`?` (one character), `{a,b}` (alternatives, may nest); `[` and `]` are literal.
+
+Repository `checks` are the owner's commands, run by `overlap` through the shell in the
+repository's main checkout, with `ORCH_BASE_REF` (base ref) and `ORCH_BRANCHES` (active package
+branches, space separated) in the environment and a 300-second timeout; a non-zero exit is a
+finding. They must only read (no checkout, no writes, no network side effects).
+
 `orch.yaml` holds `repos` (shared repositories: base, branch prefix, worktree setup, merge policy,
-shared paths, resources, checks) and `modules` (`kind: repo` with `repo: <path>`, the 0.1.0 form,
+shared paths, resources, checks, `push_deploys`) and `modules` (`kind: repo` with `repo: <path>`, the 0.1.0 form,
 or `kind: area|domain` with `repo: <repos id>` and `paths`). The commented template in the
 workspace lists every key.
 

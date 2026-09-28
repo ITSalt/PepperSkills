@@ -15,7 +15,10 @@ a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
    when another active package writes in the same repository and one of them is the whole
    repository, or runs in the same stream; when the paths overlap with another active package
    outside `shared_paths`; when a lock the package declares (shared paths touched, resources) is
-   held by another package.
+   held by another package, or overlaps by glob with one (`backend/migrations/**` against
+   `backend/migrations/0002.sql`); when a declared resource is not one of the repository's
+   `resources` or a declared shared path lies outside its `shared_paths` (typos never create new
+   locks); when a released lock still has a queue and the package is not in it.
 2. **Refused:** explain each reason to the owner in one line, with what unblocks it (a merge, a
    lock release, an owner answer). Running `dispatch <WP>` without `--dry-run` also records the
    refusal in the journal and queues the package in the `Waiting` column of every busy lock;
