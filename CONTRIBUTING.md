@@ -27,6 +27,24 @@ A skill belongs here only if it meets all of:
 
 Internal / project-specific skills do not belong here.
 
+### Agent-workflow plugins
+
+Plugins that coordinate agent sessions (planning, dispatch, review, verification) qualify when
+they have a **portable core and client adapters**:
+
+- **Portable core** — roles, state files, protocol, templates and scripts that use only the Python
+  standard library and common CLIs (`git`, `gh`). The core works in any client that can read
+  files and run commands, with a prompt-only change.
+- **Client adapters** — anything that relies on one client's capabilities (subagent types,
+  cross-session messaging, hooks, session start flags, short commands) lives in `agents/`,
+  `hooks/`, `commands/` or `adapters/`. The core must not depend on an adapter: without it the
+  skill still works, with the owner relaying what the adapter would automate.
+- **Cited** — a well-defined pattern whose effectiveness boundaries are documented in the skill
+  (when to apply it and when it is overhead).
+
+Project-specific details (repositories, trackers, environments) belong in the user's workspace
+configuration, not in the plugin.
+
 ## Plugin folder layout
 
 Every skill is a self-contained folder named `<namespace>-<slug>`:
@@ -36,6 +54,7 @@ plugins/<name>/
 ├── plugin.json
 ├── skills/<name>/SKILL.md
 ├── adapters/chat/       # generated or provider-light chat material
+├── agents/ hooks/ commands/  # optional client adapters (agent-workflow plugins)
 ├── README.md
 ├── README.ru.md
 └── CHANGELOG.md
@@ -123,8 +142,8 @@ to chat content must update the reviewed golden differences in
 
 `plugin.json` owns the shipped version; `sync-skill-versions.py` updates only
 `metadata.version` in the corresponding `SKILL.md` frontmatter. Current product
-versions are 2.0.1 for Creative Mode, 2.1.0 for Compliance and 2.5.1 for Prompt
-Engineer. Future release tags use `<name>-v<version>`; existing historical tags
+versions are 2.0.1 for Creative Mode, 2.1.1 for Compliance, 2.5.1 for Prompt
+Engineer and 0.1.0 (unreleased) for Orchestrator. Future release tags use `<name>-v<version>`; existing historical tags
 remain unchanged.
 
 The root skill paths are transition links for Phase A. Do not remove them or
