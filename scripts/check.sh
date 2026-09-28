@@ -22,12 +22,14 @@ skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" "$skill/scripts/gen_checklist.py" --check
 "$PYTHON" "$skill/scripts/selftest.py"
 "$PYTHON" "$skill/scripts/test_modernization.py"
+"$PYTHON" "$skill/scripts/test_report_quality.py"
 "$PYTHON" plugins/pepper-prompt-engineer/skills/pepper-prompt-engineer/scripts/run_evals.py --check-only
 "$PYTHON" plugins/pepper-ru-web-compliance/submission/run_tests.py --out "$qa_dir/submission"
 bash scripts/test-install-links.sh
 "$PYTHON" scripts/test-install-docs.py
 bash scripts/build-skills.sh
 bash scripts/build-plugins.sh
+"$PYTHON" scripts/sync-compat-archives.py --check
 "$PYTHON" scripts/test-packages.py
 "$PYTHON" scripts/test-build-readonly.py
 if [[ -s "$PEPPERSKILLS_NETWORK_AUDIT_LOG" ]]; then

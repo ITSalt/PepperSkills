@@ -270,6 +270,7 @@ def test_data_twins() -> None:
 def test_processing_basis() -> None:
     print("основание обработки аналитики")
     class FakeContext:
+        target = "https://example.ru"
         pages = [{"status": 200, "final_url": "https://example.ru/privacy", "slug": "privacy"}]
         texts = {"privacy": "Аналитика осуществляется на основании п. 7 ч. 1 ст. 6 ФЗ-152. "
                            "Пользователь может направить возражение против обработки."}

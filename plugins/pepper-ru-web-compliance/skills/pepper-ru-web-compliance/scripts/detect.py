@@ -39,6 +39,7 @@ from typing import Any, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import registries as reg  # noqa: E402
+from report_provenance import current_producer
 
 ROOT = Path(__file__).resolve().parent.parent
 RULES_PATH = ROOT / "scripts" / "rules.yaml"
@@ -607,6 +608,15 @@ def detect_trackers(ctx: Context) -> list[Finding]:
     return out
 
 
+def looks_like_login_form(ctx: Context, form: dict[str, Any]) -> bool:
+    """Use this form's fields/action, never the page header or another form."""
+    if any(f.get("type") == "password" for f in form.get("fields") or []):
+        return True
+    action = urllib.parse.urlparse(form.get("action") or "").path.lower()
+    segments = set(re.split(r"[^a-z0-9]+", action))
+    return bool(segments & set(ctx.sig["auth"]["login_context"]["url_segments"]))
+
+
 @detector("forms_consent")
 def detect_forms(ctx: Context) -> list[Finding]:
     out: list[Finding] = []
@@ -623,11 +633,8 @@ def detect_forms(ctx: Context) -> list[Finding]:
                 or any(k in (f.get("placeholder") or "").lower()
                        for k in ("имя", "телефон", "e-mail", "email", "почта"))
                 for f in fields)
-            # Форма входа — не сбор по согласию. Основание обработки здесь
-            # исполнение договора (п. 5 ч. 1 ст. 6 ФЗ-152), и требовать в ней
-            # чекбокс «согласен на обработку» неверно: такой чекбокс в форме
-            # входа не нужен ни по закону, ни по практике.
-            if collects_pd and not looks_like_login_page(ctx, page):
+            # Login links or widgets elsewhere on the page do not classify this form.
+            if collects_pd and not looks_like_login_form(ctx, form):
                 forms.append((page, form))
             elif collects_pd:
                 login_forms.append((page, form))
@@ -639,8 +646,7 @@ def detect_forms(ctx: Context) -> list[Finding]:
         return out
 
     if not forms:
-        note = ("Найдены только формы входа и регистрации: там основание обработки — "
-                "исполнение договора, а не согласие"
+        note = ("Найдены только формы авторизации; основание обработки проверяется отдельно в PDN-013"
                 if login_forms else "Форм сбора персональных данных не обнаружено")
         for rid in ("PDN-004", "PDN-005", "PDN-006", "PDN-007"):
             out.append(mk(ctx, rid, "NA", note))
@@ -823,6 +829,7 @@ PRIVACY_URL_HINTS = ("privacy", "polic", "politik", "personal", "konfidenc")
 def privacy_pages(ctx: Context) -> list[dict[str, Any]]:
     return [p for p in ctx.pages
             if p.get("status") == 200
+            and first_party(p.get("final_url") or p.get("url") or "", ctx.target)
             and any(h in (p.get("final_url") or p.get("url") or "").lower()
                     for h in PRIVACY_URL_HINTS)]
 
@@ -830,6 +837,7 @@ def privacy_pages(ctx: Context) -> list[dict[str, Any]]:
 def privacy_documents(ctx: Context) -> list[dict[str, Any]]:
     return [d for d in ctx.documents
             if d.get("status") == 200
+            and first_party(d.get("final_url") or d.get("url") or "", ctx.target)
             and any(h in (d.get("url") or "").lower()
                     for h in PRIVACY_URL_HINTS + ("confidential",))]
 
@@ -860,6 +868,11 @@ def detect_documents(ctx: Context) -> list[Finding]:
                                 url=doc["url"])],
                       source_note="Содержимое файла не разбиралось: полноту политики "
                                   "(PDN-003) нужно проверить вручную" if is_pdf else None))
+    elif any(d.get("status") == 200 and any(h in (d.get("final_url") or d.get("url") or "").lower()
+             for h in PRIVACY_URL_HINTS) for d in ctx.pages + ctx.documents):
+        out.append(mk(ctx, "PDN-001", "UNKNOWN",
+                      "Найден документ на стороннем домене; принадлежность оператору не подтверждена",
+                      needs_llm=True))
     else:
         tried = [p.get("url") for p in ctx.pages
                  if any(x in (p.get("url") or "") for x in docs["paths"])][:6]
@@ -913,7 +926,7 @@ def policy_texts(ctx: Context) -> dict[str, str]:
     for page in ctx.pages:
         url = (page.get("final_url") or page.get("url") or "").lower()
         slug = page.get("slug", "")
-        if page.get("status") == 200 and any(h in url for h in POLICY_URL_HINTS):
+        if page.get("status") == 200 and first_party(url, ctx.target) and any(h in url for h in POLICY_URL_HINTS):
             text = ctx.texts.get(slug)
             if text:
                 out[slug] = text
@@ -1443,16 +1456,17 @@ def detect_endpoints(ctx: Context) -> list[Finding]:
         for s, a in actions[:4]]
     if ev:
         return [mk(ctx, "PDN-011", "WARN",
-                   "Данные форм уходят на сторонние хосты — требуется подтвердить, "
-                   "где происходит первичная запись ПДн", ev, needs_llm=True),
-                mk(ctx, "INF-003", "FAIL", "Найдены сторонние приёмники данных", ev)]
-    note = ("Формы отправляются через JS без атрибута action — приёмник определён "
-            "по сетевым запросам") if any(
-        (f.get("action") or "") in ("#", "", None)
-        for p in ctx.pages for f in (p.get("forms") or [])) else ""
-    return [mk(ctx, "PDN-011", "PASS",
-               "Сторонних приёмников данных форм не обнаружено. " + note),
-            mk(ctx, "INF-003", "PASS", "Все наблюдаемые приёмники — на домене сайта")]
+                   "Наблюдаются сторонние POST или action форм; место первичной записи не установлено",
+                   ev, needs_llm=True),
+                mk(ctx, "INF-003", "WARN",
+                   "Сторонние запросы требуют проверки назначения, получателя и страны", ev, needs_llm=True)]
+    return [mk(ctx, "PDN-011", "UNKNOWN",
+               "Сторонние приёмники форм не наблюдались; размещение базы данных не установлено",
+               needs_llm=True),
+            mk(ctx, "INF-003", "UNKNOWN",
+               "Страна приёмников не подтверждена; собственный домен не определяет географию хранения",
+               needs_llm=True)]
+
 
 
 # --- Сборка ------------------------------------------------------------------
@@ -1621,6 +1635,7 @@ def run(ctx: Context) -> dict[str, Any]:
 
     return {
         "schema_version": SCHEMA_VERSION,
+        "producer": current_producer(),
         "artifacts_sha256": artifact_fingerprint(ctx),
         "target": ctx.target,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
