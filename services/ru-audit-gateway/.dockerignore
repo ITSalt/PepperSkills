@@ -1,0 +1,4 @@
+.git
+*.sqlite*
+.env
+secrets/

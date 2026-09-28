@@ -144,7 +144,7 @@ to chat content must update the reviewed golden differences in
 
 `plugin.json` owns the shipped version; `sync-skill-versions.py` updates only
 `metadata.version` in the corresponding `SKILL.md` frontmatter. Current product
-versions are 2.0.1 for Creative Mode, 2.2.0 for Compliance, 2.5.1 for Prompt
+versions are 2.0.1 for Creative Mode, 2.3.0 for Compliance, 2.5.1 for Prompt
 Engineer and 0.1.0 (preview, unreleased) for Orchestrator.
 Future release tags use `<name>-v<version>`; existing historical tags
 remain unchanged.

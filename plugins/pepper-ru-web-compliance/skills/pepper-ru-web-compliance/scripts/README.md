@@ -18,8 +18,8 @@
 
 Нужен [uv](https://docs.astral.sh/uv/getting-started/installation/); Python 3.10+
 указан в PEP 723 заголовках скриптов. `uv run --no-project` использует отдельное
-окружение, не добавляя зависимости в проект сайта. Базовый сбор и детекторы
-работают на стандартной библиотеке. Для браузера/PDF добавляйте `--with playwright`
+окружение, не добавляя зависимости в проект сайта. Офлайн-детекторы работают на стандартной библиотеке. Сетевой сбор использует
+`h11` и Playwright; зависимости указаны в заголовках скриптов. Для браузера/PDF добавляйте `--with playwright`
 при каждом запуске. Команды выполняются из корня распакованного скилла:
 
 ```bash
@@ -30,9 +30,26 @@ uv run --no-project --with playwright python -m playwright install chromium
 checklist и оба JSON-файла без записи. В поставке JSON позволяет детекторам
 работать без PyYAML.
 
-Без playwright `collect.py` переходит в режим degraded и помечает это в
+Без установленного браузера сетевой запуск останавливается до списания квоты.
+Явный `--no-browser` включает degraded и помечает это в
 `manifest.json`. Детекторы обязаны читать этот флаг и выставлять `UNKNOWN`
 вместо `PASS` по правилам, которые без рендера не проверяются.
+
+## Единый сетевой этап (2.3.0)
+
+Шлюз `https://lts.itsalt.ru:8443` уже настроен; обычный запуск не требует
+переменных окружения. `PEPPER_RU_GATEWAY_URL` необязательно задаёт другой HTTPS-шлюз,
+`PEPPER_RU_AUDIT_PROXY` — собственный РФ-прокси (HTTP/HTTPS). [Транспорт, квоты и ошибки](../references/gateway.md).
+
+```bash
+uv run --no-project scripts/audit.py https://example.ru --out artifacts/ --findings findings.json
+uv run --no-project scripts/audit.py --offline --out artifacts/ --findings findings.json
+```
+
+`--mode managed|custom`, `--inn`, `--max-pages`, `--timeout`, `--source-dir` и
+`--no-browser` описаны в `audit.py --help`. Для нового сетевого запуска нужен
+пустой каталог. Код 2 означает отказ или неполный сетевой сбор; частичные файлы
+сохраняются. Никакого автоматического перехода напрямую или повторного списания.
 
 ## Сбор
 

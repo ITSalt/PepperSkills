@@ -8,6 +8,11 @@ import json
 from pathlib import Path
 import threading
 import shutil
+import ssl
+import subprocess
+import tempfile
+import audit_transport as transport
+from test_gateway_network import Gateway
 
 import collect
 import detect
@@ -53,7 +58,20 @@ def main():
     server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    target = f'http://127.0.0.1:{server.server_port}'
+    # Real collector uses the same authenticated TLS bridge as production.
+    temp = tempfile.TemporaryDirectory()
+    cert, key = Path(temp.name)/'cert.pem', Path(temp.name)/'key.pem'
+    subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(key),'-out',str(cert),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); tls.load_cert_chain(cert,key)
+    Gateway.plain_port = server.server_port
+    proxy = ThreadingHTTPServer(('127.0.0.1',0),Gateway)
+    proxy.socket = tls.wrap_socket(proxy.socket,server_side=True)
+    threading.Thread(target=proxy.serve_forever,daemon=True).start()
+    bridge = transport.ProxyBridge(f'https://localhost:{proxy.server_port}','session:credential',ssl.create_default_context(cafile=str(cert))).start()
+    active = transport.NetworkSession('http://audit.test', mode='custom')
+    active.proxy = bridge.proxy_url
+    transport.ACTIVE = active
+    target = 'http://audit.test'
     results = []
     try:
         for mode in ('good', 'broken', 'disabled'):
@@ -68,7 +86,7 @@ def main():
             ctx = detect.Context(out)
             # Local /track endpoint substitutes for a known analytics vendor.
             ctx.sig['trackers']['russian'].append({'vendor':'Fixture analytics','kind':'analytics',
-                                                   'host':'127.0.0.1','paths':['/track'],'country':'RU'})
+                                                   'host':'audit.test','paths':['/track'],'country':'RU'})
             tracked = lambda phase: any('/track' in r['url'] for r in ctx.net[phase])
             assert not tracked('before_consent'), 'accept requests leaked into before_consent'
             assert tracked('after_consent'), 'accept click request not captured'
@@ -95,6 +113,11 @@ def main():
                             'browser':manifest.browser})
             print(f'PASS {mode}', flush=True)
     finally:
+        bridge.close()
+        transport.ACTIVE = None
+        proxy.shutdown()
+        proxy.server_close()
+        temp.cleanup()
         server.shutdown()
         server.server_close()
     (args.out/'results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2))

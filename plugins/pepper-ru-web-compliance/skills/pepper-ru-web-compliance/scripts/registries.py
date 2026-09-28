@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = []
+# dependencies = ["h11>=0.16,<0.17"]
 # ///
 """registries.py — слой государственных реестров.
 
@@ -15,7 +15,7 @@
 `reestrs.minjust.gov.ru` вдобавок отдаёт неполную цепочку сертификатов (см.
 `assets/ca/`). Ломать из-за этого всю проверку нельзя, поэтому каждый реестр
 разрешается по цепочке
-    официальный источник напрямую
+    официальный источник через выбранный РФ-транспорт
       -> официальный источник через прокси пользователя (PEPPER_RU_REGISTRY_PROXY)
       -> зеркало
       -> локальный кэш -> локальный снапшот -> недоступен
@@ -46,6 +46,7 @@ findings и при `origin != "live"` понижать вывод до UNKNOWN �
 """
 from __future__ import annotations
 
+import audit_transport as transport
 import argparse
 import csv
 import hashlib
@@ -128,11 +129,8 @@ class RegistryData:
 # все *.rkn.gov.ru) отвечает только с российских адресов, поэтому пользователь
 # может указать свой канал — VPS или VPN с российским выходом.
 #
-# Переменная СВОЯ, а не общепринятая HTTPS_PROXY, и это принципиально: прокси
-# применяется ТОЛЬКО к загрузке реестров. Обход проверяемого сайта (collect.py)
-# должен идти напрямую — правила PDN-011 и INF-003 меряют, куда уходят данные
-# форм, и точка наблюдения меняет результат. Плюс сайт может отдавать разное
-# в зависимости от географии посетителя.
+# Совместимая настройка только реестров. В едином audit.py приоритет имеет
+# транспорт всей сессии; PEPPER_RU_AUDIT_PROXY не меняется этой переменной.
 PROXY_ENV = "PEPPER_RU_REGISTRY_PROXY"
 _proxy_url: str | None = os.environ.get(PROXY_ENV) or None
 
@@ -163,27 +161,20 @@ def _ssl_context() -> ssl.SSLContext:
     return ctx
 
 
-def _opener(use_proxy: bool) -> urllib.request.OpenerDirector:
-    handlers: list[urllib.request.BaseHandler] = [
-        urllib.request.HTTPSHandler(context=_ssl_context())
-    ]
-    if use_proxy and _proxy_url:
-        handlers.append(urllib.request.ProxyHandler(
-            {"http": _proxy_url, "https": _proxy_url}))
-    else:
-        # Пустой ProxyHandler отключает подхват окружения: иначе выставленный
-        # для других задач HTTPS_PROXY незаметно изменил бы точку выхода.
-        handlers.append(urllib.request.ProxyHandler({}))
-    return urllib.request.build_opener(*handlers)
-
-
 def http_get(url: str, timeout: int = 60, use_proxy: bool = True) -> bytes:
     req = urllib.request.Request(url, headers={
         "User-Agent": USER_AGENT,
         "Accept": "*/*",
         "Accept-Language": "ru-RU,ru;q=0.9",
     })
-    with _opener(use_proxy).open(req, timeout=timeout) as resp:
+    active = transport.ACTIVE
+    if active is not None:
+        response = active.urlopen(req, timeout=timeout, context=_ssl_context())
+    elif _proxy_url:
+        response = transport.opener(_proxy_url, _ssl_context()).open(req, timeout=timeout)
+    else:
+        raise transport.NetworkError("network_session_required")
+    with response as resp:
         return resp.read()
 
 
@@ -746,13 +737,7 @@ def mirror_meta(raw: bytes) -> dict[str, Any]:
 
 
 def fetch_source_bytes(source: Source) -> bytes:
-    """Забирает содержимое источника.
-
-    Прокси применяется только к официальным источникам: он существует ради
-    ведомственных хостов, отвечающих лишь с российских адресов. Гнать через
-    него зеркала не нужно и рискованно — они доступны глобально, а вот из РФ
-    могут быть недоступны как раз они.
-    """
+    """Загружает источник через активный транспорт; зеркало также не идёт напрямую."""
     if source.url.startswith("mirror:"):
         key = source.url.split(":", 1)[1]
         return http_get(f"{MIRROR_BASE}data/{key}.json", use_proxy=False)
@@ -899,7 +884,11 @@ def fetch_live(spec: RegistrySpec) -> RegistryData:
     errors: list[str] = []
     for source in spec.sources:
         try:
-            raw = fetch_source_bytes(source)
+            meta = {}
+            if transport.ACTIVE and transport.ACTIVE.gateway and source.trust == "official":
+                raw, meta = transport.ACTIVE.registry(spec.key)
+            else:
+                raw = fetch_source_bytes(source)
             entries = source.parser(raw)
             if not entries:
                 errors.append(f"{source.url}: разобрано 0 записей")
@@ -909,32 +898,36 @@ def fetch_live(spec: RegistrySpec) -> RegistryData:
             source_url = source.url
             source_sha = hashlib.sha256(raw).hexdigest()
             note = source.note
+            fetched = meta.get("fetched_at") or datetime.now(timezone.utc).isoformat(timespec="seconds")
+            stale = 0.0
 
             if source.url.startswith("mirror:"):
                 meta = mirror_meta(raw)
                 # Для зеркала значим возраст СЪЁМА с первоисточника, а не момент,
                 # когда мы скачали файл: свежий download архивных данных свежести
                 # не добавляет.
-                age = age_days(meta.get("fetched_at"))
+                fetched = meta.get("fetched_at") or ""
+                age = age_days(fetched)
+                stale = age
                 window = meta.get("freshness_window_days") or DEFAULT_TTL_DAYS
                 source_url = meta.get("source_url") or source.url
                 source_sha = meta.get("source_sha256") or source_sha
                 if age is None or age > window:
                     trust = "mirror"
-                    note = (f"снимок старше окна свежести ({age:.0f} д при норме "
+                    note = (f"снимок старше окна свежести ({age} д при норме "
                             f"{window} д) — вывод понижен")
                     errors.append(f"{source.url}: {note}")
 
             return RegistryData(
                 registry=spec.key,
                 title=spec.title,
-                fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                fetched_at=fetched,
                 source_url=source_url,
                 source_sha256=source_sha,
                 source_trust=trust,
-                via_proxy=bool(_proxy_url) and source.trust == "official",
+                via_proxy=bool(transport.ACTIVE or _proxy_url),
                 origin="live",
-                stale_days=0.0,
+                stale_days=stale,
                 error=note or None,
                 entries=[asdict(e) for e in entries],
             )
@@ -1243,7 +1236,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         print("По ним вывод «упоминаний не найдено» не поднимается выше WARN.")
     print(f"\nкэш: {CACHE_DIR}")
     print(f"снапшоты: {SNAPSHOT_DIR}")
-    print(f"прокси: {_proxy_url or 'не задан'}  (переменная {PROXY_ENV})")
+    print(f"прокси: {'задан' if _proxy_url else 'не задан'}  (переменная {PROXY_ENV})")
     return 0
 
 
@@ -1254,13 +1247,16 @@ def cmd_probe(args: argparse.Namespace) -> int:
     сообщению «реестр недоступен» неудобно. Здесь видно сразу, что именно
     не отвечает и помогает ли прокси.
     """
-    print(f"прокси: {_proxy_url or 'не задан'}\n")
+    print(f"прокси: {'задан' if _proxy_url else 'не задан'}\n")
     print(f"{'реестр':<30} {'доверие':<11} {'код':<8} источник")
     print("-" * 96)
     for key, spec in REGISTRIES.items():
         for source in spec.sources:
             try:
-                raw = fetch_source_bytes(source)
+                if transport.ACTIVE and transport.ACTIVE.gateway and source.trust == "official":
+                    raw, _ = transport.ACTIVE.registry(spec.key)
+                else:
+                    raw = fetch_source_bytes(source)
                 status = f"ok {len(raw) // 1024}К"
             except Exception as exc:
                 status = type(exc).__name__[:8]
@@ -1345,7 +1341,7 @@ def main() -> int:
     parser.add_argument("--proxy", default=None,
                         help=f"прокси для ведомственных хостов, например "
                              f"http://user:pass@vps:3128 (или переменная {PROXY_ENV}). "
-                             f"Применяется только к загрузке реестров, обход сайта идёт напрямую")
+                             f"Применяется только к загрузке реестров, транспорт сайта задаётся PEPPER_RU_AUDIT_PROXY")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("status", help="что загружено и насколько свежее")
@@ -1375,6 +1371,11 @@ def main() -> int:
     args = parser.parse_args()
     if args.proxy:
         set_proxy(args.proxy)
+    network_needed = args.command in ("probe", "update") or (args.command == "match" and not args.offline)
+    if network_needed and transport.ACTIVE is None:
+        transport.preflight(browser=False)
+        with transport.NetworkSession("https://minjust.gov.ru", proxy=_proxy_url) as session:
+            return args.func(args)
     return args.func(args)
 
 

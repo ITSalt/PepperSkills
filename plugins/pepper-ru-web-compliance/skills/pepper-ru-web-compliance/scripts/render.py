@@ -57,6 +57,16 @@ STATUS_RU = {"FAIL": "НАРУШЕНО", "WARN": "НУЖНА РУЧНАЯ ПРО
              "NA": "НЕ ПРИМЕНИМО", "UNKNOWN": "НЕ УДАЛОСЬ ПРОВЕРИТЬ"}
 
 
+def network_summary(network):
+    egress = network.get("egress", {})
+    state = "завершён" if network.get("complete") else "НЕПОЛОН — зависимые выводы UNKNOWN"
+    return (f"Сетевой этап: {state}. Транспорт: {network.get('mode', 'UNKNOWN')}; "
+            f"выход: {egress.get('ip', 'UNKNOWN')} ({egress.get('country', 'UNKNOWN')}); "
+            f"период: {network.get('started_at', '?')} — {network.get('finished_at', '?')}. "
+            f"Причина ограничения: {network.get('transport_error', 'нет')}. "
+            "QUIC и непроксируемый WebRTC отключены; эта конфигурация может отличаться от обычного браузера.")
+
+
 def report_status(finding: dict[str, Any]) -> str:
     """Use the review attached by detect; never overwrite its machine observation.
 
@@ -425,6 +435,9 @@ def report_md(data: dict[str, Any]) -> str:
     add("Суммы по правилам не складываются: несколько находок могут относиться к одному эпизоду. "
         "Условия повторности указаны отдельно в ответственности.")
     add("")
+    if data.get("network"):
+        add(network_summary(data["network"]))
+        add("")
     if data.get("degraded"):
         add(f"⚠️ Сбор данных шёл в ограниченном режиме "
             f"({data.get('degraded_reason') or 'без рендера страниц'}). "
@@ -1008,6 +1021,8 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
         add(f"<div class='kpi {cls}'><div class=n>{value}</div><div class=l>{label}</div></div>")
     add("</div>")
 
+    if data.get("network"):
+        add(f"<div class=disclaimer>{esc(network_summary(data['network']))}</div>")
     if data.get("degraded"):
         add(f"<div class=disclaimer>⚠️ Сбор шёл в ограниченном режиме: "
             f"{esc(data.get('degraded_reason') or 'без рендера страниц')}. "

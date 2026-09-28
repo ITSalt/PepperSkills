@@ -1,0 +1,11 @@
+# Overlay for the shared 2-vCPU VPS. The native TLS listener keeps client IPs.
+services:
+  gateway:
+    image: pepper-ru-audit-gateway:2.3.0
+    cpus: 1
+    ports: !override
+      - "77.247.243.9:8443:8443"
+networks:
+  default:
+    ipam:
+      config: [{subnet: 10.240.81.0/24}]
