@@ -1,6 +1,7 @@
 # Pepper Orchestrator
 
-> **Preview (0.1.0).** Stage 1 core: modes `init`, `plan`, `resume`, `owner`, `decide`.
+> **Preview (0.2.0).** Modes `init`, `plan`, `dispatch`, `resume`, `owner`, `decide`; streams in one
+> repository with worktrees and locks.
 > Formats and commands may change before 1.0.0.
 
 Portable Agent Plugin for the single-orchestrator (hub-and-spoke) method: one orchestrator
@@ -24,13 +25,16 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 |---------|--------------|
 | `/pepper-orchestrator:init <program>` | workspace `features/<program>/` and `orch.yaml` |
 | `/pepper-orchestrator:plan <task>` | facts -> plan -> work packages -> owner questions |
+| `/pepper-orchestrator:dispatch <WP>` | checks overlaps and locks, prints the start command |
 | `/pepper-orchestrator:resume` | read state, reconcile with reality, next step |
 | `/pepper-orchestrator:owner` | owner queue as commands; on "done" verify and close |
 | `/pepper-orchestrator:decide <text>` | record D-n / A-n / Q-n or open an owner question P-n |
 
-Version 0.1.0 is a preview of the core (stage 1). Dispatch, review, verify, release and retro modes, reviewer
-and verifier subagents, and PreToolUse guards come in later versions; until then the skill follows
-the concept for those steps by instructions.
+Version 0.2.0 is a preview (stage 2a). Modules can be whole repositories or areas and domains of
+one repository: each stream runs in its own worktree (`claude -w`), shared paths and resources are
+held by locks, merges into one repository go through a queue. Review, verify, release and retro
+modes, reviewer and scout subagents and PreToolUse guards come in later versions; until then the
+skill follows the concept for those steps by instructions.
 
 ## When it fits
 

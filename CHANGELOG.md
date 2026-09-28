@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.2.0 (preview)
+
+Streams in one repository: modules as areas and domains with their own paths, worktree start
+commands, locks on shared paths and resources, a merge queue, `dispatch` and `overlap`. 0.1.0
+workspaces keep working unchanged. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.1.0 (preview)
 
 New plugin `pepper-orchestrator` (stage 1 core): single-orchestrator method for programs that
