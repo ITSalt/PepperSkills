@@ -1,0 +1,234 @@
+// Standalone, bounded load harness. No secrets are written to stdout.
+// Build with: GOOS=linux GOARCH=amd64 go build -o loadtool deploy/loadtool.go
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "fixture" {
+		fixture()
+		return
+	}
+	if err := load(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+func fixture() {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Connection", "close")
+		w.WriteHeader(200)
+		fl := w.(http.Flusher)
+		fl.Flush()
+		// 8 KiB/s per socket; 640 sockets produce at most 5 MiB/s.
+		b := make([]byte, 2048)
+		tick := time.NewTicker(250 * time.Millisecond)
+		defer tick.Stop()
+		end := time.NewTimer(100 * time.Second)
+		defer end.Stop()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-end.C:
+				return
+			case <-tick.C:
+				if _, e := w.Write(b); e != nil {
+					return
+				}
+				fl.Flush()
+			}
+		}
+	})
+	s := &http.Server{Addr: ":80", Handler: h, ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 110 * time.Second, MaxHeaderBytes: 8192}
+	if e := s.ListenAndServe(); e != nil {
+		panic(e)
+	}
+}
+func load() error {
+	addr := os.Getenv("GATEWAY_ADDR")
+	if addr == "" {
+		return fmt.Errorf("GATEWAY_ADDR required")
+	}
+	sni := os.Getenv("TLS_SERVER_NAME")
+	tc := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: sni, NextProtos: []string{"http/1.1"}, ClientSessionCache: tls.NewLRUClientSessionCache(1024)}
+	tr := &http.Transport{TLSClientConfig: tc, MaxIdleConnsPerHost: 30}
+	client := &http.Client{Transport: tr, Timeout: 15 * time.Second}
+	defer tr.CloseIdleConnections()
+	api := func(method, path, credential string, body any) (int, map[string]any, error) {
+		b, _ := json.Marshal(body)
+		r, _ := http.NewRequest(method, "https://"+addr+path, bytes.NewReader(b))
+		if credential != "" {
+			r.Header.Set("Authorization", "Bearer "+credential)
+		}
+		r.Header.Set("Idempotency-Key", fmt.Sprintf("loadtest-%d", time.Now().UnixNano()))
+		r.Header.Set("Content-Type", "application/json")
+		resp, e := client.Do(r)
+		if e != nil {
+			return 0, nil, e
+		}
+		defer resp.Body.Close()
+		var v map[string]any
+		e = json.NewDecoder(resp.Body).Decode(&v)
+		return resp.StatusCode, v, e
+	}
+	var creds []string
+	defer func() {
+		for _, c := range creds {
+			api("DELETE", "/v1/sessions/current", c, nil)
+		}
+	}()
+	for i := 0; i < 20; i++ {
+		code, v, e := api("POST", "/v1/sessions", "", map[string]string{"target": "http://82.202.140.54/stream"})
+		if e != nil || code != 201 {
+			return fmt.Errorf("issue %d status=%d error=%v", i, code, e)
+		}
+		creds = append(creds, v["credential"].(string))
+	}
+	code, v, e := api("POST", "/v1/sessions", "", map[string]string{"target": "http://82.202.140.54/stream"})
+	if e != nil || code != 503 {
+		return fmt.Errorf("overload status=%d error=%v", code, e)
+	}
+	fmt.Printf("{\"event\":\"global_limit\",\"status\":%d,\"reason\":%q}\n", code, v["error"])
+	var mu sync.Mutex
+	var latency []float64
+	var sockets []net.Conn
+	var wg sync.WaitGroup
+	var received, active, peak, failed, connected atomic.Int64
+	var errorsByReason sync.Map
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+	start := time.Now()
+	startOne := func(credential string) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			t := time.Now()
+			d := &tls.Dialer{NetDialer: &net.Dialer{Timeout: 10 * time.Second}, Config: tc}
+			c, e := d.DialContext(ctx, "tcp", addr)
+			if e != nil {
+				failed.Add(1)
+				errorsByReason.Store("tls_dial", true)
+				return
+			}
+			defer c.Close()
+			c.SetDeadline(time.Now().Add(95 * time.Second))
+			fmt.Fprintf(c, "CONNECT 82.202.140.54:80 HTTP/1.1\r\nHost: 82.202.140.54:80\r\nProxy-Authorization: Basic %s\r\n\r\n", base64.StdEncoding.EncodeToString([]byte(credential)))
+			br := bufio.NewReader(c)
+			resp, e := http.ReadResponse(br, &http.Request{Method: "CONNECT"})
+			if e != nil || resp.StatusCode != 200 {
+				failed.Add(1)
+				reason := "connect_read"
+				if resp != nil {
+					reason = fmt.Sprint("connect_", resp.StatusCode)
+				}
+				errorsByReason.Store(reason, true)
+				return
+			}
+			mu.Lock()
+			latency = append(latency, time.Since(t).Seconds()*1000)
+			sockets = append(sockets, c)
+			mu.Unlock()
+			connected.Add(1)
+			n := active.Add(1)
+			for {
+				p := peak.Load()
+				if n <= p || peak.CompareAndSwap(p, n) {
+					break
+				}
+			}
+			defer active.Add(-1)
+			fmt.Fprint(c, "GET /stream HTTP/1.1\r\nHost: fixture\r\nConnection: close\r\n\r\n")
+			buf := make([]byte, 16384)
+			for {
+				n, e := br.Read(buf)
+				received.Add(int64(n))
+				if e != nil {
+					return
+				}
+			}
+		}()
+	}
+	// Ramp 5 -> 10 -> 20 sessions, allowing the default 10/s token refill.
+	for _, p := range []struct{ lo, hi int }{{0, 5}, {5, 10}, {10, 20}} {
+		for j := 0; j < 20; j++ {
+			for i := p.lo; i < p.hi; i++ {
+				startOne(creds[i])
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+		time.Sleep(1500 * time.Millisecond)
+		for j := 20; j < 32; j++ {
+			for i := p.lo; i < p.hi; i++ {
+				startOne(creds[i])
+			}
+			time.Sleep(60 * time.Millisecond)
+		}
+		time.Sleep(5 * time.Second)
+		fmt.Printf("{\"event\":\"ramp\",\"sessions\":%d,\"active\":%d,\"bytes\":%d,\"errors\":%d}\n", p.hi, active.Load(), received.Load(), failed.Load())
+	}
+	fullStart := time.Now()
+	before := received.Load()
+	time.Sleep(20 * time.Second)
+	fullMiBs := float64(received.Load()-before) / (1 << 20) / time.Since(fullStart).Seconds()
+	var statusLat []float64
+	for _, c := range creds {
+		t := time.Now()
+		code, _, e := api("GET", "/v1/sessions/current", c, nil)
+		statusLat = append(statusLat, time.Since(t).Seconds()*1000)
+		if e != nil || code != 200 {
+			return fmt.Errorf("status under load %d %v", code, e)
+		}
+	}
+	revokeStart := time.Now()
+	for _, c := range creds {
+		code, _, e := api("DELETE", "/v1/sessions/current", c, nil)
+		if e != nil || code != 200 {
+			return fmt.Errorf("revoke %d %v", code, e)
+		}
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for active.Load() > 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	revokeMS := time.Since(revokeStart).Seconds() * 1000
+	remaining := active.Load()
+	mu.Lock()
+	for _, c := range sockets {
+		c.Close()
+	}
+	mu.Unlock()
+	wg.Wait()
+	sort.Float64s(latency)
+	sort.Float64s(statusLat)
+	p95 := func(a []float64) float64 {
+		if len(a) == 0 {
+			return 0
+		}
+		return a[int(float64(len(a)-1)*.95)]
+	}
+	reasons := []string{}
+	errorsByReason.Range(func(k, v any) bool { reasons = append(reasons, k.(string)); return true })
+	result := map[string]any{"event": "result", "duration_s": time.Since(start).Seconds(), "connected": connected.Load(), "peak": peak.Load(), "errors": failed.Load(), "error_reasons": reasons, "received_mib": float64(received.Load()) / (1 << 20), "full_load_mib_s": fullMiBs, "connect_p95_ms": p95(latency), "status_p95_ms": p95(statusLat), "revoke_all_ms": revokeMS, "remaining_after_revoke": remaining}
+	json.NewEncoder(os.Stdout).Encode(result)
+	if failed.Load() > 0 || peak.Load() != 640 || remaining != 0 || fullMiBs < 4 || p95(latency) > 1000 || p95(statusLat) > 250 {
+		return fmt.Errorf("load gate failed")
+	}
+	return nil
+}

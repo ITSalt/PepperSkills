@@ -24,6 +24,7 @@ skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" "$skill/scripts/test_modernization.py"
 "$PYTHON" "$skill/scripts/test_report_quality.py"
 "$PYTHON" "$skill/scripts/test_network_evidence.py"
+"$PYTHON" "$skill/scripts/test_audit_transport.py"
 "$PYTHON" plugins/pepper-prompt-engineer/skills/pepper-prompt-engineer/scripts/run_evals.py --check-only
 "$PYTHON" plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/selftest.py
 "$PYTHON" plugins/pepper-ru-web-compliance/submission/run_tests.py --out "$qa_dir/submission"

@@ -1,5 +1,11 @@
 # Pepper RU Web Compliance
 
+> 2.3.0: сетевой аудит выполняется локальным Playwright через РФ-выход.
+> Запуск: `scripts/audit.py`; РФ-шлюз `https://lts.itsalt.ru:8443` уже настроен.
+> Три сессии за скользящие 24 часа/IP. Регистрация и настройка VPN не нужны.
+> Другой шлюз — `PEPPER_RU_GATEWAY_URL`, свой прокси — `PEPPER_RU_AUDIT_PROXY`.
+> [Режимы, квоты и офлайн-повтор](skills/pepper-ru-web-compliance/references/gateway.md).
+
 Portable technical website audit for Russian personal-data, cookie, tracker,
 registry, disclosure, and infrastructure checks. It produces evidence-backed
 findings and an actionable remediation plan. Legal qualification remains with

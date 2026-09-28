@@ -1,0 +1,31 @@
+services:
+  gateway:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-443}:8443"
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETUID, SETGID, SETPCAP]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,noexec,nosuid"]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 2
+    environment:
+      EXTRA_CA_FILE: /run/secrets/registry-ca.pem
+      DENY_CIDRS: ${DENY_CIDRS:?Required gateway and infrastructure addresses}
+      TLS_SERVER_NAME: ${TLS_SERVER_NAME:?Required certificate hostname}
+    volumes:
+      - gateway-data:/data
+      - ${GATEWAY_SECRETS_DIR:?Required absolute secret directory}:/run/secrets:ro
+    healthcheck:
+      test: [CMD-SHELL, 'curl --noproxy "*" --fail --silent --cacert /run/secrets/tls.crt --resolve "$${TLS_SERVER_NAME}:8443:127.0.0.1" "https://$${TLS_SERVER_NAME}:8443/healthz" >/dev/null']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+volumes:
+  gateway-data:

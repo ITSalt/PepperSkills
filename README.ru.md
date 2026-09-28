@@ -18,7 +18,7 @@
 | --- | --- |
 | `pepper-creative-mode` | [2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1) |
 | `pepper-prompt-engineer` | [2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1) |
-| `pepper-ru-web-compliance` | [2.1.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.1.1) |
+| `pepper-ru-web-compliance` | [2.3.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.3.0) |
 
 В каждом релизе: ZIP скилла, ZIP плагина и SHA256SUMS. В Claude web проверены импорт и обновление предыдущих переходных версий; новые пакеты требуют отдельной клиентской приёмки.
 
@@ -51,7 +51,7 @@
 | `<name>/anthropic/INSTALL.md` | `docs/installation-and-updates.md`, `docs/installation-and-updates.ru.md` |
 
 Архив `pepper-ru-web-compliance/pepper-ru-web-compliance.skill` обновлён
-28 сентября 2026 года до 2.1.1 и совпадает с standalone ZIP этой версии.
+28 сентября 2026 года до 2.3.0 и совпадает с standalone ZIP этой версии.
 Остальные `.skill` — прежние зафиксированные сборки из commit `4128fe6`.
 Для последующих обновлений используйте версионные ZIP в `dist/<name>/<version>/`
 или Assets соответствующего релиза. Перед выпуском обновите `.skill` командой

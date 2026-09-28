@@ -27,6 +27,8 @@
 """
 from __future__ import annotations
 
+import base64
+import audit_transport as transport
 import argparse
 import json
 import re
@@ -241,7 +243,11 @@ class Context:
 
     def registry(self, key: str) -> reg.RegistryData:
         if key not in self._registries:
-            self._registries[key] = reg.load_registry(key)
+            saved = self._load_json(f"registries/{key}.json", None)
+            self._registries[key] = reg.RegistryData(**saved) if saved else reg.load_registry(
+                key, offline=not (transport.ACTIVE or reg._proxy_url))
+            if saved:
+                self._registries[key].stale_days = reg.age_days(self._registries[key].fetched_at)
         return self._registries[key]
 
 
@@ -1197,7 +1203,16 @@ def detect_rkn_operator(ctx: Context) -> list[Finding]:
                    "ИНН на сайте не найден — проверить оператора в реестре не по чему")]
     url = cfg["search_url"].format(inn=ctx.inn)
     try:
-        raw = reg.http_get(url, timeout=40)
+        saved = ctx._load_json("registries/operators.json", {})
+        if saved.get("inn") == ctx.inn and saved.get("body_base64"):
+            age = reg.age_days(saved.get("fetched_at"))
+            if age is None or age > reg.DEFAULT_TTL_DAYS:
+                raise transport.NetworkError("operators_snapshot_stale")
+            raw = base64.b64decode(saved["body_base64"], validate=True)
+        elif transport.ACTIVE or reg._proxy_url:
+            raw = reg.http_get(url, timeout=40)
+        else:
+            raise transport.NetworkError("operators_not_collected")
     except Exception as exc:
         # Сообщение читает человек, который прокси ещё не настраивал. Название
         # переменной без команды, в которую её подставляют, ему ничего не даёт.
@@ -1274,6 +1289,7 @@ def detect_mentions(ctx: Context) -> list[Finding]:
         # Официальный источник позволяет утверждать отсутствие упоминаний;
         # зеркало — нет, поэтому чистый результат по нему остаётся WARN.
         trust = data.source_trust
+        stale = data.stale_days is not None and data.stale_days > reg.DEFAULT_TTL_DAYS
         note = (f"источник: {trust}" + (f"; {data.error}" if data.error else ""))
         if hits:
             strong = [h for h in hits if not h.detail.startswith("[low]")]
@@ -1304,6 +1320,10 @@ def detect_mentions(ctx: Context) -> list[Finding]:
                           source_trust=trust, source_note=note))
 
         for finding in out[produced:]:
+            if stale:
+                finding.status = "WARN" if hits else "UNKNOWN"
+                finding.source_note = note + f"; архивный снимок: {data.stale_days:.1f} дней"
+                finding.summary += "; актуальность реестра не подтверждена"
             finding.rule_id = display_id
             if scope:
                 finding.title = f"{finding.title} ({scope})"
@@ -1626,6 +1646,13 @@ def run(ctx: Context) -> dict[str, Any]:
     findings = apply_coverage_gates(ctx, ensure_complete(ctx, findings))
 
     attach_semantic_reviews(ctx, findings)
+    if ctx.manifest.get("network") and not ctx.manifest["network"].get("complete"):
+        for f in findings:
+            # A failed transport can hide evidence needed for applicability too.
+            original = f.status
+            f.status = "UNKNOWN"
+            f.summary = f"Сетевой этап неполон (предварительно {original}): " + f.summary
+            f.semantic_review = None
     by_status: dict[str, int] = {}
     for f in findings:
         by_status[f.status] = by_status.get(f.status, 0) + 1
@@ -1642,6 +1669,7 @@ def run(ctx: Context) -> dict[str, Any]:
         "artifacts_sha256": artifact_fingerprint(ctx),
         "target": ctx.target,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "network": ctx.manifest.get("network", {}),
         "degraded": ctx.degraded,
         "degraded_reason": ctx.manifest.get("degraded_reason"),
         "blocked": ctx.blocked,
@@ -1671,7 +1699,16 @@ def main() -> int:
     if args.proxy:
         reg.set_proxy(args.proxy)
 
-    ctx = Context(Path(args.artifacts).resolve(), inn=args.inn)
+    artifacts = Path(args.artifacts).resolve()
+    if reg._proxy_url:
+        # Backwards-compatible, explicitly configured registry-only network refresh.
+        from audit import snapshot_registries
+        transport.preflight(browser=False)
+        target = json.loads((artifacts / "manifest.json").read_text(encoding="utf-8"))["target"]
+        with transport.NetworkSession(target, mode="custom", proxy=reg._proxy_url):
+            snapshot_registries(artifacts, args.inn)
+        reg.set_proxy(None)
+    ctx = Context(artifacts, inn=args.inn)
     report = run(ctx)
     Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2),
                               encoding="utf-8")

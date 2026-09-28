@@ -21,3 +21,8 @@ Claude outputs/
 
 # Файлы, которые не удалось удалить из песочницы Cowork
 _to_delete/
+
+# Local gateway deployment credentials and counters
+services/ru-audit-gateway/.env
+services/ru-audit-gateway/secrets/
+services/ru-audit-gateway/*.sqlite*

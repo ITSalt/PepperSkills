@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "pepper-ru-web-compliance",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Технический аудит сайта по требованиям РФ с доказательствами и планом исправлений.",
   "author": {
     "name": "ITSalt",

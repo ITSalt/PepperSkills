@@ -1,0 +1,30 @@
+# Applied inside the dedicated container network namespace only.
+# Reply traffic is allowed before egress checks; new target connections are gated.
+table inet pepper_audit {
+ set denied4 { type ipv4_addr; flags interval; elements = { 0.0.0.0/8,10.0.0.0/8,100.64.0.0/10,127.0.0.0/8,168.63.129.16/32,169.254.0.0/16,172.16.0.0/12,192.0.0.0/24,192.0.2.0/24,192.31.196.0/24,192.52.193.0/24,192.88.99.0/24,192.175.48.0/24,192.168.0.0/16,198.18.0.0/15,198.51.100.0/24,203.0.113.0/24,224.0.0.0/3 } }
+ set denied6 { type ipv6_addr; flags interval; auto-merge; elements = { ::/96,::ffff:0:0/96,64:ff9b::/96,64:ff9b:1::/48,100::/64,2001::/23,2001:db8::/32,2002::/16,2620:4f:8000::/48,3fff::/20,5f00::/16,fc00::/7,fe80::/10,ff00::/8 } }
+ set infrastructure4 { type ipv4_addr; flags interval; auto-merge; }
+ set infrastructure6 { type ipv6_addr; flags interval; auto-merge; }
+ set dns4 { type ipv4_addr; }
+ set dns6 { type ipv6_addr; }
+ chain output {
+  # Inspect DNS port 53 before Docker's embedded resolver DNAT (-100) changes
+  # it to a random loopback port. Conntrack (-200) already ran at this priority.
+  type filter hook output priority -110; policy accept;
+  meta skuid 10001 jump audit_egress
+ }
+ chain audit_egress {
+  ct state established,related accept
+  ip daddr @dns4 udp dport 53 accept
+  ip daddr @dns4 tcp dport 53 accept
+  ip6 daddr @dns6 udp dport 53 accept
+  ip6 daddr @dns6 tcp dport 53 accept
+  ip daddr @denied4 counter reject
+  ip6 daddr @denied6 counter reject
+  meta nfproto ipv6 ip6 daddr != 2000::/3 counter reject
+  ip daddr @infrastructure4 counter reject
+  ip6 daddr @infrastructure6 counter reject
+  tcp dport {80,443} accept
+  counter reject
+ }
+}

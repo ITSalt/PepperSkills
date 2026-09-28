@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = []
+# dependencies = ["h11>=0.16,<0.17", "playwright>=1.55,<2"]
 # ///
 """collect.py — слой сбора данных о сайте.
 
@@ -19,8 +19,8 @@ cookie-баннером. Разница между ними показывает
     uv run --no-project --with playwright scripts/collect.py https://example.ru --out artifacts/ --max-pages 25
     uv run --no-project scripts/collect.py https://example.ru --out artifacts/ --no-browser
 
-Требуется playwright с установленным chromium. Без него скрипт переходит в
-режим degraded: собирает статический HTML через urllib, но не видит SPA,
+Требуется playwright с установленным chromium; наличие проверяется до квоты.
+Явный --no-browser включает degraded через выбранный РФ-транспорт: собирает статический HTML через urllib, но не видит SPA,
 поведение баннера и сетевые запросы. Детекторы обязаны учитывать этот флаг и
 выставлять UNKNOWN вместо PASS там, где данных не хватает.
 """
@@ -39,6 +39,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import audit_transport as transport
 from network_evidence import payload_shape, safe_url
 
 SCHEMA_VERSION = 1
@@ -109,6 +110,7 @@ class RunManifest:
     schema_version: int = SCHEMA_VERSION
     # Сайт может отдавать 403 на всё подряд (антибот). Это принципиально иной
     # исход, чем «нарушений не найдено», и детекторы обязаны его различать.
+    network: dict[str, Any] = field(default_factory=dict)
     blocked: bool = False
     target: str = ""
     started_at: str = ""
@@ -182,7 +184,17 @@ def same_host(url: str, host: str) -> bool:
 def normalize_target(target: str) -> str:
     if not target.startswith(("http://", "https://")):
         target = "https://" + target
-    return target.rstrip("/")
+    parsed = urllib.parse.urlsplit(target)
+    if not parsed.hostname or parsed.username is not None or parsed.password is not None:
+        raise ValueError("URL должен содержать публичный хост без учётных данных")
+    host = parsed.hostname.encode("idna").decode("ascii")
+    if ":" in host:
+        host = f"[{host}]"
+    if parsed.port is not None:
+        host += f":{parsed.port}"
+    path = urllib.parse.quote(parsed.path, safe="/%:@!$&'()*+,;=-._~")
+    query = urllib.parse.quote(parsed.query, safe="/%?:@!$&'()*+,;=-._~")
+    return urllib.parse.urlunsplit((parsed.scheme, host, path, query, "")).rstrip("/")
 
 
 # --- Инфраструктурная разведка ----------------------------------------------
@@ -201,7 +213,8 @@ def probe_http_redirect(host: str) -> dict[str, Any]:
                 return None
             return super().redirect_request(req, fp, code, msg, headers, newurl)
 
-    opener = urllib.request.build_opener(NoRedirect)
+    opener = transport.opener(transport.current().proxy)
+    opener.add_handler(NoRedirect())
     try:
         with opener.open(req, timeout=15) as resp:
             result["http_reachable"] = True
@@ -227,7 +240,7 @@ def probe_documents(urls: list[str], limit: int = 8) -> list[dict[str, Any]]:
         req = urllib.request.Request(clean, headers={"User-Agent": USER_AGENT})
         entry: dict[str, Any] = {"url": clean}
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with transport.urlopen(req, timeout=20) as resp:
                 body = resp.read(200_000)
                 entry.update(status=resp.status,
                              content_type=resp.headers.get("Content-Type", ""),
@@ -244,30 +257,11 @@ def probe_documents(urls: list[str], limit: int = 8) -> list[dict[str, Any]]:
 
 
 def probe_tls(host: str) -> dict[str, Any]:
-    info: dict[str, Any] = {}
-    try:
-        ctx = ssl.create_default_context()
-        with socket.create_connection((host, 443), timeout=15) as sock:
-            with ctx.wrap_socket(sock, server_hostname=host) as tls:
-                cert = tls.getpeercert()
-                info["protocol"] = tls.version()
-                info["issuer"] = dict(x[0] for x in cert.get("issuer", ()))
-                info["not_after"] = cert.get("notAfter")
-                info["subject"] = dict(x[0] for x in cert.get("subject", ()))
-    except Exception as exc:
-        info["error"] = f"{type(exc).__name__}: {exc}"
-    return info
+    return transport.current().probe(host).get("tls", {"error": "probe_unavailable"})
 
 
 def resolve_ips(host: str) -> list[str]:
-    ips: set[str] = set()
-    for family in (socket.AF_INET, socket.AF_INET6):
-        try:
-            for item in socket.getaddrinfo(host, None, family):
-                ips.add(item[4][0])
-        except OSError:
-            continue
-    return sorted(ips)
+    return transport.current().probe(host).get("ips", [])
 
 
 def lookup_ip_geo(ip: str) -> dict[str, Any]:
@@ -280,7 +274,7 @@ def lookup_ip_geo(ip: str) -> dict[str, Any]:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
                                                "Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with transport.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         return {"ip": ip, "country": data.get("country"), "org": data.get("org"),
                 "hostname": data.get("hostname")}
@@ -289,15 +283,15 @@ def lookup_ip_geo(ip: str) -> dict[str, Any]:
 
 
 def collect_infra(target: str) -> dict[str, Any]:
-    host = urllib.parse.urlparse(target).netloc.split(":")[0]
-    ips = resolve_ips(host)
-    return {
-        "host": host,
-        "ips": ips,
-        "geo": [lookup_ip_geo(ip) for ip in ips[:4]],
-        "http": probe_http_redirect(host),
-        "tls": probe_tls(host),
-    }
+    host = urllib.parse.urlsplit(target).hostname
+    try:
+        probe = transport.current().probe(host)
+    except Exception as exc:
+        probe = {"ips": [], "tls": {"error": type(exc).__name__}, "dns_status": "UNKNOWN"}
+    ips = probe.get("ips", [])
+    return {"host": host, "ips": ips, "dns_status": probe.get("dns_status", "observed"),
+            "geo": [lookup_ip_geo(ip) for ip in ips[:4]],
+            "http": probe_http_redirect(host), "tls": probe.get("tls", {})}
 
 
 # --- Обнаружение страниц -----------------------------------------------------
@@ -306,7 +300,7 @@ def collect_infra(target: str) -> dict[str, Any]:
 def fetch_text(url: str, timeout: int = 20) -> tuple[int | None, str]:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with transport.urlopen(req, timeout=timeout) as resp:
             charset = resp.headers.get_content_charset() or "utf-8"
             return resp.status, resp.read().decode(charset, errors="replace")
     except urllib.error.HTTPError as exc:
@@ -569,7 +563,9 @@ class NetworkRecorder:
 
         self.page = page
         self.handler = on_request
-        page.on("request", on_request)
+        context = getattr(page, "context", None)
+        self.event_source = context if hasattr(context, "on") else page
+        self.event_source.on("request", on_request)
 
     def on_navigation(self, event):
         self.form_navigations[event['frameId']] = event
@@ -589,7 +585,7 @@ class NetworkRecorder:
         self.cdp_requests.append((request['url'], request['method'], meta))
 
     def detach(self):
-        self.page.remove_listener("request", self.handler)
+        self.event_source.remove_listener("request", self.handler)
         # Reconcile after capture to tolerate either Playwright/CDP event order.
         from collections import defaultdict, deque
         meta = defaultdict(deque)
@@ -604,6 +600,15 @@ class NetworkRecorder:
                 self.cdp.detach()
             except Exception:
                 pass
+
+
+def watch(context):
+    def failed(req):
+        error = req.failure or ""
+        if any(code in error for code in ("PROXY", "TUNNEL", "CONNECTION_CLOSED", "CONNECTION_RESET")):
+            transport.current().metadata.update(complete=False, transport_error="browser_proxy_failure")
+    context.on("requestfailed", failed)
+    return context
 
 
 def browser_collect(target: str, pages: list[str], out: Path,
@@ -622,13 +627,14 @@ def browser_collect(target: str, pages: list[str], out: Path,
     (out / "refusal-storage-state.json").unlink(missing_ok=True)
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(args=["--disable-blink-features=AutomationControlled"])
+        browser = pw.chromium.launch(proxy=transport.current().browser_proxy(), args=transport.chromium_args(
+                transport.current().proxy) + ["--disable-blink-features=AutomationControlled"])
         manifest.browser = f"chromium {browser.version}"
 
         # --- Проход 1: до согласия. Чистый контекст без cookie. ---
-        ctx = browser.new_context(user_agent=USER_AGENT, locale="ru-RU",
+        ctx = watch(browser.new_context(user_agent=USER_AGENT, locale="ru-RU",
                                   timezone_id="Europe/Moscow",
-                                  viewport={"width": 1440, "height": 900})
+                                  viewport={"width": 1440, "height": 900}))
         page = ctx.new_page()
         before = NetworkRecorder()
         before.attach(page, "before_consent", target + "/")
@@ -773,7 +779,7 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
     """Independent refusal plus a new context restored from storage_state."""
     options = dict(user_agent=USER_AGENT, locale="ru-RU", timezone_id="Europe/Moscow",
                    viewport={"width": 1440, "height": 900})
-    ctx = browser.new_context(**options)
+    ctx = watch(browser.new_context(**options))
     page = ctx.new_page()
     result = {"click_status": "not_found", "revisit_completed": False}
     manifest.refusal = result
@@ -819,7 +825,7 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
         state_path.chmod(0o600)
         result["storage_state"] = state_path.name
         ctx.close()
-        ctx = browser.new_context(**options, storage_state=str(state_path))
+        ctx = watch(browser.new_context(**options, storage_state=str(state_path)))
         page = ctx.new_page()
         recorder = NetworkRecorder()
         recorder.attach(page, "revisit_reject", target + "/")
@@ -885,7 +891,7 @@ def fallback_collect(pages: list[str], out: Path, manifest: RunManifest) -> None
 # --- Точка входа -------------------------------------------------------------
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Сбор артефактов сайта для проверки комплаенса")
     parser.add_argument("target", help="URL сайта, например https://example.ru")
     parser.add_argument("--out", default="artifacts", help="каталог для артефактов")
@@ -895,8 +901,30 @@ def main() -> int:
                         help="принудительно режим degraded без playwright")
     parser.add_argument("--source-dir", default=None,
                         help="каталог исходников проекта для white-box режима")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
+    if transport.ACTIVE is not None:
+        return collect(args)
+    transport.preflight(browser=not args.no_browser)
+    try:
+        with transport.NetworkSession(normalize_target(args.target)) as network:
+            result = collect(args)
+        update_network(Path(args.out), network.metadata)
+        return result
+    except transport.NetworkError as exc:
+        print(f"Сетевой этап: {exc}. Задайте PEPPER_RU_AUDIT_PROXY для своего РФ-прокси.", file=sys.stderr)
+        return 2
+
+
+def update_network(out, metadata):
+    path = out / "manifest.json"
+    if path.exists():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["network"] = metadata
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def collect(args):
     target = normalize_target(args.target)
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -904,51 +932,61 @@ def main() -> int:
     manifest = RunManifest(target=target, started_at=now_iso(),
                            source_dir=args.source_dir)
 
-    print(f"[1/3] Разведка инфраструктуры {target}", file=sys.stderr)
-    manifest.infra = collect_infra(target)
+    try:
+        print(f"[1/3] Разведка инфраструктуры {target}", file=sys.stderr)
+        manifest.infra = collect_infra(target)
 
-    print("[2/3] Построение списка страниц", file=sys.stderr)
-    pages = build_page_list(target, args.max_pages)
-    print(f"      к обходу: {len(pages)}", file=sys.stderr)
+        print("[2/3] Построение списка страниц", file=sys.stderr)
+        pages = build_page_list(target, args.max_pages)
+        print(f"      к обходу: {len(pages)}", file=sys.stderr)
 
-    print("[3/3] Сбор", file=sys.stderr)
-    if args.no_browser:
-        manifest.degraded = True
-        manifest.degraded_reason = "запрошен режим --no-browser"
-        fallback_collect(pages, out, manifest)
-    else:
-        try:
-            browser_collect(target, pages, out, manifest, args.timeout, args.max_pages)
-        except ImportError as exc:
+        print("[3/3] Сбор", file=sys.stderr)
+        if args.no_browser:
             manifest.degraded = True
-            manifest.degraded_reason = f"playwright недоступен: {exc}"
-            print(f"      playwright недоступен, режим degraded: {exc}", file=sys.stderr)
+            manifest.degraded_reason = "запрошен режим --no-browser"
             fallback_collect(pages, out, manifest)
+        else:
+            try:
+                browser_collect(target, pages, out, manifest, args.timeout, args.max_pages)
+            except Exception as exc:
+                manifest.degraded = True
+                manifest.degraded_reason = type(exc).__name__
+                transport.current().metadata["transport_error"] = "browser_collection_failed"
 
-    # Ссылки на юридические документы со всех обойдённых страниц.
-    doc_links: list[str] = []
-    for page in manifest.pages:
-        for href in page.get("policy_link_hrefs") or []:
-            doc_links.append(urllib.parse.urljoin(page.get("final_url") or target, href))
-    if doc_links:
-        manifest.documents = probe_documents(doc_links)
-        ok_docs = sum(1 for d in manifest.documents if d.get("status") == 200)
-        print(f"  документов по ссылкам: {ok_docs} из {len(manifest.documents)}",
-              file=sys.stderr)
+        # Ссылки на юридические документы со всех обойдённых страниц.
+        doc_links: list[str] = []
+        for page in manifest.pages:
+            for href in page.get("policy_link_hrefs") or []:
+                doc_links.append(urllib.parse.urljoin(page.get("final_url") or target, href))
+        if doc_links:
+            manifest.documents = probe_documents(doc_links)
+            ok_docs = sum(1 for d in manifest.documents if d.get("status") == 200)
+            print(f"  документов по ссылкам: {ok_docs} из {len(manifest.documents)}",
+                  file=sys.stderr)
 
-    # Антибот-защита: страницы отвечают, но контента нет. Считаем обход
-    # заблокированным, если ни одна страница не открылась, а отказы были.
-    statuses = [p.get("status") for p in manifest.pages]
-    denied = sum(1 for st in statuses if st in (401, 403, 429))
-    if not any(st == 200 for st in statuses) and (denied or not statuses):
-        manifest.blocked = True
-        manifest.notes.append(
-            f"обход заблокирован: ни одна страница не открылась "
-            f"(отказов {denied} из {len(statuses)})")
+        # Антибот-защита: страницы отвечают, но контента нет. Считаем обход
+        # заблокированным, если ни одна страница не открылась, а отказы были.
+        statuses = [p.get("status") for p in manifest.pages]
+        denied = sum(1 for st in statuses if st in (401, 403, 429))
+        if not any(st == 200 for st in statuses) and (denied or not statuses):
+            manifest.blocked = True
+            manifest.notes.append(
+                f"обход заблокирован: ни одна страница не открылась "
+                f"(отказов {denied} из {len(statuses)})")
 
-    manifest.finished_at = now_iso()
-    (out / "manifest.json").write_text(
-        json.dumps(asdict(manifest), ensure_ascii=False, indent=2), encoding="utf-8")
+        transport.current().status()
+        transport.current().metadata["complete"] = not (
+            transport.current().metadata.get("transport_error") or manifest.blocked or
+            any(p.get("error") for p in manifest.pages))
+    except Exception as exc:
+        transport.current().metadata.update(complete=False, transport_error=(
+            exc.code if isinstance(exc, transport.NetworkError) else type(exc).__name__))
+        manifest.notes.append("Сетевой сбор прерван; зависимые проверки UNKNOWN")
+    finally:
+        manifest.network = transport.current().metadata
+        manifest.finished_at = now_iso()
+        (out / "manifest.json").write_text(
+            json.dumps(asdict(manifest), ensure_ascii=False, indent=2), encoding="utf-8")
 
     ok = sum(1 for p in manifest.pages if p.get("status") == 200)
     forms = sum(len(p.get("forms") or []) for p in manifest.pages)

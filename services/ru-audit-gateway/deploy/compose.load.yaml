@@ -1,0 +1,58 @@
+# Isolated load fixture: no published ports, no external egress, separate quota DB.
+# The only changed application limits are per-IP admission for a single generator.
+services:
+  gateway:
+    image: pepper-ru-audit-gateway:2.3.0
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 128
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETUID, SETGID, SETPCAP]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,noexec,nosuid"]
+    environment:
+      DENY_CIDRS: 77.247.243.9/32
+      ACTIVE_PER_IP: 100
+      SESSIONS_PER_DAY: 100
+    volumes:
+      - load-data:/data
+      - /srv/pepper-ru-audit-gateway/load-secrets:/run/secrets:ro
+    networks:
+      bench: {ipv4_address: 10.240.82.2}
+  fixture:
+    image: pepper-ru-audit-gateway:2.3.0
+    entrypoint: [/loadtool, fixture]
+    user: "10002:10002"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    mem_limit: 96m
+    cpus: 0.2
+    pids_limit: 64
+    volumes: [./loadtool:/loadtool:ro]
+    networks:
+      bench: {ipv4_address: 10.240.82.3}
+  client:
+    image: pepper-ru-audit-gateway:2.3.0
+    profiles: [run]
+    entrypoint: [/loadtool]
+    user: "10002:10002"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    environment:
+      GATEWAY_ADDR: 10.240.82.2:8443
+      TLS_SERVER_NAME: lts.itsalt.ru
+    volumes: [./loadtool:/loadtool:ro]
+    networks: [bench]
+networks:
+  bench:
+    internal: true
+    ipam:
+      config: [{subnet: 10.240.82.0/24}]
+volumes:
+  load-data:
