@@ -2,34 +2,17 @@
 
 | Field | Value |
 |-------|-------|
-| Stream | {{MODULE}} ({{KIND}}) |
 | Repository | {{REPO}} |
 | Base branch | {{BASE}} |
-| Line | {{LINE}} |
 | Work branch | `{{BRANCH}}` |
-| Worktree | {{WORKTREE}} |
-| PR title | `[{{TAG}}] {{WP}}: {{WP_TITLE}}` |
-| Session | `{{SESSION}}` |
+| PR title | `[LEGACY] {{WP}}: {{WP_TITLE}}` |
 | Mode | <methodology the session follows in its repository> |
-| Methodology commands allowed | {{METHOD_ALLOWED}} |
-| Methodology commands forbidden | {{METHOD_FORBIDDEN}} |
-| Allowed paths | {{PATHS}} |
-| Shared paths touched | <declared in advance: backticked paths from the list below, or none> |
-| Migrations | <no, or yes and the numbering rule> |
-| Resources (locks) | <backticked resources from the list below, or none> |
-| Test DB and ports | {{TEST_ENV}} |
-| Merge slot | <position in the merge queue, set when accepted> |
+| Session | `{{SESSION}}` |
 | Contract | <contract version, or none> |
 | Depends on | <WP ids, or none> |
 | Size | <S / M / L> |
 | Specification | <optional: requirement, use case or task IDs from any source; none> |
 | Decisions | <D-n this package relies on, or none> |
-
-{{REPO_HINTS}}
-
-## 0. Worktree preparation
-
-{{WORKTREE_SETUP}}
 
 ## 1. Facts
 
@@ -44,7 +27,6 @@ links. Facts, not retelling.
 
 - merge, deployment, production, database writes
 - other modules and the orchestrator workspace
-- files outside the allowed paths; shared paths that are not declared above
 - version bumps and release notes unless listed above
 
 ## 3. Acceptance criteria
@@ -53,12 +35,14 @@ links. Facts, not retelling.
 
 ## 4. Delivery
 
-{{DELIVERY}}
+- PR from `{{BRANCH}}` to `{{BASE}}`; do not merge.
+- PR body = development report + `Deviations` (what differs from this package and why).
+- Then send `[LEGACY] READY {{WP}} :: <sha> :: ref=<PR URL>` to `legacy-coord`.
 
 ## 5. Start prompt
 
 ```text
-{{START_PROMPT}}
+Read {{WP_PATH}} and implement it. Branch {{BRANCH}} from {{BASE}}, PR to {{BASE}}, do not merge. When done, send to legacy-coord: [LEGACY] READY {{WP}} :: <sha> :: ref=<PR URL>
 ```
 
 ### Start command
@@ -66,7 +50,7 @@ links. Facts, not retelling.
 Start command (for the owner, run in a new terminal):
 
 ```bash
-{{START_COMMAND}}
+cd {{REPO}} && claude --name {{SESSION}} "Read {{WP_PATH}} and implement it. Branch {{BRANCH}} from {{BASE}}, PR to {{BASE}}, do not merge. When done, send to legacy-coord: [LEGACY] READY {{WP}} :: <sha> :: ref=<PR URL>"
 ```
 
 No `--settings` in this version: settings files are generated only in a later version.

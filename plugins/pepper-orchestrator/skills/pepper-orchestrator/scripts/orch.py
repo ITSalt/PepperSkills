@@ -17,6 +17,12 @@ Commands:
   decide D|A|Q "<text>"                  append a decision/assumption/question
   lint                                   workspace integrity checks
   commit "<message>"                     lint, commit the workspace, push if set
+  dispatch <WP>                          checks, locks, start command, DISPATCHING
+  overlap                                declared and actual path overlaps, repo checks
+  lock acquire|release|list              locks on shared paths and resources
+  merge add|done|list                    merge queue per repository
+  worktrees                              worktrees of every repository (read-only)
+  upgrade                                add 0.2.0 tables to a 0.1.0 status.md
 """
 import argparse
 import datetime as dt
@@ -29,6 +35,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import safe_edit  # noqa: E402
+import streams  # noqa: E402
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = SKILL_DIR / 'templates'
@@ -44,6 +51,8 @@ TABLES = {
     'owner': ('<!-- orch:owner -->', ('id', 'text', 'where', 'opened', 'closed')),
     'journal': ('<!-- orch:journal -->', ('date', 'wp', 'event', 'evidence')),
     'decisions': ('<!-- orch:decisions -->', ('id', 'date', 'text', 'source')),
+    'locks': ('<!-- orch:locks -->', ('lock', 'repo', 'holder', 'since', 'waiting', 'note')),
+    'merge': ('<!-- orch:merge -->', ('n', 'repo', 'wp', 'pr', 'rebase_after', 'status')),
 }
 SETTABLE = ('title', 'status', 'session', 'pr')
 
@@ -281,6 +290,34 @@ class Workspace:
         modules = self.config.get('modules') or []
         return {str(m.get('id')).lower(): m for m in modules if isinstance(m, dict)}
 
+    def streams(self):
+        """(repos, modules, errors) with the 0.1.0 form mapped to implicit repositories.
+
+        Resolved once per Workspace so that Repo objects compare by identity."""
+        if not hasattr(self, '_streams'):
+            self._streams = streams.resolve(self.config)
+        return self._streams
+
+    @property
+    def lang(self):
+        lang = self.config.get('owner_language')
+        return lang if lang in LANGUAGES else 'en'
+
+    @property
+    def coordinator(self):
+        program = self.config.get('program', 'program')
+        return self.config.get('coordinator_session') or f'{program}-coord'
+
+    def has_table(self, path, name):
+        return path.is_file() and TABLES[name][0] in path.read_text(encoding='utf-8')
+
+    def wp_rows(self):
+        return {plain_id(r['wp']): r for r in self.table(self.status, 'wp')[2]}
+
+    def wp_path(self, row_value):
+        link = re.match(r'^\[[^\]]+\]\(([^)]+)\)$', row_value)
+        return self.root / link.group(1) if link else None
+
     # -- tables
 
     def table(self, path, name):
@@ -351,6 +388,33 @@ def cmd_init(args):
     root = Path(args.dir or Path('features') / program).expanduser()
     if root.exists() and any(root.iterdir()):
         raise OrchError(f'{root} exists and is not empty')
+    repos = []
+    for spec in args.repo or []:
+        match = re.fullmatch(r'([a-z0-9][a-z0-9-]*)=([^@]+)(?:@(.+))?', spec)
+        if not match:
+            raise OrchError(f'--repo must be id=PATH[@BASE]: {spec}')
+        prefix = streams.detect_branch_prefix(match.group(2))
+        repos.append({'id': match.group(1), 'path': match.group(2), 'base': match.group(3) or 'main',
+                      'branch_prefix': prefix, 'detected': prefix is not None})
+    repo_ids = {r['id'] for r in repos}
+    areas = []
+    for kind, specs in (('area', args.area or []), ('domain', args.domain or [])):
+        for spec in specs:
+            match = re.fullmatch(r'([a-z0-9][a-z0-9-]*)=([a-z0-9][a-z0-9-]*):(.+)', spec)
+            if not match or match.group(2) not in repo_ids:
+                raise OrchError(f'--{kind} must be id=REPO_ID:GLOB[,GLOB...] with a --repo id: {spec}')
+            areas.append({'id': match.group(1), 'kind': kind, 'repo': match.group(2),
+                          'paths': [g.strip() for g in match.group(3).split(',') if g.strip()],
+                          'session': f'{program}-{match.group(1)}'})
+    parent = root.resolve().parent
+    while not parent.exists():
+        parent = parent.parent
+    conflict = streams.module_repo_conflict(
+        parent, [streams.Repo(r, program=program) for r in repos] +
+        [streams.Repo({'id': m, 'path': spec.split('=', 1)[1].split('@')[0]}, program=program)
+         for spec in args.module or [] for m in [spec.split('=', 1)[0]] if '=' in spec])
+    if conflict:
+        raise OrchError(conflict)
     tag = (args.tag or program.split('-')[0]).upper()
     title = args.title or program
     base = {'PROGRAM': program, 'PROGRAM_TITLE': title, 'TAG': tag, 'LANG': lang,
@@ -374,26 +438,52 @@ def cmd_init(args):
         'bugs/_TEMPLATE.md': source / 'bug.md',
         'orchestration/bootstrap-prompt.md': source / 'bootstrap-prompt.md',
     }
-    module_rows = '\n'.join(row([m['id'], m['repo'], m['base'], m['session']]) for m in modules)
+    module_rows = '\n'.join([row([m['id'], m['repo'], m['base'], m['session']]) for m in modules] +
+                            [row([a['id'], a['repo'] + ' (' + a['kind'] + ')',
+                                  ', '.join(a['paths']), a['session']]) for a in areas])
     for rel, template in files.items():
         text = template.read_text(encoding='utf-8')
         text = text.replace('{{MODULE_ROWS}}\n', module_rows + '\n' if module_rows else '')
         text = fill(text, base)
         safe_edit.create(root / rel, text)
-    safe_edit.create(root / 'orch.yaml', render_config(base, modules))
+    safe_edit.create(root / 'orch.yaml', render_config(base, modules, repos, areas))
     safe_edit.create(root / '.gitignore', safe_edit.BACKUP_DIR_NAME + '/\n')
     ws = Workspace(root)
     ws.journal(f'workspace created ({lang})', evidence='orch.py init')
     print(f'workspace: {root}')
+    for r in repos:
+        if not r['detected']:
+            print(f'note: repo {r["id"]}: branch_prefix not found in the repository convention; '
+                  f'set to {program}/ - confirm with the owner')
     return 0
 
 
-def render_config(base, modules):
+def yaml_list(values):
+    return '[' + ', '.join(json.dumps(v, ensure_ascii=False) for v in values) + ']'
+
+
+def render_config(base, modules, repos=(), areas=()):
     title = json.dumps(base['PROGRAM_TITLE'], ensure_ascii=False)
     text = fill((TEMPLATES / 'orch.yaml').read_text(encoding='utf-8'),
                 {**base, 'PROGRAM_TITLE_YAML': title})
-    if modules:
+    if repos:
         blocks = []
+        for r in repos:
+            blocks.append('\n'.join([
+                f'  - id: {r["id"]}',
+                f'    path: {r["path"]}',
+                f'    base: {r["base"]}',
+                f'    branch_prefix: {r["branch_prefix"] or base["PROGRAM"] + "/"}',
+                '    worktree_root: .claude/worktrees',
+                '    worktree_setup: []',
+                '    merge_policy: sequential',
+                '    shared_paths: []',
+                '    resources: []',
+                '    checks: []',
+            ]))
+        text = text.replace('repos: []\n', 'repos:\n' + '\n'.join(blocks) + '\n')
+    blocks = []
+    if modules:
         for m in modules:
             blocks.append('\n'.join([
                 f'  - id: {m["id"]}',
@@ -402,6 +492,15 @@ def render_config(base, modules):
                 f'    session: {m["session"]}',
                 '    tests: []',
             ]))
+    for a in areas:
+        blocks.append('\n'.join([
+            f'  - id: {a["id"]}',
+            f'    kind: {a["kind"]}',
+            f'    repo: {a["repo"]}',
+            f'    paths: {yaml_list(a["paths"])}',
+            f'    session: {a["session"]}',
+        ]))
+    if blocks:
         text = text.replace('modules: []\n', 'modules:\n' + '\n'.join(blocks) + '\n')
     return text
 
@@ -425,13 +524,15 @@ def cmd_new_wp(args):
     wp = f'{prefix}{max(numbers, default=0) + 1:02d}'
     path = ws.wp_dir / f'{wp}-{args.slug}.md'
     title = args.title or args.slug.replace('-', ' ')
-    program = ws.config.get('program', 'program')
-    branch = f'{program}/{wp.lower()}-{args.slug}'
-    session = module.get('session') or f'{program}-{mod}'
-    mapping = {'WP': wp, 'WP_TITLE': title, 'MODULE': mod, 'REPO': module.get('repo', ''),
-               'BASE': module.get('base', 'main'), 'BRANCH': branch, 'SESSION': session,
+    _, stream_modules, _ = ws.streams()
+    sm = stream_modules[mod]
+    session = sm.session
+    mapping = {'WP': wp, 'WP_TITLE': title, 'MODULE': mod, 'REPO': sm.repo.path,
+               'BASE': sm.repo.base, 'SESSION': session,
                'TAG': ws.tag, 'WP_PATH': str(path.resolve()), 'DATE': today(),
-               'COORDINATOR': ws.config.get('coordinator_session') or f'{program}-coord'}
+               'COORDINATOR': ws.coordinator}
+    mapping.update(streams.wp_fields(ws.lang, sm, wp, args.slug, str(path.resolve()), ws.tag,
+                                     ws.coordinator))
     template = ws.wp_dir / '_TEMPLATE.md'
     safe_edit.create(path, fill(template.read_text(encoding='utf-8'), mapping))
     link = f'[{wp}](work-packages/{path.name})'
@@ -471,7 +572,8 @@ def cmd_set(args):
     if column == 'status':
         ws.journal(f'{args.wp}: {found["old"]} -> {value}', wp=args.wp,
                    evidence=args.evidence or '—')
-    print(f'{args.wp} {column} = {value}')
+    if not getattr(args, 'quiet', False):
+        print(f'{args.wp} {column} = {value}')
     return 0
 
 
@@ -593,6 +695,7 @@ def lint(ws):
             errors.append(f'orch.yaml: module needs id and repo: {module}')
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         errors.append(f'orch.yaml: duplicate module id {dup}')
+    errors.extend(ws.streams()[2])
 
     tables = {}
     for path, name in ((ws.status, 'wp'), (ws.status, 'owner'), (ws.status, 'journal'),
@@ -632,6 +735,30 @@ def lint(ws):
             errors.append(f'status.md: journal line {i + 1} has no date')
     if dates != sorted(dates, reverse=True):
         errors.append('status.md: journal must be newest first')
+    for name in ('locks', 'merge'):
+        if ws.has_table(ws.status, name):
+            try:
+                tables[name] = ws.table(ws.status, name)[2]
+            except OrchError as error:
+                errors.append(str(error))
+    lock_names = [r['lock'] for r in tables.get('locks', [])]
+    for dup in sorted({n for n in lock_names if lock_names.count(n) > 1}):
+        errors.append(f'status.md: lock {dup} appears twice')
+    for r in tables.get('locks', []):
+        if r['holder'] not in wp_ids:
+            errors.append(f'status.md: lock {r["lock"]} held by unknown WP {r["holder"]}')
+        if not re.fullmatch(r'[a-z0-9][a-z0-9-]*:.+', r['lock']):
+            errors.append(f'status.md: lock name must be <repo>:<name>: {r["lock"]}')
+    queued = [r['wp'] for r in tables.get('merge', []) if r['status'] == 'queued']
+    for dup in sorted({w for w in queued if queued.count(w) > 1}):
+        errors.append(f'status.md: {dup} queued for merge twice')
+    for r in tables.get('merge', []):
+        if r['wp'] not in wp_ids:
+            errors.append(f'status.md: merge queue has unknown WP {r["wp"]}')
+        if r['status'] not in ('queued', 'merged', 'dropped'):
+            errors.append(f'status.md: merge queue status must be queued, merged or dropped: {r["status"]}')
+        if not r['n'].isdigit():
+            errors.append(f'status.md: merge queue position must be a number: {r["n"]}')
     dec_ids = [plain_id(r['id']) for r in tables.get('decisions', [])]
     for dup in sorted({i for i in dec_ids if dec_ids.count(i) > 1}):
         errors.append(f'decisions.md: duplicate {dup}')
@@ -651,6 +778,8 @@ def lint(ws):
             if pattern.search(text):
                 errors.append(f'{rel}: looks like a secret ({pattern.pattern[:24]}...)')
                 break
+        if safe_edit.MARKER_LINE.search(text):
+            errors.append(f'{rel}: leftover edit marker line (<<<<<<< / ======= / >>>>>>>)')
         if path.name != '_TEMPLATE.md' and re.search(r'\{\{[A-Z_]+\}\}', text):
             errors.append(f'{rel}: unresolved template placeholder')
     return errors
@@ -680,6 +809,11 @@ def cmd_commit(args):
         raise OrchError('lint failed; nothing committed')
     if git(ws.root, 'rev-parse', '--is-inside-work-tree', check=False).returncode:
         raise OrchError(f'{ws.root} is not inside a git repository')
+    repos, modules, _ = ws.streams()
+    all_repos = list({id(m.repo): m.repo for m in modules.values()}.values()) + list(repos.values())
+    conflict = streams.module_repo_conflict(ws.root, all_repos)
+    if conflict:
+        raise OrchError(conflict + '; nothing committed')
     git(ws.root, 'add', '-A', '--', '.')
     if not git(ws.root, 'diff', '--cached', '--name-only', '--', '.').stdout.strip():
         print('commit: nothing to commit')
@@ -698,6 +832,435 @@ def cmd_commit(args):
     return 0
 
 
+# ---------------------------------------------------------------- streams: locks, queue, dispatch
+
+UPGRADE_SECTIONS = {
+    'en': ('## Locks\n\nShared paths and resources of a repository; only the holder may change a shared\n'
+           'path, push a migration, verify on the stand or run the dev stack on fixed ports. The\n'
+           'holder releases after merge or verification. Waiting: packages queued for the lock.\n\n'
+           '<!-- orch:locks -->\n| Lock | Repo | Holder | Since | Waiting | Note |\n'
+           '|------|------|--------|-------|---------|------|\n\n'
+           '## Merge queue\n\nWith `merge_policy: sequential`: one merge at a time; after each merge wait for\n'
+           'the green stand deploy and health check, then rebase the next package.\n\n'
+           '<!-- orch:merge -->\n| # | Repo | WP | PR | Rebase after | Status |\n'
+           '|---|------|----|----|--------------|--------|\n\n'),
+    'ru': ('## Замки\n\nОбщие пути и ресурсы репозитория; только держатель правит общий путь, пушит миграцию,\n'
+           'проверяет на стенде, запускает dev-стек на фиксированных портах. Держатель отдаёт замок\n'
+           'после merge или проверки. «Ждут» — пакеты в очереди на замок.\n\n'
+           '<!-- orch:locks -->\n| Замок | Репозиторий | Держатель | С | Ждут | Примечание |\n'
+           '|-------|-------------|-----------|---|------|------------|\n\n'
+           '## Очередь слияний\n\nПри `merge_policy: sequential`: по одному; после каждого merge — зелёный деплой\n'
+           'стенда и health-check, затем rebase следующего пакета.\n\n'
+           '<!-- orch:merge -->\n| # | Репозиторий | WP | PR | Rebase после | Статус |\n'
+           '|---|-------------|----|----|--------------|--------|\n\n'),
+}
+
+
+def require_table(ws, name):
+    if not ws.has_table(ws.status, name):
+        raise OrchError(f'status.md has no {TABLES[name][0]} table; run `orch.py upgrade` first')
+
+
+def cmd_upgrade(args):
+    ws = Workspace(find_workspace(args.workspace))
+    if ws.has_table(ws.status, 'locks') and ws.has_table(ws.status, 'merge'):
+        print('upgrade: status.md already has the locks and merge queue tables')
+        return 0
+    if ws.has_table(ws.status, 'locks') or ws.has_table(ws.status, 'merge'):
+        raise OrchError('status.md has only one of the 0.2.0 tables; fix it by hand')
+    text = ws.status.read_text(encoding='utf-8')
+    marker = TABLES['journal'][0]
+    head = text[:text.index(marker)]
+    heading = head.rfind('\n## ')
+    if heading < 0:
+        raise OrchError('status.md: no heading before the journal table')
+    anchor = text[heading + 1:text.index(marker) + len(marker)]
+    safe_edit.replace_once(ws.status, anchor, UPGRADE_SECTIONS[ws.lang] + anchor)
+    ws.journal('status.md upgraded: locks and merge queue tables', evidence='orch.py upgrade')
+    print('upgrade: added locks and merge queue tables')
+    return 0
+
+
+def locks(ws):
+    return ws.table(ws.status, 'locks')[2] if ws.has_table(ws.status, 'locks') else []
+
+
+def wp_context(ws, wp):
+    """(row, module, meta) of a work package, resolved against orch.yaml."""
+    rows = ws.wp_rows()
+    if wp not in rows:
+        raise OrchError(f'{wp}: no row in the WP table')
+    r = rows[wp]
+    _, modules, _ = ws.streams()
+    module = modules.get(r['module'].lower())
+    if module is None:
+        raise OrchError(f'{wp}: module {r["module"]} is not in orch.yaml')
+    path = ws.wp_path(r['wp'])
+    meta = streams.wp_meta(path, module) if path and path.is_file() else {
+        'paths': module.paths, 'shared': [], 'resources': [], 'depends': [], 'branch': None}
+    return r, module, meta
+
+
+def lock_key(repo, name):
+    return f'{repo.id}:{name}'
+
+
+def acquire(ws, key, repo_id, wp, note='—'):
+    """Take a lock; returns the other holder when it is busy (and queues wp)."""
+    rows = locks(ws)
+    held = [r for r in rows if r['lock'] == key]
+    if held and held[0]['holder'] == wp:
+        return None
+    if held:
+        holder = held[0]['holder']
+        waiting = [w for w in held[0]['waiting'].split(', ') if w and w != '—']
+        if wp not in waiting:
+            waiting.append(wp)
+
+            def queue(body):
+                out = []
+                for line in body:
+                    cells = split_row(line)
+                    if cells and cells[0] == key:
+                        cells[4] = cell(', '.join(waiting))
+                        line = '| ' + ' | '.join(cells) + ' |'
+                    out.append(line)
+                return out
+            ws.rewrite_table(ws.status, 'locks', queue)
+        return holder
+    line = row([key, repo_id, wp, now_utc(), '—', note])
+    ws.rewrite_table(ws.status, 'locks', lambda body: body + [line])
+    return None
+
+
+def release(ws, key, wp):
+    rows = [r for r in locks(ws) if r['lock'] == key]
+    if not rows:
+        raise OrchError(f'lock {key} is not held')
+    if rows[0]['holder'] != wp:
+        raise OrchError(f'lock {key} is held by {rows[0]["holder"]}, not {wp}')
+    waiting = [w for w in rows[0]['waiting'].split(', ') if w and w != '—']
+    ws.rewrite_table(ws.status, 'locks',
+                     lambda body: [l for l in body if (split_row(l) or [''])[0] != key])
+    return waiting
+
+
+def resolve_lock_name(ws, name, wp, repo_id):
+    repos, modules, _ = ws.streams()
+    if wp:
+        _, module, _ = wp_context(ws, wp)
+        repo = module.repo
+    elif repo_id:
+        candidates = {r.id: r for m in modules.values() for r in [m.repo]}
+        candidates.update(repos)
+        if repo_id not in candidates:
+            raise OrchError(f'unknown repo {repo_id}')
+        repo = candidates[repo_id]
+    else:
+        all_repos = {id(m.repo): m.repo for m in modules.values()}
+        all_repos.update({id(r): r for r in repos.values()})
+        if len(all_repos) != 1:
+            raise OrchError('several repositories: pass --wp or --repo')
+        repo = next(iter(all_repos.values()))
+    return repo, (name if ':' in name else lock_key(repo, name))
+
+
+def cmd_lock(args):
+    ws = Workspace(find_workspace(args.workspace))
+    require_table(ws, 'locks')
+    if args.action == 'list':
+        rows = locks(ws)
+        if args.json:
+            print(json.dumps(rows, ensure_ascii=False, indent=2))
+        elif not rows:
+            print('locks: none')
+        for r in [] if args.json else rows:
+            print(f'{r["lock"]} | holder {r["holder"]} | since {r["since"]} | waiting {r["waiting"]}')
+        return 0
+    if not args.name or not args.wp:
+        raise OrchError(f'lock {args.action} needs a lock name and --wp')
+    repo, key = resolve_lock_name(ws, args.name, args.wp, args.repo)
+    if args.action == 'acquire':
+        holder = acquire(ws, key, repo.id, args.wp, args.note or '—')
+        if holder:
+            ws.journal(f'{args.wp} waits for lock {key} held by {holder}', wp=args.wp,
+                       evidence='orch.py lock acquire')
+            print(f'lock {key}: busy, held by {holder}; {args.wp} queued', file=sys.stderr)
+            return 1
+        ws.journal(f'lock {key} acquired', wp=args.wp, evidence=args.note or 'orch.py lock')
+        print(f'lock {key}: held by {args.wp}')
+        return 0
+    waiting = release(ws, key, args.wp)
+    ws.journal(f'lock {key} released', wp=args.wp, evidence=args.note or 'orch.py lock')
+    print(f'lock {key}: released' + (f'; next in queue: {", ".join(waiting)}' if waiting else ''))
+    return 0
+
+
+def dispatch_problems(ws, wp):
+    """Reasons that forbid dispatching wp now, and the locks it would take."""
+    r, module, meta = wp_context(ws, wp)
+    problems = []
+    if r['status'] != 'READY':
+        problems.append(f'{wp} is {r["status"]}, not READY')
+    rows = ws.wp_rows()
+    for dep in meta['depends']:
+        status = rows.get(dep, {}).get('status')
+        if status not in streams.SATISFIED:
+            problems.append(f'depends on {dep} ({status or "unknown"}), not merged yet')
+    for other, orow in rows.items():
+        if other == wp or orow['status'] not in streams.ACTIVE:
+            continue
+        try:
+            _, omodule, ometa = wp_context(ws, other)
+        except OrchError:
+            continue
+        if omodule.repo is not module.repo:
+            continue
+        if not module.worktree_mode or not omodule.worktree_mode:
+            problems.append(f'{other} ({orow["status"]}) is writing in the same repository and one of '
+                            'them is the whole repository: one writing session at a time')
+        elif omodule.id == module.id:
+            problems.append(f'{other} ({orow["status"]}) already runs in stream {module.id}')
+        else:
+            for a, b in streams.overlap_outside_shared(meta['paths'], ometa['paths'],
+                                                       module.repo.shared_paths):
+                problems.append(f'paths overlap with {other} outside shared paths: {a} ~ {b}')
+    wanted = [lock_key(module.repo, n) for n in meta['shared'] + meta['resources']]
+    busy = {}
+    for lock in locks(ws):
+        if lock['lock'] in wanted and lock['holder'] != wp:
+            busy[lock['lock']] = lock['holder']
+    for key, holder in busy.items():
+        problems.append(f'lock {key} is held by {holder}')
+    return problems, wanted, busy, r, module
+
+
+def cmd_dispatch(args):
+    ws = Workspace(find_workspace(args.workspace))
+    wp = args.wp
+    problems, wanted, busy, r, module = dispatch_problems(ws, wp)
+    if wanted:
+        require_table(ws, 'locks')
+    if problems:
+        for problem in problems:
+            print(f'dispatch refused: {problem}', file=sys.stderr)
+        if not args.dry_run:
+            for key in busy:
+                acquire(ws, key, module.repo.id, wp)  # queues wp behind the holder
+            ws.journal(f'dispatch of {wp} refused: ' + '; '.join(problems), wp=wp,
+                       evidence='orch.py dispatch')
+            if busy:
+                print(f'queued: {wp} waits in the lock table for ' + ', '.join(busy), file=sys.stderr)
+        return 1
+    path = ws.wp_path(r['wp'])
+    text = path.read_text(encoding='utf-8') if path else ''
+    blocks = [b.strip() for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)]
+    commands = [b for b in blocks if b.startswith('cd ') and ' claude ' in b]
+    command = commands[-1] if commands else None
+    if args.dry_run:
+        print(f'dispatch {wp}: ok (dry run); locks to take: {", ".join(wanted) or "none"}')
+        return 0
+    for key in wanted:
+        acquire(ws, key, module.repo.id, wp, 'dispatch')
+    evidence = 'TASK message to live session' if args.live else 'start command handed to the owner'
+    cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='DISPATCHING', quiet=True,
+                               evidence=evidence + (f'; locks {", ".join(wanted)}' if wanted else '')))
+    if args.live:
+        rel = path.relative_to(ws.root) if path else wp
+        print(f'[{ws.tag}] TASK {wp} :: {r["title"]} :: ref={ws.root / rel}')
+    elif command:
+        print(command)
+    else:
+        print(f'{wp}: no start command in the work package; use its Start prompt section')
+    return 0
+
+
+def cmd_merge(args):
+    ws = Workspace(find_workspace(args.workspace))
+    require_table(ws, 'merge')
+    _, _, rows = ws.table(ws.status, 'merge')
+    if args.action == 'list':
+        queued = [q for q in rows if q['status'] == 'queued']
+        if args.json:
+            print(json.dumps(queued, ensure_ascii=False, indent=2))
+            return 0
+        if not queued:
+            print('merge queue: empty')
+        for q in queued:
+            print(f'{q["n"]}. {q["repo"]} {q["wp"]} {q["pr"]} (rebase after {q["rebase_after"]})')
+        return 0
+    if not args.wp:
+        raise OrchError(f'merge {args.action} needs a WP')
+    _, module, _ = wp_context(ws, args.wp)
+    if args.action == 'add':
+        if any(q['wp'] == args.wp and q['status'] == 'queued' for q in rows):
+            raise OrchError(f'{args.wp} is already in the merge queue')
+        same = [q for q in rows if q['repo'] == module.repo.id and q['status'] == 'queued']
+        after = same[-1]['wp'] if same and module.repo.merge_policy == 'sequential' else '—'
+        number = max([int(q['n']) for q in rows if q['n'].isdigit()], default=0) + 1
+        line = row([number, module.repo.id, args.wp, args.pr or '—', after, 'queued'])
+        ws.rewrite_table(ws.status, 'merge', lambda body: body + [line])
+        ws.journal(f'{args.wp} queued for merge ({module.repo.merge_policy})', wp=args.wp,
+                   evidence=args.pr or '—')
+        print(f'{args.wp}: merge queue position {number}' + (f', rebase after {after}' if after != '—' else ''))
+        return 0
+    queued = [q for q in rows if q['wp'] == args.wp and q['status'] == 'queued']
+    if not queued:
+        raise OrchError(f'{args.wp} is not queued for merge')
+    new_status = 'merged' if args.action == 'done' else 'dropped'
+
+    def transform(body):
+        out = []
+        for line in body:
+            cells = split_row(line)
+            if cells and cells[2] == args.wp and cells[5] == 'queued':
+                cells[5] = new_status
+                line = '| ' + ' | '.join(cells) + ' |'
+            out.append(line)
+        return out
+    ws.rewrite_table(ws.status, 'merge', transform)
+    released, kept = [], []
+    if args.action == 'done' and ws.has_table(ws.status, 'locks'):
+        resources = {lock_key(module.repo, n) for n in module.repo.resources}
+        for lock in locks(ws):
+            if lock['holder'] != args.wp:
+                continue
+            if lock['lock'] in resources:
+                kept.append(lock['lock'])
+            else:
+                release(ws, lock['lock'], args.wp)
+                released.append(lock['lock'])
+    ws.journal(f'{args.wp} {new_status} in the merge queue' +
+               (f'; released {", ".join(released)}' if released else ''), wp=args.wp,
+               evidence=args.evidence or '—')
+    nxt = [q for q in rows if q['repo'] == module.repo.id and q['status'] == 'queued' and q['wp'] != args.wp]
+    print(f'{args.wp}: {new_status}' + (f'; released {", ".join(released)}' if released else ''))
+    if kept:
+        print(f'still held (release after verification): {", ".join(kept)}')
+    if nxt:
+        print(f'next: rebase {nxt[0]["wp"]} on the new base after the green deploy and health check')
+    return 0
+
+
+def cmd_overlap(args):
+    ws = Workspace(find_workspace(args.workspace))
+    repos, modules, errors = ws.streams()
+    findings = [('declared', e) for e in errors if 'overlap' in e]
+    rows = ws.wp_rows()
+    live = {}
+    for wp, r in rows.items():
+        if r['status'] in streams.ACTIVE + ('READY',):
+            try:
+                live[wp] = wp_context(ws, wp)
+            except OrchError as error:
+                findings.append(('declared', str(error)))
+    items = sorted(live.items())
+    for i, (a, (ra, ma, meta_a)) in enumerate(items):
+        for b, (rb, mb, meta_b) in items[i + 1:]:
+            if ma.repo is not mb.repo:
+                continue
+            for x, y in streams.overlap_outside_shared(meta_a['paths'], meta_b['paths'],
+                                                       ma.repo.shared_paths):
+                findings.append(('declared', f'{a} and {b}: paths overlap outside shared paths: {x} ~ {y}'))
+            both = set(meta_a['shared']) & set(meta_b['shared'])
+            for p in sorted(both):
+                findings.append(('declared', f'{a} and {b} both declare shared path {p}: '
+                                 'serialize them with the lock'))
+    if not args.planned:
+        held = {}
+        for lock in locks(ws):
+            held.setdefault(lock['holder'], []).append(lock['lock'].split(':', 1)[-1])
+        touched = {}
+        for wp, (r, module, meta) in items:
+            if r['status'] not in streams.ACTIVE or not module.repo.local.is_dir():
+                continue
+            branch = meta['branch']
+            files = streams.branch_files(module.repo, branch) if branch else None
+            if files is None:
+                findings.append(('actual', f'{wp}: branch {branch or "?"} not found in {module.repo.path}'))
+                continue
+            shared = module.repo.shared_paths
+            for f in files:
+                touched.setdefault((id(module.repo), f), []).append(wp)
+                if streams.matches_any(f, shared) or streams.matches_any(f, meta['shared']):
+                    if not streams.matches_any(f, meta['shared']):
+                        findings.append(('actual', f'{wp}: shared path {f} changed but not declared'))
+                    elif not streams.matches_any(f, held.get(wp, [])):
+                        findings.append(('actual', f'{wp}: shared path {f} changed without the lock'))
+                elif not streams.matches_any(f, meta['paths']):
+                    findings.append(('actual', f'{wp}: {f} is outside the allowed paths'))
+        for (_, f), wps in sorted(touched.items(), key=lambda kv: kv[0][1]):
+            if len(wps) > 1:
+                findings.append(('actual', f'{" and ".join(wps)} both change {f}'))
+        if not args.no_checks:
+            branches = {}
+            for wp, (r, module, meta) in items:
+                if r['status'] in streams.ACTIVE and meta['branch']:
+                    branches.setdefault(id(module.repo), []).append(meta['branch'])
+            seen = {}
+            for module in modules.values():
+                seen[id(module.repo)] = module.repo
+            seen.update({id(r): r for r in repos.values()})
+            for key, repo in seen.items():
+                if not repo.checks or not repo.local.is_dir():
+                    continue
+                env = {**os.environ, 'ORCH_BASE_REF': streams.base_ref(repo),
+                       'ORCH_BRANCHES': ' '.join(branches.get(key, []))}
+                for check in repo.checks:
+                    try:
+                        result = subprocess.run(check, shell=True, cwd=repo.local, env=env, text=True,
+                                                capture_output=True, timeout=300)
+                    except subprocess.TimeoutExpired:
+                        findings.append(('check', f'{repo.id}: `{check}` timed out'))
+                        continue
+                    if result.returncode:
+                        out = (result.stdout + result.stderr).strip().split('\n')[:5]
+                        findings.append(('check', f'{repo.id}: `{check}` failed: ' + ' / '.join(out)))
+    if args.json:
+        print(json.dumps([{'kind': k, 'finding': f} for k, f in findings], ensure_ascii=False, indent=2))
+    else:
+        for kind, finding in findings:
+            print(f'[{kind}] {finding}')
+        if not findings:
+            print('overlap: none')
+    return 1 if findings else 0
+
+
+def cmd_worktrees(args):
+    ws = Workspace(find_workspace(args.workspace))
+    repos, modules, _ = ws.streams()
+    seen = {id(m.repo): m.repo for m in modules.values()}
+    seen.update({id(r): r for r in repos.values()})
+    branches = {}
+    for wp, r in ws.wp_rows().items():
+        try:
+            _, _, meta = wp_context(ws, wp)
+        except OrchError:
+            continue
+        if meta['branch']:
+            branches[meta['branch']] = wp
+    report = []
+    for repo in seen.values():
+        if not repo.local.is_dir():
+            report.append({'repo': repo.id, 'error': f'not found: {repo.path}'})
+            continue
+        for entry in streams.worktrees(repo):
+            entry = {'repo': repo.id, **entry}
+            entry['wp'] = branches.get(entry.get('branch'), '—')
+            report.append(entry)
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+    for e in report:
+        if 'error' in e:
+            print(f'{e["repo"]}: {e["error"]}')
+            continue
+        dirty = {True: 'dirty', False: 'clean', None: '?'}[e.get('dirty')]
+        print(f'{e["repo"]} | {e.get("branch", "?")} | {dirty} | ahead {e.get("ahead", "?")} '
+              f'behind {e.get("behind", "?")} | {e["wp"]} | {e["path"]}')
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='orch.py', description=__doc__.split('\n\n')[0])
     parser.add_argument('--workspace', help='workspace directory (contains orch.yaml)')
@@ -712,8 +1275,16 @@ def build_parser():
     p.add_argument('--dir', help='workspace directory (default: features/<program>)')
     p.add_argument('--title')
     p.add_argument('--tag')
-    p.add_argument('--lang', choices=LANGUAGES, default='en')
-    p.add_argument('--module', action='append', metavar='ID=REPO[@BASE]')
+    p.add_argument('--lang', choices=LANGUAGES, required=True,
+                   help="owner's language for owner-facing files; ask the owner")
+    p.add_argument('--module', action='append', metavar='ID=REPO[@BASE]',
+                   help='module that is a whole repository (0.1.0 form)')
+    p.add_argument('--repo', action='append', metavar='ID=PATH[@BASE]',
+                   help='repository shared by several modules')
+    p.add_argument('--area', action='append', metavar='ID=REPO_ID:GLOB[,GLOB]',
+                   help='module that is an area (section) of a --repo')
+    p.add_argument('--domain', action='append', metavar='ID=REPO_ID:GLOB[,GLOB]',
+                   help='module that is a domain of a --repo')
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser('new-wp', parents=[common], help='create a work package')
@@ -760,6 +1331,42 @@ def build_parser():
     p.add_argument('message')
     p.add_argument('--no-push', action='store_true')
     p.set_defaults(func=cmd_commit)
+
+    p = sub.add_parser('dispatch', parents=[common], help='check, take locks, print the start command')
+    p.add_argument('wp')
+    p.add_argument('--live', action='store_true', help='print a TASK line for a live session')
+    p.add_argument('--dry-run', action='store_true', help='only check; change nothing')
+    p.set_defaults(func=cmd_dispatch)
+
+    p = sub.add_parser('overlap', parents=[common], help='path overlaps and repository checks (read-only)')
+    p.add_argument('--planned', action='store_true', help='declared paths only, no git')
+    p.add_argument('--no-checks', action='store_true', help='skip repository checks')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_overlap)
+
+    p = sub.add_parser('lock', parents=[common], help='locks on shared paths and resources')
+    p.add_argument('action', choices=('acquire', 'release', 'list'))
+    p.add_argument('name', nargs='?', help='resource or shared path (repo:name or name)')
+    p.add_argument('--wp', help='holder work package')
+    p.add_argument('--repo', help='repository id when --wp does not identify it')
+    p.add_argument('--note')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_lock)
+
+    p = sub.add_parser('merge', parents=[common], help='merge queue: add, done, drop, list')
+    p.add_argument('action', choices=('add', 'done', 'drop', 'list'))
+    p.add_argument('wp', nargs='?')
+    p.add_argument('--pr')
+    p.add_argument('--evidence')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_merge)
+
+    p = sub.add_parser('worktrees', parents=[common], help='worktrees of every repository (read-only)')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_worktrees)
+
+    p = sub.add_parser('upgrade', parents=[common], help='add 0.2.0 tables to a 0.1.0 status.md')
+    p.set_defaults(func=cmd_upgrade)
     return parser
 
 
@@ -767,7 +1374,7 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (OrchError, safe_edit.EditError) as error:
+    except (OrchError, safe_edit.EditError, streams.StreamError) as error:
         print(f'orch: {error}', file=sys.stderr)
         return 1
 
