@@ -641,7 +641,7 @@ def browser_collect(target: str, pages: list[str], out: Path,
         before = NetworkRecorder()
         before.attach(page, "before_consent", target + "/")
         try:
-            page.goto(target + "/", wait_until="networkidle", timeout=timeout_ms)
+            page.goto(target + "/", wait_until="domcontentloaded", timeout=timeout_ms)
         except Exception as exc:
             manifest.notes.append(f"первый проход: {type(exc).__name__}: {exc}")
         page.wait_for_timeout(2500)
@@ -713,7 +713,7 @@ def browser_collect(target: str, pages: list[str], out: Path,
                     break
 
         try:
-            page.reload(wait_until="networkidle", timeout=timeout_ms)
+            page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
         except Exception:
             pass
         page.wait_for_timeout(2000)
@@ -789,7 +789,7 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
     recorder = NetworkRecorder()
     recorder.attach(page, "before_reject", target + "/")
     try:
-        page.goto(target + "/", wait_until="networkidle", timeout=timeout_ms)
+        page.goto(target + "/", wait_until="domcontentloaded", timeout=timeout_ms)
         page.wait_for_timeout(2500)
         candidates = page.evaluate(FIND_BANNER_JS, {
             "selectorHints": BANNER_SELECTOR_HINTS, "textMarkers": BANNER_TEXT_MARKERS,
@@ -831,7 +831,7 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
         page = ctx.new_page()
         recorder = NetworkRecorder()
         recorder.attach(page, "revisit_reject", target + "/")
-        page.goto(target + "/", wait_until="networkidle", timeout=timeout_ms)
+        page.goto(target + "/", wait_until="domcontentloaded", timeout=timeout_ms)
         page.wait_for_timeout(2500)
         recorder.detach()
         write_jsonl(out / "network/revisit_reject.jsonl", recorder.requests)
@@ -953,7 +953,9 @@ def collect(args):
             except Exception as exc:
                 manifest.degraded = True
                 manifest.degraded_reason = type(exc).__name__
-                transport.current().metadata["transport_error"] = "browser_collection_failed"
+                manifest.notes.append(f"браузерный сбор: {type(exc).__name__}: "
+                                      f"{str(exc).splitlines()[0][:200]}")
+                transport.current().metadata.setdefault("transport_error", "browser_collection_failed")
 
         # Ссылки на юридические документы со всех обойдённых страниц.
         doc_links: list[str] = []
@@ -970,7 +972,7 @@ def collect(args):
         # заблокированным, если ни одна страница не открылась, а отказы были.
         statuses = [p.get("status") for p in manifest.pages]
         denied = sum(1 for st in statuses if st in (401, 403, 429))
-        if not any(st == 200 for st in statuses) and (denied or not statuses):
+        if not any(st == 200 for st in statuses) and denied:
             manifest.blocked = True
             manifest.notes.append(
                 f"обход заблокирован: ни одна страница не открылась "

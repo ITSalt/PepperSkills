@@ -43,8 +43,11 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == '/privacy':
             body = '<meta charset="utf-8">Аналитика по согласию пользователя BASIS_PROOF_913'.encode()
         else:
-            body = HTML.replace('BROKEN', 'true' if self.mode == 'broken' else 'false').replace(
-                'DISABLED', 'disabled' if self.mode == 'disabled' else '').encode()
+            page = HTML.replace('BROKEN', 'true' if self.mode == 'broken' else 'false').replace(
+                'DISABLED', 'disabled' if self.mode == 'disabled' else '')
+            if self.mode == 'busy':
+                page += "<script>setInterval(() => fetch('/track'), 100)</script>"
+            body = page.encode()
         self.send_response(200)
         self.send_header('Content-Type','text/html; charset=utf-8')
         self.end_headers()
@@ -112,6 +115,17 @@ def main():
             results.append({'scenario':mode,'refusal':manifest.refusal,'status':'PASS',
                             'browser':manifest.browser})
             print(f'PASS {mode}', flush=True)
+        # Analytics/long polling can keep the network permanently active. The
+        # collector still has to preserve loaded DOM, pages and refusal state.
+        Handler.mode = 'busy'
+        out = args.out / 'busy'
+        out.mkdir(parents=True, exist_ok=True)
+        manifest = collect.RunManifest(target=target, started_at=collect.now_iso())
+        collect.browser_collect(target, [target+'/', target+'/privacy'], out, manifest, 10000)
+        assert len(manifest.pages) == 2 and all(p['status'] == 200 for p in manifest.pages)
+        assert manifest.refusal['revisit_completed']
+        results.append({'scenario':'busy','status':'PASS','browser':manifest.browser})
+        print('PASS busy', flush=True)
     finally:
         bridge.close()
         transport.ACTIVE = None
