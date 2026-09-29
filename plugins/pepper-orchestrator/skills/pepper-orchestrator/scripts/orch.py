@@ -858,13 +858,22 @@ def cmd_new_wp(args):
     mapping.update(streams.wp_fields(ws.lang, sm, wp, args.slug, str(path.resolve()), ws.tag,
                                      ws.coordinator, workspace, ws.config.get('models')))
     template = ws.wp_dir / '_TEMPLATE.md'
-    safe_edit.create(path, fill(template.read_text(encoding='utf-8'), mapping))
+    text = template.read_text(encoding='utf-8')
+    for old in OLD_SETTINGS_NOTES:  # templates before 0.6.0 contradict the start command dispatch prints
+        text = text.replace(old, '{{START_NOTE}}')
+    safe_edit.create(path, fill(text, mapping))
     link = f'[{wp}](work-packages/{path.name})'
     line = row([link, mod, title, 'DRAFT', session, '—', today()])
     ws.rewrite_table(ws.status, 'wp', lambda body: body + [line])
     ws.journal(f'{wp} created (DRAFT)', wp=wp, evidence=f'work-packages/{path.name}')
     print(f'{wp} {path}')
     return 0
+
+
+OLD_SETTINGS_NOTES = (
+    'No `--settings` in this version: settings files are generated only in a later version.',
+    'Без `--settings` в этой версии: файлы настроек появятся только в следующей версии.',
+)
 
 
 def cmd_set(args):
@@ -1305,6 +1314,12 @@ def lint_warnings(ws):
         for command in session_settings.secret_copies(repo.worktree_setup):
             warnings.append(f'repo {repo.id}: worktree_setup `{command}` copies secrets or session settings into '
                             f'the worktree: {session_settings.WORKTREEINCLUDE_HINT}')
+    template = ws.wp_dir / '_TEMPLATE.md'
+    if template.is_file() and '{{IF_DENIED}}' not in template.read_text(encoding='utf-8'):
+        warnings.append('work-packages/_TEMPLATE.md predates 0.6.0 (no section 6 "If a permission is denied"): new '
+                        'packages lack it while dispatch starts sessions with --settings; copy section 6 and the '
+                        f'Start command note from the plugin template templates/{ws.lang}/work-package.md by point '
+                        'edit (new-wp already replaces the old "No --settings" note)')
     if ws.wp_dir.is_dir():
         rows = ws.wp_rows()
         for path in sorted(ws.wp_dir.glob('WP-*.md')):

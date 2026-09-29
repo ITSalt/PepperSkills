@@ -92,7 +92,7 @@ TEXT = {
         'start_note_cloud': ('No terminal command: `orch.py dispatch` prints the block for a new cloud session, whose '
                              'permissions come from its cloud environment.'),
         'denied_local': ('This session starts with `--settings` generated for its module by `orch.py settings`: '
-                         'reading, the tests, commits and pushes of the package branch are allowed; merge, pushes '
+                         'reading, the tests and commits are allowed, a push of the package branch goes to the classifier; merge, pushes '
                          'to `{base}`, releases, workflow runs, production and the orchestrator workspace are '
                          'denied.'),
         'denied_cloud': ('The permissions of this cloud session come from its cloud environment; the rules of '
@@ -169,7 +169,7 @@ TEXT = {
         'start_note_cloud': ('Без команды терминала: `orch.py dispatch` печатает блок для новой облачной сессии, права '
                              'которой задаёт её облачное окружение.'),
         'denied_local': ('Сессия запускается с `--settings`, сгенерированным для её модуля командой '
-                         '`orch.py settings`: чтение, тесты, коммиты и push ветки пакета разрешены; merge, push в '
+                         '`orch.py settings`: чтение, тесты и коммиты разрешены, push ветки пакета решает классификатор; merge, push в '
                          '`{base}`, релизы, запуск workflow, прод и рабочее пространство оркестратора запрещены.'),
         'denied_cloud': ('Права облачной сессии задаёт её облачное окружение; правила этого пакета действуют '
                          'всё равно.'),

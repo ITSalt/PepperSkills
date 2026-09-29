@@ -90,12 +90,14 @@ PreToolUse-хуки появятся в следующих версиях; до 
   `permission_mode`.
 - **Файлы настроек.** `orch.py settings all` пишет `orchestration/settings/<модуль>.json` для каждого
   локального модуля и `orchestrator.json`: узкие allow-правила (чтение репозитория и рабочего
-  пространства, `cat`/`grep`/`rg`/`sed -n`/…, git status/diff/log/add/commit/switch, push веток
-  `<branch_prefix>*`, тесты, проверки и подготовка worktree модуля дословно), deny-правила (merge,
-  force push и push в базу, `gh workflow run`, `gh release`, MCP прода и команды деплоя в прод,
+  пространства, `cat`/`grep`/`rg`/`sed -n`/…, git status/diff/log/add/commit/switch, `gh pr
+  create`, тесты, проверки и подготовка worktree модуля дословно), deny-правила (merge,
+  force push и push в базу в обычных формах, `gh workflow run`, `gh release`, MCP прода и команды деплоя в прод,
   правка рабочего пространства оркестратора, запрещённые команды методологии как `Skill(<имя>)`),
   контрольные точки владельца как ask-правила (`checkpoints`, по умолчанию `deploy_test`),
   `autoMode.environment` (`$defaults` плюс доверенный репозиторий) и `crossSessionInbound: accept`.
+  Allow-правила для `git push` нет: хвостовой `*` совпал бы и с `<ветка>:<база>`, и с force-флагами,
+  поэтому push решает классификатор (или спрашивает вас при контрольной точке `push`).
   Команда идемпотентна; ваши дополнения — в `<имя>.local.json`, который она не трогает, а `dispatch`
   не подставляет.
 - **Команды запуска.** `dispatch` добавляет в каждую локальную команду `--permission-mode <режим>
@@ -112,8 +114,8 @@ PreToolUse-хуки появятся в следующих версиях; до 
   их в каждый новый worktree; `init` предлагает содержимое вопросом владельцу), а
   `.claude/settings.local.json` каждый worktree читает из основного checkout. `lint` предупреждает о
   `cp`/`rsync`/`ln` файлов `.env*`, каталогов secret/key/cert и `.claude/`.
-- **Замки по запросу.** Ресурс `{name: testgate, mode: on-demand}` не держится весь пакет: сессия
-  присылает `LOCK testgate`, оркестратор берёт его `orch.py lock acquire` (или ставит пакет в
+- **Замки по запросу.** Ресурс `{name: ci-gate, mode: on-demand}` не держится весь пакет: сессия
+  присылает `LOCK ci-gate`, оркестратор берёт его `orch.py lock acquire` (или ставит пакет в
   очередь), `UNLOCK` или READY отдаёт; `lint` предупреждает о замке старше `lock_stale_hours`
   (по умолчанию 4).
 - Правила — ограждение для обычных форм команд (`git -C . push` — не `git push`), а не граница

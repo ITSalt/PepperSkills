@@ -91,13 +91,15 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
   or `acceptEdits`, `default`, `dontAsk`, `bypassPermissions`) and writes `permission_mode`.
 - **Settings files.** `orch.py settings all` writes `orchestration/settings/<module>.json` for every
   local module and `orchestrator.json`: narrow allow rules (reading the repository and the
-  workspace, `cat`/`grep`/`rg`/`sed -n`/..., git status/diff/log/add/commit/switch, pushes of
-  `<branch_prefix>*`, the module's tests, checks and worktree setup verbatim), deny rules (merge,
-  force pushes and pushes to the base, `gh workflow run`, `gh release`, production MCP servers and
-  deploy commands, editing the orchestrator workspace, forbidden methodology commands as
+  workspace, `cat`/`grep`/`rg`/`sed -n`/..., git status/diff/log/add/commit/switch, `gh pr
+  create`, the module's tests, checks and worktree setup verbatim), deny rules (merge, force
+  pushes and pushes to the base in their usual forms, `gh workflow run`, `gh release`, production
+  MCP servers and deploy commands, editing the orchestrator workspace, forbidden methodology commands as
   `Skill(<name>)`), owner checkpoints as ask rules (`checkpoints`, default `deploy_test`),
   `autoMode.environment` (`$defaults` plus the trusted repository) and
-  `crossSessionInbound: accept`. The command is idempotent; your own additions go to
+  `crossSessionInbound: accept`. There is no allow rule for `git push`: a `*` tail would also match
+  `<branch>:<base>` and force flags, so pushes go to the classifier (or ask you with the `push`
+  checkpoint). The command is idempotent; your own additions go to
   `<name>.local.json`, which it never touches and `dispatch` never passes.
 - **Start commands.** `dispatch` adds `--permission-mode <mode> --settings <absolute path>` to every
   local start command and refuses while the file is missing; `init` prints the orchestrator's
@@ -114,8 +116,8 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
   Code copies them into each new worktree; `init` proposes its content as an owner question), and
   `.claude/settings.local.json` is read from the main checkout by every worktree. `lint` warns about
   `cp`/`rsync`/`ln` of `.env*`, secret, key or certificate directories and `.claude/`.
-- **On-demand locks.** A resource `{name: testgate, mode: on-demand}` is not held for the whole
-  package: the session sends `LOCK testgate`, the orchestrator takes it with `orch.py lock acquire`
+- **On-demand locks.** A resource `{name: ci-gate, mode: on-demand}` is not held for the whole
+  package: the session sends `LOCK ci-gate`, the orchestrator takes it with `orch.py lock acquire`
   (or queues the package), and `UNLOCK` or READY gives it back; `lint` warns about a lock held longer
   than `lock_stale_hours` (default 4).
 - Rules are guard rails for the usual command forms (`git -C . push` is not `git push`), not a

@@ -133,6 +133,21 @@ def path_rule(tool, path, glob='**'):
     return f'{tool}(/{text}/{glob})' if text.startswith('/') else f'{tool}({text}/{glob})'
 
 
+def bash_rule_matches(rule, command):
+    """Whether a Bash(...) rule matches a simple command: `*` is any text, and a single trailing ` *`
+    also matches the bare command (the documented matching, without wrapper stripping)."""
+    match = RULE.fullmatch(rule)
+    if not match or match.group(1) != 'Bash':
+        return False
+    spec = match.group(2)
+    if spec.endswith(':*') and spec.count('*') == 1:
+        spec = spec[:-2] + ' *'
+    pattern = '.*'.join(re.escape(part) for part in spec.split('*'))
+    if re.fullmatch(pattern, command, re.S):
+        return True
+    return spec.endswith(' *') and spec.count('*') == 1 and command == spec[:-2]
+
+
 def rule_errors(rule):
     """Syntax problems of one permission rule (the forms Claude Code documents)."""
     if not isinstance(rule, str) or not rule.strip():
@@ -217,8 +232,12 @@ def _prod_servers(config):
 
 
 def _base_push_rules(base):
+    """Pushes to the base branch in the usual forms, with any tail (a `*` in a rule matches any text)."""
     return [f'Bash(git push origin {base})', f'Bash(git push origin {base} *)', f'Bash(git push * {base})',
-            f'Bash(git push origin HEAD:{base})', f'Bash(git push *:{base})']
+            f'Bash(git push * {base} *)', f'Bash(git push origin HEAD:{base})', f'Bash(git push *:{base})',
+            f'Bash(git push *:{base} *)', f'Bash(git push *:refs/heads/{base})',
+            f'Bash(git push *:refs/heads/{base} *)', f'Bash(git push * refs/heads/{base})',
+            f'Bash(git push * refs/heads/{base} *)']
 
 
 def checkpoints(config, module=None):
@@ -249,11 +268,10 @@ def module_settings(config, workspace_root, module, in_repo=False):
             allow.append(path_rule('Read', local, expanded) if expanded != '**' else path_rule('Read', local))
     remote = streams.has_remote(repo)
     if remote:
-        push = [f'Bash(git push origin {repo.branch_prefix}*)', f'Bash(git push -u origin {repo.branch_prefix}*)']
+        # No allow rule for git push: a `*` tail would also match `<branch>:<base>` refspecs and force
+        # flags. Pushes of the package branch are left to the classifier, or to the owner at a checkpoint.
         if 'push' in points or ('deploy_test' in points and repo.push_deploys):
-            ask.extend(push)
-        else:
-            allow.extend(push)
+            ask.append('Bash(git push *)')
         (ask if 'pr' in points else allow).append('Bash(gh pr create *)')
         deny.extend(_base_push_rules(repo.base))
     setup = repo.worktree_setup

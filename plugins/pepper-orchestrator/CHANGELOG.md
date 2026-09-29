@@ -8,12 +8,16 @@ Preview of stage 3a: session permissions, worktree preparation, message delivery
   `orch.yaml` and `templates/settings/*.json`: `Read` of the repository, module paths and workspace;
   narrow Bash rules (`cat`, `grep`, `rg`, `sed -n`, `ls`, `find`, `head`, `tail`, `wc`, git
   status/diff/log/show/branch/fetch/add/commit/switch/`restore --staged`, `gh pr view/list/checks/diff`);
-  pushes of `<branch_prefix>*` and `gh pr create`; every command of `tests`, `checks` and
+  `gh pr create`; every command of `tests`, `checks` and
   `worktree_setup` verbatim, one exact rule per simple command. Deny: `gh pr merge`, force pushes,
-  pushes to the base (`origin <base>`, `HEAD:<base>`, `*:<base>`), `gh workflow run`, `gh release`,
+  pushes to the base in every usual form (`origin <base>`, `HEAD:<base>`, `*:<base>`,
+  `refs/heads/<base>`, with any tail), force pushes after any argument (`--force`, `-f`,
+  `--force-with-lease`, `+<ref>`), `gh workflow run`, `gh release`,
   `Edit` of the workspace, production MCP servers from `environments.prod`, a module's
   `deploy_prod` command, `ssh`/`psql`/`mysql` when `guards` are set, `Skill(<name>)` for
-  `methodology.forbidden`. Ask: `checkpoints` (`push`, `pr`, `deploy_test`; default
+  `methodology.forbidden`. No allow rule for `git push` (a `*` tail would also match refspecs to
+  the base and force flags): pushes of the package branch go to the classifier, or ask with the
+  `push` checkpoint (`Bash(git push *)`). Ask: `checkpoints` (`push`, `pr`, `deploy_test`; default
   `deploy_test`). `autoMode.environment` = `$defaults` + trusted repository and source control;
   `crossSessionInbound: accept`. Idempotent; rules are syntax-checked before writing;
   `<name>.local.json` is never touched (and gitignored in new workspaces).

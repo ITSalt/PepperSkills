@@ -12,7 +12,7 @@ sessions: local
 # acceptEdits | default | dontAsk | bypassPermissions. dispatch passes it with --permission-mode.
 permission_mode: {{PERMISSION_MODE}}
 # Owner checkpoints: actions that always ask the owner in the session window (permissions.ask),
-# even in auto mode: push (pushes of the package branch) | pr (gh pr create) | deploy_test (the
+# even in auto mode: push (every git push asks) | pr (gh pr create) | deploy_test (the
 # module's deploy_test command; pushes too where every push deploys the stand).
 checkpoints: [deploy_test]
 title: {{PROGRAM_TITLE_YAML}}
@@ -48,7 +48,7 @@ repos: []
 #    worktree_setup: ["pnpm install --frozen-lockfile"]   # installs and generation only; secrets: .worktreeinclude
 #    merge_policy: sequential         # sequential | free
 #    shared_paths: [pnpm-lock.yaml, "**/package.json", "backend/migrations/**"]
-#    resources: [staging, migrations, {name: testgate, mode: on-demand}]   # on-demand: LOCK/UNLOCK messages
+#    resources: [staging, migrations, {name: ci-gate, mode: on-demand}]   # on-demand: LOCK/UNLOCK messages
 #    checks: ["./scripts/check-migration-order.sh"]   # read-only commands; see below
 #    review_setup: ["cp \"$ORCH_MAIN_CHECKOUT/.env\" .env", "pnpm install --frozen-lockfile"]  # review clones
 #    deploy_workflows: [deploy.yml]   # read by resume to see who holds the stand

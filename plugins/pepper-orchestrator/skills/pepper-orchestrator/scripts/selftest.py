@@ -358,6 +358,8 @@ def test_legacy_fixture(tmp):
     text = (ws / 'work-packages/WP-API-02-orders-import.md').read_text(encoding='utf-8')
     assert 'legacy/wp-api-02-orders-import' in text and 'cd ~/projects/example-api && claude --name' in text
     assert '-w ' not in text and '{{' not in text, 'old template must keep the 0.1.0 form'
+    assert 'No `--settings` in this version' not in text and '`orch.py dispatch` adds `--permission-mode`' in text
+    assert 'predates 0.6.0' in run(home, 'lint').stderr
     run(home, 'set', 'WP-API-02', 'status', 'READY')
     command = run(home, 'dispatch', 'WP-API-01', '--no-settings').stdout
     assert command.startswith('cd ~/projects/example-api && claude --name legacy-api "'), command
@@ -1426,7 +1428,7 @@ def test_settings(tmp):
         ('    worktree_setup: []', '    worktree_setup: ["pnpm install --frozen-lockfile", '
                                    '"cp ../../../.env .env", "cp -R ../../../.claude .claude"]'),
         ('    shared_paths: []', '    shared_paths: [pnpm-lock.yaml, "backend/migrations/**"]'),
-        ('    resources: []', '    resources: [staging, {name: testgate, mode: on-demand}]'),
+        ('    resources: []', '    resources: [staging, {name: ci-gate, mode: on-demand}]'),
         ('    checks: []', '    checks: ["./scripts/check-order.sh && echo ok"]'),
         ('    session: shop-app\n', '    session: shop-app\n    tests: {scoped: ["pnpm --filter app test"], '
                                    'full: ["pnpm -r test"]}\n    methodology: {name: m, forbidden: [m-release]}\n'),
@@ -1456,8 +1458,25 @@ def test_settings(tmp):
     wsabs, monoabs = ws.resolve(), mono.resolve()
     for rule in (f'Read(/{monoabs}/apps/app/**)', f'Read(/{monoabs}/**)', 'Bash(pnpm --filter app test)',
                  'Bash(pnpm -r test)', 'Bash(./scripts/check-order.sh)', 'Bash(echo ok)',
-                 'Bash(pnpm install --frozen-lockfile)', 'Bash(git push origin feature/*)', 'Bash(sed -n *)'):
+                 'Bash(pnpm install --frozen-lockfile)', 'Bash(sed -n *)', 'Bash(gh pr create *)'):
         assert rule in app['allow'], (rule, app['allow'])
+    assert not any(r.startswith('Bash(git push') for r in app['allow'] + app['ask']), app
+    # M1 (rev.2): pushes to the base and force pushes in tail forms are never allowed and always denied.
+    risky = ['git push origin feature/x:main --no-verify', 'git push origin feature/x:refs/heads/main',
+             'git push origin HEAD:refs/heads/main --no-verify', 'git push origin feature/x refs/heads/main',
+             'git push origin feature/x --force', 'git push origin feature/x --force --no-verify',
+             'git push origin feature/x -f', 'git push origin feature/x -f -u',
+             'git push origin feature/x --force-with-lease', 'git push --force-with-lease origin feature/x',
+             'git push origin +feature/x', 'git push -u origin main', 'git push origin main --no-verify',
+             'git push --force origin feature/x', 'git push origin HEAD:main']
+    for name in ('app', 'db', 'orchestrator'):
+        perms = data[name]['permissions']
+        for command in risky:
+            allowed = [r for r in perms['allow'] + perms['ask'] if session_settings.bash_rule_matches(r, command)]
+            assert not [r for r in allowed if r in perms['allow']], (name, command, allowed)
+            assert any(session_settings.bash_rule_matches(r, command) for r in perms['deny']), (name, command)
+    assert session_settings.bash_rule_matches('Bash(ls *)', 'ls') and not session_settings.bash_rule_matches(
+        'Bash(ls *)', 'lsof') and session_settings.bash_rule_matches('Bash(git push * -f *)', 'git push o x -f -u')
     assert not any('.env' in r or '.claude' in r for r in app['allow']), app['allow']
     for rule in ('Bash(gh pr merge *)', 'Bash(git push origin main)', 'Bash(git push origin HEAD:main)',
                  'Bash(git push --force *)', 'Bash(gh workflow run *)', f'Edit(/{wsabs}/**)',
@@ -1465,6 +1484,7 @@ def test_settings(tmp):
         assert rule in app['deny'], (rule, app['deny'])
     db = data['db']['permissions']
     assert 'Bash(./scripts/deploy.sh --target test *)' in db['ask'], db['ask']
+    assert 'Bash(git push *)' not in db['ask'], 'push is a checkpoint only when asked for'
     assert 'Bash(./scripts/deploy.sh --target prod)' in db['deny'] and 'Bash(./scripts/test.sh)' in db['allow']
     orch_rules = data['orchestrator']['permissions']
     assert f'Bash(python3 {HERE}/orch.py *)' in orch_rules['allow'] and 'Bash(gh pr merge *)' in orch_rules['deny']
@@ -1477,6 +1497,14 @@ def test_settings(tmp):
         ['cp -r ../x/certs certs']
     again = run(home, 'settings', 'all').stdout
     assert 'settings app: unchanged' in again and 'written' not in again, again
+    # L4: checkpoints [push] asks for every git push (the documented recipe).
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, 'checkpoints: [deploy_test]', 'checkpoints: [push, deploy_test]')
+    run(home, 'settings', 'app')
+    pushed = json.loads((ws / 'orchestration/settings/app.json').read_text(encoding='utf-8'))['permissions']
+    assert 'Bash(git push *)' in pushed['ask'] and 'Bash(git push origin main)' in pushed['deny'], pushed['ask']
+    config.write_text(original, encoding='utf-8')
+    run(home, 'settings', 'app')
     assert 'make x' in (ws / 'orchestration/settings/admin.local.json').read_text(encoding='utf-8')
     assert 'older than' not in run(home, 'lint').stderr
     # Work packages, dispatch flags and refusal without the file.
@@ -1486,16 +1514,16 @@ def test_settings(tmp):
     app_wp = wps / 'WP-APP-01-checkout.md'
     text = app_wp.read_text(encoding='utf-8')
     assert '## 6. If a permission is denied' in text and 'QUESTION WP-APP-01 :: denied:' in text, text
-    assert 'LOCK WP-APP-01 :: <resource>' in text and '`testgate` (on-demand' in text, text
-    fill_header(app_wp, 'Resources (locks)', '`testgate`')
+    assert 'LOCK WP-APP-01 :: <resource>' in text and '`ci-gate` (on-demand' in text, text
+    fill_header(app_wp, 'Resources (locks)', '`ci-gate`')
     fill_header(app_wp, 'Shared paths touched', '`some.test.mjs`')
-    fill_header(wps / 'WP-ADMIN-01-orders.md', 'Resources (locks)', '`testgate`')
+    fill_header(wps / 'WP-ADMIN-01-orders.md', 'Resources (locks)', '`ci-gate`')
     for wp in ('WP-APP-01', 'WP-ADMIN-01', 'WP-DB-01'):
         run(home, 'set', wp, 'status', 'READY')
     warned = run(home, 'lint').stderr
     assert '`some.test.mjs` in the Shared paths or Resources row is not a lock of repo mono' in warned, warned
     dry = run(home, 'dispatch', 'WP-APP-01', '--dry-run')
-    assert 'locks to take: none' in dry.stdout and 'on-demand locks, taken when the session sends LOCK: testgate' \
+    assert 'locks to take: none' in dry.stdout and 'on-demand locks, taken when the session sends LOCK: ci-gate' \
         in dry.stderr and 'some.test.mjs' in dry.stderr, (dry.stdout, dry.stderr)
     assert f'--permission-mode auto --settings {wsabs}/orchestration/settings/app.json --name shop-app' in dry.stdout
     db_dry = run(home, 'dispatch', 'WP-DB-01', '--dry-run').stdout
@@ -1511,18 +1539,18 @@ def test_settings(tmp):
     run(home, 'dispatch', 'WP-APP-01')
     run(home, 'dispatch', 'WP-ADMIN-01')
     assert 'locks: none' in run(home, 'lock', 'list').stdout
-    assert 'held by WP-APP-01' in run(home, 'lock', 'acquire', 'testgate', '--wp', 'WP-APP-01').stdout
-    assert 'queued' in run(home, 'lock', 'acquire', 'testgate', '--wp', 'WP-ADMIN-01', ok=False).stderr
+    assert 'held by WP-APP-01' in run(home, 'lock', 'acquire', 'ci-gate', '--wp', 'WP-APP-01').stdout
+    assert 'queued' in run(home, 'lock', 'acquire', 'ci-gate', '--wp', 'WP-ADMIN-01', ok=False).stderr
     assert '(on-demand)' in run(home, 'lock', 'list').stdout
     released = run(home, 'set', 'WP-APP-01', 'status', 'REVIEW').stderr
-    assert 'lock mono:testgate: released; next in queue: WP-ADMIN-01' in released, released
-    run(home, 'lock', 'acquire', 'testgate', '--wp', 'WP-ADMIN-01')
+    assert 'lock mono:ci-gate: released; next in queue: WP-ADMIN-01' in released, released
+    run(home, 'lock', 'acquire', 'ci-gate', '--wp', 'WP-ADMIN-01')
     since = json.loads(run(home, 'lock', 'list', '--json').stdout)[0]['since']
     later = (orch.dt.datetime.strptime(since, '%Y-%m-%d %H:%MZ') + orch.dt.timedelta(hours=5)).strftime('%Y-%m-%d %H:%MZ')
     assert 'on-demand lock' not in run(home, 'lint').stderr
     stale = run(home, 'lint', extra_env={'ORCH_NOW': later}).stderr
-    assert 'on-demand lock mono:testgate held by WP-ADMIN-01 for 5 h (limit 4 h)' in stale, stale
-    run(home, 'lock', 'release', 'testgate', '--wp', 'WP-ADMIN-01')
+    assert 'on-demand lock mono:ci-gate held by WP-ADMIN-01 for 5 h (limit 4 h)' in stale, stale
+    run(home, 'lock', 'release', 'ci-gate', '--wp', 'WP-ADMIN-01')
     # A cloud module keeps its block without --settings.
     safe_edit.replace_once(config, '\n  - id: admin\n',  # the commented example starts with '#'
                            '\n  - id: admin\n    sessions: cloud\n    cloud_environment: "Env"\n')

@@ -275,7 +275,8 @@ Discrepancies go to the `status.md` journal first, then action.
 
 - Every session starts with **its own settings file** (`--settings`) and the program's permission
   mode (`--permission-mode`, `auto` recommended): allow the module's standard commands as narrow
-  rules (reading, its tests and checks verbatim, commits and pushes of its own branches); deny
+  rules (reading, its tests and checks verbatim, commits; pushes are left to the classifier, since a
+  `*` tail also matches refspecs to the base); deny
   merge, force pushes and pushes to base branches, `gh workflow run`, releases, PROD MCP and PROD
   deploy commands, ssh and database clients where guards exist, editing the orchestrator
   workspace, forbidden methodology commands; ask for the owner's checkpoints (TEST deploy, and

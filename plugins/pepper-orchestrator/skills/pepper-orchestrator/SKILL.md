@@ -92,7 +92,7 @@ needs them, follow the concept directly: verify per section 9, release per secti
 
 **Session settings.** `orch.py settings <module|all|orchestrator>` generates
 `orchestration/settings/<name>.json` from `orch.yaml`: narrow allow rules (reading, the module's
-tests, checks and worktree setup verbatim, commits and pushes of the package branch), deny rules
+tests, checks and worktree setup verbatim, commits; no allow for `git push`), deny rules
 (merge, pushes to the base, force pushes, `gh workflow run`, `gh release`, production MCP servers and
 deploy commands, the orchestrator workspace, forbidden methodology commands as `Skill(<name>)`),
 owner checkpoints as ask rules, `autoMode.environment` and `crossSessionInbound: accept`. `dispatch`
