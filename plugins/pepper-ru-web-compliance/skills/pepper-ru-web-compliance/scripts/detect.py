@@ -1672,6 +1672,7 @@ def run(ctx: Context) -> dict[str, Any]:
             "finished_at": ctx.manifest.get("finished_at"),
             "visual_complete": ctx.manifest.get("visual_complete"),
             "partial_pages": ctx.manifest.get("partial_pages"),
+            "refusal": ctx.manifest.get("refusal"),
             "network": ctx.manifest.get("network"),
             "network_observations": {
                 "count": sum(len(rows) for rows in ctx.net.values()),

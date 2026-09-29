@@ -21,8 +21,7 @@ import render
 HTML = '''<!doctype html><meta charset="utf-8"><title>Audit fixture</title>
 <style>#cookie-banner {width:600px;padding:30px;background:#eee}button{padding:15px}</style>
 <h1>Local consent fixture</h1><a href="/privacy">Privacy</a>
-<div class="layout-footer__subscribe-app-form"><div><div><div><input type="email" name="email"></div></div></div>
-<div><label><input type="checkbox">Принимаю политику</label></div><button>Подписаться</button></div>
+SUBSCRIPTION
 <div id="cookie-banner">Cookie: согласие на аналитику
 <button onclick="choose('yes')">Принять</button><button DISABLED onclick="choose('no')">Отказаться</button></div>
 <script>
@@ -45,7 +44,12 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path in ('/privacy', '/privacy/'):
             body = '<meta charset="utf-8">Аналитика по согласию пользователя BASIS_PROOF_913'.encode()
         else:
-            page = HTML.replace('BROKEN', 'true' if self.mode == 'broken' else 'false').replace(
+            subscription = ('<div class="layout-footer__subscribe-app-form">' + '<div>' * 10 +
+                            '<input type="email" name="email">' + '</div>' * 10 +
+                            '<div><label><input type="checkbox">Принимаю политику</label></div>' +
+                            '<button>Подписаться</button></div>')
+            page = HTML.replace('SUBSCRIPTION', subscription).replace(
+                'BROKEN', 'true' if self.mode == 'broken' else 'false').replace(
                 'DISABLED', 'disabled' if self.mode == 'disabled' else '')
             if self.mode == 'busy':
                 page = page.replace('href="/privacy"', 'href="/privacy/"')

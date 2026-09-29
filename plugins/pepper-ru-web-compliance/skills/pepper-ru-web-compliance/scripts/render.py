@@ -72,6 +72,19 @@ def network_summary(network):
             "QUIC и непроксируемый WebRTC отключены; эта конфигурация может отличаться от обычного браузера.")
 
 
+def visible_nonrequest_evidence(finding, owners, limit=5):
+    """Show representative direct evidence once, while reserving all rows for the register."""
+    unseen = []
+    for entry in finding.get('evidence', []):
+        if entry.get('kind') == 'request':
+            continue
+        key = json.dumps(entry, sort_keys=True, ensure_ascii=False)
+        if key not in owners:
+            owners[key] = finding['rule_id']
+            unseen.append(entry)
+    return unseen[:limit], max(0, len(unseen) - limit)
+
+
 def report_status(finding: dict[str, Any]) -> str:
     """Use the review attached by detect; never overwrite its machine observation.
 
@@ -540,12 +553,8 @@ def report_md(data: dict[str, Any]) -> str:
                     else:
                         evidence_owner[request_ids] = f['rule_id']
                         add("- " + "\n- ".join(evidence_refs_md(line) for line in report_evidence.summary_lines(f)))
-                nonrequests = [e for e in f['evidence'] if e.get('kind') != 'request']
-                for e in nonrequests[:8]:
-                    key = json.dumps(e, sort_keys=True, ensure_ascii=False)
-                    if key in evidence_owner:
-                        continue
-                    evidence_owner[key] = f['rule_id']
+                nonrequests, hidden = visible_nonrequest_evidence(f, evidence_owner)
+                for e in nonrequests:
                     line = f"- {e['detail']}"
                     if e.get("url"):
                         line += f" — `{e['url']}`"
@@ -554,8 +563,8 @@ def report_md(data: dict[str, Any]) -> str:
                     add(line)
                     if e.get("snippet"):
                         add(f"  > {e['snippet']}")
-                if len(nonrequests) > 8:
-                    add(f"- Ещё {len(nonrequests) - 8} записей: evidence.html / evidence.json.")
+                if hidden:
+                    add(f"- Ещё {hidden} записей: evidence.html / evidence.json.")
                 add("")
             if f.get("source_note"):
                 add(f"**Источник данных.** {f['source_note']}")
@@ -667,7 +676,7 @@ def describe_observations(finding, shared_requests=None, task_id=None):
     group_ids = frozenset(g['id'] for g in report_evidence.request_groups(request_finding))
     owner = shared_requests.get(group_ids) if shared_requests is not None and group_ids else None
     if owner:
-        out = [f'Общий набор сетевых доказательств: см. {owner}; evidence.html / evidence.json.']
+        return [f'Общий набор сетевых доказательств: см. {owner}; evidence.html / evidence.json.']
     else:
         out = report_evidence.summary_lines(request_finding, limit=2)
         if group_ids and shared_requests is not None:
@@ -686,7 +695,10 @@ def describe_observations(finding, shared_requests=None, task_id=None):
                 parts.append(label + ': ' + str(labels.get(context[key], context[key]) if key == 'category' else context[key]))
         if parts:
             out.append('; '.join(parts))
-    return list(dict.fromkeys(out))[:12]
+    unique = list(dict.fromkeys(out))
+    if len(unique) > 6:
+        return unique[:5] + [f'Ещё {len(unique) - 5} мест: evidence.html / evidence.json.']
+    return unique
 
 
 def plan_md(data: dict[str, Any]) -> str:
@@ -1139,12 +1151,8 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
                     evidence_owner[request_ids] = f['rule_id']
                     for line in report_evidence.summary_lines(f):
                         add(f"<div class=ev>{evidence_refs_html(line)}</div>")
-            nonrequests = [e for e in f.get("evidence", []) if e.get('kind') != 'request']
-            for e in nonrequests[:8]:
-                key = json.dumps(e, sort_keys=True, ensure_ascii=False)
-                if key in evidence_owner:
-                    continue
-                evidence_owner[key] = f['rule_id']
+            nonrequests, hidden = visible_nonrequest_evidence(f, evidence_owner)
+            for e in nonrequests:
                 bits = esc(e["detail"])
                 if e.get("url"):
                     bits += f" — {esc(e['url'])}"
@@ -1152,8 +1160,8 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
                     bits += f" (страница {esc(e['selector'])})"
                 snippet = f"<q>{esc(e['snippet'])}</q>" if e.get("snippet") else ""
                 add(f"<div class=ev>{bits}{snippet}</div>")
-            if len(nonrequests) > 8:
-                add(f"<p class=hint>Ещё {len(nonrequests) - 8} записей: {evidence_refs_html('evidence.html / evidence.json')}.</p>")
+            if hidden:
+                add(f"<p class=hint>Ещё {hidden} записей: {evidence_refs_html('evidence.html / evidence.json')}.</p>")
             if f.get("source_note"):
                 add(f"<p><b>Источник данных.</b> {esc(f['source_note'])}</p>")
             add("</div>")

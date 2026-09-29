@@ -400,12 +400,24 @@ EXTRACT_JS = r"""
     for (const el of loose) {
       let box = el;
       let shared = null;
-      for (let up = 0; up < 8 && box.parentElement; up += 1) {
+      for (let up = 0; up < 20 && box.parentElement; up += 1) {
         box = box.parentElement;
         const count = box.querySelectorAll('input, textarea, select').length;
-        if (count > 1 && count <= 12 && box.querySelector('button, [type="submit"]')) {
+        const marker = `${box.id || ''} ${typeof box.className === 'string' ? box.className : ''}`;
+        if (count > 1 && count <= 12 && /(?:^|[-_\s])form(?:$|[-_\s])/i.test(marker)) {
           shared = box;
           break;
+        }
+      }
+      if (!shared) {
+        box = el;
+        for (let up = 0; up < 8 && box.parentElement; up += 1) {
+          box = box.parentElement;
+          const count = box.querySelectorAll('input, textarea, select').length;
+          if (count > 1 && count <= 12 && box.querySelector('button, [type="submit"]')) {
+            shared = box;
+            break;
+          }
         }
       }
       if (shared) box = shared;

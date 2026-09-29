@@ -27,6 +27,42 @@ class ReportQuality(unittest.TestCase):
         self.assertIn('Причина ограничения: 4 из 20 страниц вернули 403', summary)
         self.assertNotIn('Причина ограничения: нет', summary)
 
+    def test_report_warns_about_unvisited_pages_and_unfinished_refusal(self):
+        warnings = collection_warnings({
+            'unvisited_links': 98,
+            'collection': {'network': {'complete': True}, 'visual_complete': True,
+                           'refusal': {'click_status': 'not_found', 'revisit_completed': False}},
+        })
+        self.assertEqual(len(warnings), 2)
+        self.assertIn('98', warnings[0])
+        self.assertIn('отказа', warnings[1])
+
+    def test_shared_request_set_is_one_plan_reference_without_repeated_page_list(self):
+        request = {'kind': 'request', 'detail': 'GET', 'url': 'https://receiver.example/a',
+                   'context': {'method': 'GET', 'page': 'https://example.ru/'}}
+        locations = [{'kind': 'dom', 'detail': 'адрес формы',
+                      'url': f'https://example.ru/page-{i}'} for i in range(12)]
+        first = {'evidence': [request] + locations}
+        second = {'evidence': [request] + locations}
+        shared = {}
+        first_lines = render.describe_observations(first, shared, 'V-01')
+        second_lines = render.describe_observations(second, shared, 'V-02')
+        self.assertLessEqual(len(first_lines), 6)
+        self.assertEqual(second_lines,
+                         ['Общий набор сетевых доказательств: см. V-01; evidence.html / evidence.json.'])
+
+    def test_repeated_direct_evidence_is_not_listed_twice(self):
+        entries = [{'kind': 'dom', 'detail': 'адрес формы',
+                    'url': f'https://example.ru/page-{i}'} for i in range(12)]
+        owners = {}
+        first, hidden = render.visible_nonrequest_evidence(
+            {'rule_id': 'PDN-011', 'evidence': entries}, owners)
+        repeated, repeated_hidden = render.visible_nonrequest_evidence(
+            {'rule_id': 'INF-003', 'evidence': entries}, owners)
+        self.assertEqual(len(first), 5)
+        self.assertEqual(hidden, 7)
+        self.assertEqual((repeated, repeated_hidden), ([], 0))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

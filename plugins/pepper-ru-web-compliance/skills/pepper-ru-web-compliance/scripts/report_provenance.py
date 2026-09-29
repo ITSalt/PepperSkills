@@ -47,7 +47,8 @@ def provenance_line(data):
             '; формат наблюдений: ' + str(collector.get('observation_version', 'не установлен')) +
             '; транспорт: ' + str(network.get('mode', 'не установлен')) +
             '; выход: ' + str(egress.get('ip', 'не установлен')) +
-            '; полный сетевой сбор: ' + ({True: 'да', False: 'нет'}.get(network.get('complete'), 'не установлен')) +
+            '; сетевой сбор выбранных страниц: ' + ({True: 'да', False: 'нет'}.get(network.get('complete'), 'не установлен')) +
+            '; вне выборки внутренних ссылок: ' + str(data.get('unvisited_links', 'не установлено')) +
             '; снимки страниц: ' + ('неполны' if collection.get('visual_complete') is False
                                      else 'сохранены' if collection.get('visual_complete') is True
                                      else 'не установлено') + '.')
@@ -80,6 +81,13 @@ def collection_warnings(data):
         warnings.append('Сетевой обход неполон: выводы об отсутствии признаков ограничены доступными страницами.')
     if collection.get('visual_complete') is False:
         warnings.append('Часть снимков страниц не сохранена; визуальные признаки требуют ручной проверки.')
+    unvisited = data.get('unvisited_links')
+    if isinstance(unvisited, int) and unvisited > 0:
+        warnings.append(f'Внутренних ссылок вне выборки: {unvisited}; '
+                        'выводы об отсутствии признаков относятся только к посещённым страницам.')
+    refusal = collection.get('refusal') or {}
+    if refusal and (refusal.get('click_status') != 'clicked' or not refusal.get('revisit_completed')):
+        warnings.append('Сценарий отказа от cookie не завершён; результат отказа и повторного визита не подтверждён.')
     return warnings
 
 
