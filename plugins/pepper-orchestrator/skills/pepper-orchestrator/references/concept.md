@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.3 · 2026-09-29 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21) · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.4 · 2026-09-29 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -178,6 +178,14 @@ Rules:
   merge, then the green stand deploy and health check, then the rebase of the next package, then
   its merge. If every merge into the base deploys production, merge in batches through a release
   sheet.
+- **Session kind and model.** The owner chooses once, at the start, whether module sessions run
+  locally (recommended) or in the cloud (with a named cloud environment); an orchestrator running
+  in the cloud works only with cloud sessions. Every package carries a recommended implementer
+  model and effort: the latest Sonnet for a clear package inside one module, Opus with high effort
+  for contracts, data migrations, money and permissions, concurrency, bug hunts without a
+  hypothesis and large refactorings, a stronger model after a second failed REVISE round. The
+  model goes into the start command as a flag; `/model <name>` with an argument in a local session
+  would make it the owner's default for every new session.
 - **Stream start.** The session of a stream starts in its own worktree (`claude -w <wp-slug>` in
   Claude Code) and prepares it itself: branch from the current base, the repository's worktree
   setup (a copy of the gitignored env with its own test database and ports, dependency install).

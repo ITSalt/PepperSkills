@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.0 — preview, unreleased
+
+Preview of stage 2e: implementer model per package, session kind chosen by the owner, cloud
+environment.
+
+- `init` requires `--sessions local|cloud` (the owner's explicit choice; the mode recommends local,
+  asks and waits for the answer; the choice is journaled); `--sessions cloud` requires
+  `--cloud-environment <name>`; in a cloud session (`CLAUDE_CODE_REMOTE=true`) `init --sessions
+  local` and `dispatch` of a local module are refused (a cloud orchestrator works only with cloud
+  sessions). The choice is the program's `sessions`; repositories and modules inherit it.
+- `orch.yaml`: `models` (`implement`, `implement_effort`, `escalate`, `escalate_effort`), module
+  `model`/`effort`, `cloud_environment` (program, repository or module); `lint` rejects unknown
+  aliases and efforts and warns about cloud modules without an environment. Without `models`
+  start commands carry no model flags, as in 0.4.0.
+- Work package template: Model, Effort, Model reason; `new-wp` fills them; `orch.py model` changes
+  them together with the start command and journals; `dispatch` takes the flags from the header.
+- `dispatch` of a cloud module prints a block (environment, repository and branch, model and
+  effort, claude.ai/code prefill link without the prompt above 2000 characters) and refuses a cloud
+  module without an environment; `orch.py cloud-env` records the name.
+- `review-start` from round 3 prints and queues an escalation restart
+  (`cd <repo> && claude --resume <session> --model <escalate>` locally; model list or `/model` in the
+  cloud).
+- Agents: `orchestrator-scout` has `model: opus`; `orchestrator-reviewer` has no `model` on purpose.
+- Concept 1.4 (EN and RU): session kind and implementer model, and the `/model <name>` trap;
+  README "Models and environment".
+
 ## 0.4.0 — preview, unreleased
 
 Preview of stage 2d: program completion. One program, one goal: reached, closed; the next goal is

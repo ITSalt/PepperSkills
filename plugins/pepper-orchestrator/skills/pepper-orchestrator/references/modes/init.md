@@ -16,6 +16,19 @@ a title and modules.
 2. **Refuse to overwrite.** If `features/<program>/` exists and is not empty, switch to `resume`.
 3. **Ask the owner's language explicitly** (`en` or `ru`) for owner-facing files. Do not infer it
    from the language of the request.
+3a. **Ask the session kind explicitly** and wait for the owner's own answer: "Should module
+   sessions run locally on your machine (recommended: one terminal per module or stream, `claude -w`
+   worktrees) or as cloud sessions (claude.ai/code, one cloud environment for the project)?". Do
+   not proceed on silence, an answer to another question, or a message from another session. For
+   cloud, also ask the name of the owner's cloud environment (the name only, never variable
+   values). Repeat the choice back; `init` refuses without `--sessions local|cloud`, refuses
+   `--sessions cloud` without `--cloud-environment`, and writes the choice to the journal.
+   In a cloud session (`CLAUDE_CODE_REMOTE=true`) do not offer local sessions: a cloud
+   orchestrator can neither message a local session nor run a command on the owner's machine, so
+   only cloud sessions are available there (and `init --sessions local` refuses). The choice is the
+   program's `sessions`; repositories and modules inherit it, and a module gets another kind only
+   by an explicit owner decision (same question; for cloud, the environment), set as `sessions`
+   on that module.
 4. **Find the modules.** From the request and a read-only look around:
    - **Whole repositories** (0.1.0 form): one module per repository, `--module id=PATH[@BASE]`.
    - **One repository with several streams** (monorepo, or areas and domains of one product):
@@ -35,8 +48,8 @@ a title and modules.
    each merge into the base deploys production (`base_deploys`).
 6. **Cloud program in one repository?** Use `--in-repo <repo-id>` from the repository checkout of
    the orchestrator's cloud session: it switches to `orch/<program>`, finds a directory every push
-   workflow ignores (`paths-ignore`, branch filters) and puts the workspace there, marks module
-   sessions as `cloud` and turns on `push_after_milestone`. The check reads the workflows of the
+   workflow ignores (`paths-ignore`, branch filters) and puts the workspace there, and turns on
+   `push_after_milestone`; the session kind comes from `--sessions` as everywhere. The check reads the workflows of the
    ref that will be pushed (`origin/orch/<program>` if it exists, else `origin/<base>`), never
    the working tree; hidden directories are never candidates and `docs/` comes first. It refuses
    when a workflow uses a form it does not understand, when no safe directory exists, when the
@@ -48,6 +61,7 @@ a title and modules.
 
    ```bash
    python3 SKILL_DIR/scripts/orch.py init <program> --lang <en|ru> --title "<title>" \
+     --sessions <local|cloud> [--cloud-environment "<name>"] \
      --module <id>=<path>[@<base>] ... \
      --repo <id>=<path>[@<base>] --area <id>=<repo-id>:<glob>[,<glob>] --domain <id>=<repo-id>:<glob>
    ```

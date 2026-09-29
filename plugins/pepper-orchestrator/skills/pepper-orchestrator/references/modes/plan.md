@@ -39,6 +39,20 @@ free text. Requires a workspace; if none exists, run `init` first and say so.
    repository's `shared_paths`) and **resources** that need a lock (for example `migrations`),
    the migration rule, the line (base or a backport branch). Keep the generated sections 0, 4 and
    5 (worktree preparation, delivery, start prompt and command).
+5a. **Recommend the implementer model** for each package (the owner may change it before
+   starting). `new-wp` fills Model, Effort and Model reason from `orch.yaml` (module override,
+   then `models.implement`). Keep the default (`sonnet`) for a package with clear acceptance inside
+   one module. Use `opus` with effort `high` for a contract between modules, data migrations,
+   money and permissions, concurrency and state machines, a bug hunt without a hypothesis, or a
+   large refactoring:
+
+   ```bash
+   python3 SKILL_DIR/scripts/orch.py model <WP> opus --effort high --reason "<one line why>"
+   ```
+
+   Do not recommend `haiku` or `fable` for implementers (the owner may set them). Show the owner
+   the packages that got `opus`. New modules added here inherit the program's `sessions`; another
+   kind only by an explicit owner decision, and in a cloud orchestrator never `sessions: local`.
 6. **Promote.** A package whose sections are complete and whose decisions are closed:
    `orch.py set <WP> status READY --evidence "sections complete"`. Fill the Waves table of
    `status.md` by point edit.
