@@ -56,6 +56,21 @@ TEXT = {
         'ref_pr': '<PR URL>',
         'ref_local': 'branch {branch}',
         'methodology_any': 'any, within this package',
+        'kind_cloud': 'none: a cloud session works in its own clone',
+        'prep_cloud_branch': 'In the cloud session\'s clone, create the package branch: `git fetch origin && git switch -c {branch} origin/{base}`.',
+        'prep_cloud_setup': 'Prepare the clone if the environment\'s setup script has not done it already:',
+        'delivery_cloud': ('- Push `{branch}` and open a PR to `{base}`; its body starts with `{wp}` and holds the '
+                           'development report + `Deviations`. Do not merge.\n'
+                           '- No message back is needed: the orchestrator finds the PR by branch and package id.'),
+        'prompt_cloud': ('Cloud session for work package {wp} in repository {repo_name}, starting from branch {base}. '
+                         '{read} Do section 0, then implement the package on branch {branch} from origin/{base}. '
+                         'Deliver: push {branch} and open a PR to {base} whose body starts with {wp} and holds the '
+                         'development report and Deviations. Never merge (no merge tool such as '
+                         'mcp__github__merge_pull_request, no gh pr merge), never push to {base}, never edit .claude/. '
+                         'No message back: the orchestrator finds your PR by branch and package id.'),
+        'read_branch': 'Read the package: git fetch origin {wbranch} && git show origin/{wbranch}:{wp_rel} .',
+        'read_inline': 'The package text follows this prompt.',
+        'command_cloud': '# no terminal command: open a new cloud session on {repo_name}, branch {base}, and paste the prompt above',
         'push_slot': ('- Pushing any branch of this repository deploys the stand: commit locally and do not push '
                       'until the orchestrator gives you the stand slot (the `staging` lock); push once, then '
                       'report.'),
@@ -89,6 +104,21 @@ TEXT = {
         'ref_pr': '<PR URL>',
         'ref_local': 'branch {branch}',
         'methodology_any': 'любые, в рамках пакета',
+        'kind_cloud': 'нет: облачная сессия работает в своём клоне',
+        'prep_cloud_branch': 'В клоне облачной сессии создай ветку пакета: `git fetch origin && git switch -c {branch} origin/{base}`.',
+        'prep_cloud_setup': 'Подготовь клон, если setup-скрипт окружения ещё не сделал этого:',
+        'delivery_cloud': ('- Запушь `{branch}` и открой PR в `{base}`; тело PR начинается с `{wp}` и содержит отчёт '
+                           'разработки + `Deviations`. Не мержить.\n'
+                           '- Сообщение назад не нужно: оркестратор найдёт PR по ветке и ID пакета.'),
+        'prompt_cloud': ('Облачная сессия для пакета {wp} в репозитории {repo_name}, стартовая ветка {base}. '
+                         '{read} Выполни раздел 0, затем пакет в ветке {branch} от origin/{base}. '
+                         'Сдача: запушь {branch} и открой PR в {base}; тело PR начинается с {wp} и содержит отчёт '
+                         'разработки и Deviations. Никогда не мержить (никаких инструментов merge вроде '
+                         'mcp__github__merge_pull_request, никакого gh pr merge), не пушить в {base}, не править .claude/. '
+                         'Сообщение назад не нужно: оркестратор найдёт PR по ветке и ID пакета.'),
+        'read_branch': 'Прочитай пакет: git fetch origin {wbranch} && git show origin/{wbranch}:{wp_rel} .',
+        'read_inline': 'Текст пакета — после этого промпта.',
+        'command_cloud': '# без команды терминала: открой новую облачную сессию на {repo_name}, ветка {base}, и вставь промпт выше',
         'push_slot': ('- Push любой ветки этого репозитория выкатывает стенд: коммить локально и не пушь, пока '
                       'оркестратор не выдаст слот стенда (замок `staging`); запушь один раз и сообщи.'),
         'shared_hint': 'Общие пути этого репозитория (объяви те, что трогает пакет): {shared}.',
@@ -241,8 +271,18 @@ def as_list(value):
     return [str(value)]
 
 
+def local_path(path, base_dir=None):
+    """Expand ~; a relative path (`.` for the repository holding an in-repo workspace) is taken
+    from base_dir, the git toplevel of the workspace."""
+    expanded = Path(os.path.expanduser(path or '.'))
+    if not expanded.is_absolute() and base_dir is not None:
+        expanded = Path(base_dir) / expanded
+    return Path(os.path.normpath(str(expanded)))
+
+
 class Repo:
-    def __init__(self, data, implicit=False, program='program'):
+    def __init__(self, data, implicit=False, program='program', base_dir=None):
+        self.base_dir = base_dir
         self.id = str(data.get('id'))
         self.path = str(data.get('path') or '')
         self.base = str(data.get('base') or 'main')
@@ -256,16 +296,17 @@ class Repo:
         self.deploy_workflows = as_list(data.get('deploy_workflows'))
         self.base_deploys = str(data.get('base_deploys') or 'none')
         self.push_deploys = bool(data.get('push_deploys'))
+        self.sessions = str(data.get('sessions') or 'local')
         self.implicit = implicit
 
     @property
     def key(self):
         """Same checkout on disk: modules of one key never write at the same time unless streams."""
-        return os.path.normpath(os.path.expanduser(self.path))
+        return str(self.local)
 
     @property
     def local(self):
-        return Path(os.path.expanduser(self.path))
+        return local_path(self.path, self.base_dir)
 
 
 class Module:
@@ -278,6 +319,7 @@ class Module:
         self.test_db = data.get('test_db')
         self.ports = data.get('ports') if isinstance(data.get('ports'), dict) else {}
         self.tests = data.get('tests')
+        self.sessions = str(data.get('sessions') or repo.sessions or 'local')
         methodology = data.get('methodology') if isinstance(data.get('methodology'), dict) else {}
         self.methodology = {'name': methodology.get('name'),
                             'allowed': as_list(methodology.get('allowed')),
@@ -288,8 +330,13 @@ class Module:
     def worktree_mode(self):
         return self.kind != 'repo'
 
+    @property
+    def cloud(self):
+        """Started as a cloud session (its own clone): no local worktree, no messages back."""
+        return self.sessions == 'cloud'
 
-def resolve(config):
+
+def resolve(config, base_dir=None):
     """Return (repos, modules, errors, warnings); the 0.1.0 form maps to implicit repos."""
     program = str(config.get('program') or 'program')
     errors, warnings, repos, modules = [], [], {}, {}
@@ -297,7 +344,7 @@ def resolve(config):
         if not isinstance(data, dict) or not data.get('id') or not data.get('path'):
             errors.append(f'orch.yaml: repo needs id and path: {data}')
             continue
-        repo = Repo(data, program=program)
+        repo = Repo(data, program=program, base_dir=base_dir)
         if repo.id in repos:
             errors.append(f'orch.yaml: duplicate repo id {repo.id}')
         if repo.merge_policy not in MERGE_POLICIES:
@@ -317,10 +364,10 @@ def resolve(config):
             repo = repos[ref]
         else:
             # 0.1.0 form: one implicit repository per (path, base), so each module keeps its base.
-            key = (os.path.normpath(os.path.expanduser(ref)), str(data.get('base') or 'main'))
+            key = (str(local_path(ref, base_dir)), str(data.get('base') or 'main'))
             if key not in implicit:
                 implicit[key] = Repo({'id': str(data['id']), 'path': ref, 'base': data.get('base')},
-                                     implicit=True, program=program)
+                                     implicit=True, program=program, base_dir=base_dir)
             repo = implicit[key]
         module = Module(data, repo, program)
         if module.kind not in KINDS:
@@ -333,6 +380,8 @@ def resolve(config):
                 expand_braces(pattern)
             except StreamError as error:
                 errors.append(f'orch.yaml: module {module.id}: {error}')
+        if module.sessions not in ('local', 'cloud'):
+            errors.append(f'orch.yaml: module {module.id}: sessions must be local or cloud')
         modules[module.id] = module
     by_key = {}
     for module in modules.values():
@@ -562,10 +611,97 @@ def main_checkout_warning(home, modules):
     return None
 
 
+def origin_name(repo):
+    """owner/name of the repository's origin, when it is a hosted remote."""
+    if not repo.local.is_dir():
+        return None
+    origin = normalized_origin(repo.local)
+    if not origin or origin.startswith('/'):
+        return None
+    parts = origin.split('/')
+    return '/'.join(parts[1:]) if len(parts) > 2 else origin
+
+
+def _block(lines, start, indent):
+    """Lines after start that are indented deeper than indent."""
+    out = []
+    for line in lines[start + 1:]:
+        if line.strip() and (len(line) - len(line.lstrip())) <= indent:
+            break
+        out.append(line)
+    return out
+
+
+def _list_under(lines, key):
+    """Values of `key:` given as a block list or a flow list, within lines."""
+    for i, line in enumerate(lines):
+        match = re.match(r'^(\s*)' + re.escape(key) + r':\s*(.*)$', line)
+        if not match:
+            continue
+        inline = match.group(2).split(' #')[0].strip()
+        if inline.startswith('['):
+            return [v.strip().strip('\'"') for v in inline.strip('[]').split(',') if v.strip()]
+        values = []
+        for item in _block(lines, i, len(match.group(1))):
+            m = re.match(r'^\s*-\s*(.+?)\s*(?:#.*)?$', item)
+            if m:
+                values.append(m.group(1).strip('\'"'))
+        return values
+    return None
+
+
+def push_triggers(repo_root):
+    """[(workflow, branches, branches_ignore, paths_ignore)] for workflows run on push."""
+    found = []
+    for wf in sorted(Path(repo_root, '.github', 'workflows').glob('*.y*ml')):
+        lines = wf.read_text(encoding='utf-8').split('\n')
+        on_index = next((i for i, l in enumerate(lines) if re.match(r'^["\']?on["\']?:', l)), None)
+        if on_index is None:
+            continue
+        head = lines[on_index].split(':', 1)[1].split(' #')[0].strip()
+        if head:  # on: push  |  on: [push, pull_request]
+            if 'push' in head:
+                found.append((wf.name, None, None, None))
+            continue
+        on_block = _block(lines, on_index, 0)
+        push = next((i for i, l in enumerate(on_block) if re.match(r'^\s+push:\s*(#.*)?$', l)), None)
+        if push is None:
+            if any(re.match(r'^\s+push:\s*\S', l) for l in on_block):
+                found.append((wf.name, None, None, None))
+            continue
+        indent = len(on_block[push]) - len(on_block[push].lstrip())
+        body = _block(on_block, push, indent)
+        found.append((wf.name, _list_under(body, 'branches'), _list_under(body, 'branches-ignore'),
+                      _list_under(body, 'paths-ignore')))
+    return found
+
+
+def deploy_safe_dirs(repo_root, branch, program):
+    """Directories whose commits on branch start no push workflow: (candidates, notes)."""
+    candidates, notes, relevant = None, [], []
+    for name, branches, branches_ignore, paths_ignore in push_triggers(repo_root):
+        if branches is not None and not any(glob_match(branch, b) for b in branches):
+            notes.append(f'{name}: push on {branch} does not run it (branches filter)')
+            continue
+        if branches_ignore and any(glob_match(branch, b) for b in branches_ignore):
+            notes.append(f'{name}: {branch} is in branches-ignore')
+            continue
+        relevant.append(name)
+        dirs = [p[:-3] for p in (paths_ignore or []) if p.endswith('/**') and not any(c in p[:-3] for c in '*?{')]
+        notes.append(f'{name}: runs on push to {branch}; ignored directories: {", ".join(dirs) or "none"}')
+        candidates = dirs if candidates is None else [d for d in candidates if d in dirs]
+    if not relevant:
+        return [f'docs/orchestration/{program}'], notes + ['no push workflow runs on this branch']
+    return [f'{d}/orchestration/{program}' for d in (candidates or [])], notes
+
+
 # ---------------------------------------------------------------- work package fields
 
-def wp_fields(lang, module, wp, slug, wp_path, tag, coord):
-    """Placeholder values for the 0.2.0 work package template."""
+def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None):
+    """Placeholder values for the 0.2.0 work package template.
+
+    workspace: {'mode', 'branch', 'wp_rel'} for an in-repo workspace (cloud sessions read the
+    package from its branch)."""
     t = TEXT[lang]
     repo = module.repo
     branch = f'{repo.branch_prefix}{wp.lower()}-{slug}'
@@ -577,7 +713,26 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord):
     finish = (t['finish_pr'] if remote else t['finish_local']).format(**fmt)
     ref = (t['ref_pr'] if remote else t['ref_local']).format(**fmt)
     ports = ', '.join(f'{k}={v}' for k, v in module.ports.items()) or t['none']
-    if module.worktree_mode:
+    if module.cloud:
+        steps = [t['prep_cloud_branch'].format(**fmt)]
+        if repo.worktree_setup:
+            steps.append(t['prep_cloud_setup'] + '\n\n   ```bash\n' +
+                         '\n'.join(f'   {c}' for c in repo.worktree_setup) + '\n   ```')
+        if module.test_db or module.ports:
+            steps.append(t['prep_env'].format(test_db=module.test_db or t['none'], ports=ports))
+        steps.append(t['prep_paths'])
+        prep = '\n'.join(f'{i}. {s}' for i, s in enumerate(steps, 1))
+        repo_name = origin_name(repo) or (normalized_origin(repo.local) if repo.local.is_dir() else None) \
+            or repo.local.name or repo.path
+        ws = workspace or {}
+        if ws.get('mode') == 'in-repo' and ws.get('wp_rel'):
+            read = t['read_branch'].format(wbranch=ws['branch'], wp_rel=ws['wp_rel'])
+        else:
+            read = t['read_inline']
+        prompt = t['prompt_cloud'].format(repo_name=repo_name, read=read, **fmt)
+        command = t['command_cloud'].format(repo_name=repo_name, base=repo.base)
+        worktree = t['kind_cloud']
+    elif module.worktree_mode:
         steps = [t['prep_branch'].format(fetch='git fetch origin && ' if remote else '', **fmt)]
         if repo.worktree_setup:
             steps.append(t['prep_setup'] + '\n\n   ```bash\n' +
@@ -607,6 +762,8 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord):
     if repo.resources:
         hints.append(t['resources_hint'].format(resources=', '.join(f'`{r}`' for r in repo.resources)))
     delivery = (t['delivery_pr'] if remote else t['delivery_local']).format(**fmt)
+    if module.cloud:
+        delivery = t['delivery_cloud'].format(**fmt)
     if remote and repo.push_deploys:
         delivery = t['push_slot'] + '\n' + delivery
     return {

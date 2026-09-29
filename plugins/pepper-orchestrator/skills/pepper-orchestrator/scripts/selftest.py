@@ -660,6 +660,133 @@ def test_legacy_shared_path(tmp):
     assert 'commit:' in run(home, 'commit', 'two modules on one path').stdout
     print('PASS 0.1.0 modules sharing a path: warning not error, own base, serialized dispatch')
 
+
+DEPLOY_WORKFLOW = """name: Deploy
+on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo deploy
+"""
+
+
+def with_workflow(repo, text, name='deploy.yml'):
+    path = repo / '.github/workflows' / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding='utf-8')
+    git(repo, 'add', '-A')
+    git(repo, 'commit', '-qm', f'add {name}')
+    git(repo, 'push', '-q', 'origin', 'main')
+
+
+def test_cloud_in_repo(tmp):
+    """2c: in-repo workspace on orch/<program> under paths-ignore; cloud modules; READY by branch."""
+    mono = make_monorepo(tmp / 'cloud')
+    with_workflow(mono, DEPLOY_WORKFLOW)
+    with_workflow(mono, 'name: CI\non: [pull_request]\njobs: {}\n', 'ci.yml')
+    remote = tmp / 'cloud/mono.git'
+    orch_clone = tmp / 'cloud/orchestrator'
+    git(tmp, 'clone', '-q', str(remote), str(orch_clone))
+    out = run(orch_clone, 'init', 'demo', '--lang', 'en', '--in-repo', 'app',
+              '--area', 'admin=app:apps/admin/**', '--area', 'web=app:apps/app/**').stdout
+    assert 'in-repo workspace on branch orch/demo, directory docs/orchestration/demo' in out, out
+    assert 'deploy.yml: runs on push to orch/demo; ignored directories: docs' in out, out
+    assert git(orch_clone, 'rev-parse', '--abbrev-ref', 'HEAD').strip() == 'orch/demo'
+    ws = orch_clone / 'docs/orchestration/demo'
+    config = orch.parse_yaml((ws / 'orch.yaml').read_text(encoding='utf-8'))
+    assert config['workspace_mode'] == 'in-repo' and config['workspace_branch'] == 'orch/demo'
+    assert config['workspace_dir'] == 'docs/orchestration/demo' and config['push_after_milestone'] is True
+    assert config['repos'][0]['path'] == '.' and config['repos'][0]['sessions'] == 'cloud'
+    lint = run(orch_clone, 'lint')  # found from the repository root (nested discovery)
+    assert lint.returncode == 0 and 'warning' not in lint.stderr, lint.stderr
+    run(orch_clone, 'new-wp', 'admin', 'orders')
+    wp = ws / 'work-packages/WP-ADMIN-01-orders.md'
+    text = wp.read_text(encoding='utf-8')
+    rel = 'docs/orchestration/demo/work-packages/WP-ADMIN-01-orders.md'
+    assert f'git fetch origin orch/demo && git show origin/orch/demo:{rel}' in text, text
+    assert 'claude -w' not in text and 'mcp__github__merge_pull_request' in text
+    assert 'No message back is needed' in text and 'feature/wp-admin-01-orders' in text
+    assert 'commit:' in run(orch_clone, 'commit', 'demo: workspace and first package').stdout
+    assert git(orch_clone, 'ls-remote', '--heads', 'origin', 'orch/demo').strip(), 'state pushed to orch/demo'
+    assert not git(remote, 'log', '--oneline', 'main', '--', 'docs/orchestration').strip(), 'base untouched'
+    # A module cloud session reads the package from the workspace branch, as the prompt says.
+    module_clone = tmp / 'cloud/module'
+    git(tmp, 'clone', '-q', str(remote), str(module_clone))
+    git(module_clone, 'fetch', '-q', 'origin', 'orch/demo')
+    assert '# WP-ADMIN-01' in git(module_clone, 'show', f'origin/orch/demo:{rel}')
+    run(orch_clone, 'set', 'WP-ADMIN-01', 'status', 'READY')
+    prompt = run(orch_clone, 'dispatch', 'WP-ADMIN-01').stdout
+    assert prompt.startswith(f'Cloud session for work package WP-ADMIN-01 in repository {remote.resolve()},'), prompt
+    assert f'{rel} . Do section 0' in prompt, prompt
+    assert '---' not in prompt, 'in-repo workspace: the prompt points to the branch, no inline text'
+    assert 'no pushed branch' in run(orch_clone, 'ready').stdout
+    git(module_clone, 'switch', '-q', '-c', 'feature/wp-admin-01-orders', 'origin/main')
+    (module_clone / 'apps/admin/src/page.tsx').write_text('export const Admin = () => 1;\n', encoding='utf-8')
+    git(module_clone, 'commit', '-qam', 'WP-ADMIN-01: orders')
+    git(module_clone, 'push', '-q', 'origin', 'feature/wp-admin-01-orders')
+    ready = run(orch_clone, 'ready').stdout
+    assert 'WP-ADMIN-01: branch feature/wp-admin-01-orders pushed at' in ready, ready
+    # State commits never go to another branch, and never to the base.
+    run(orch_clone, 'journal', 'READY found by branch')
+    git(orch_clone, 'switch', '-q', '-c', 'orch/side')
+    assert 'commits go only to orch/demo' in run(orch_clone, 'commit', 'x', ok=False).stderr
+    saved = tmp / 'cloud/saved-ws'
+    shutil.copytree(ws, saved, ignore=shutil.ignore_patterns('.orch-backup'))
+    git(orch_clone, 'stash', '-q', '-u')
+    git(orch_clone, 'switch', '-q', 'main')
+    shutil.copytree(saved, ws, dirs_exist_ok=True)  # ignored .orch-backup survives the switch
+    refused = run(orch_clone, 'commit', 'on base', ok=False).stderr
+    assert 'nothing committed' in refused, refused
+    # A separate-mode workspace with a cloud module appends the package text to the prompt.
+    home = tmp / 'cloud/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'sep', '--lang', 'en', '--repo', f'app={mono}', '--area', 'admin=app:apps/admin/**')
+    sep_config = home / 'features/sep/orch.yaml'
+    safe_edit.replace_once(sep_config, '    checks: []\n', '    checks: []\n    sessions: cloud\n')
+    run(home, 'new-wp', 'admin', 'list')
+    sep_text = (home / 'features/sep/work-packages/WP-ADMIN-01-list.md').read_text(encoding='utf-8')
+    assert 'The package text follows this prompt.' in sep_text
+    run(home, 'set', 'WP-ADMIN-01', 'status', 'READY')
+    inline = run(home, 'dispatch', 'WP-ADMIN-01').stdout
+    assert inline.startswith('Cloud session for work package WP-ADMIN-01') and '\n---\n# WP-ADMIN-01' in inline
+    print('PASS cloud in-repo: init on orch/ under paths-ignore, cloud prompt, push to orch/, READY by branch, base refused')
+
+
+def test_cloud_deploy_scan(tmp):
+    mono = make_monorepo(tmp / 'scan')
+    with_workflow(mono, 'name: Deploy\non:\n  push:\njobs: {}\n')
+    clone = tmp / 'scan/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'scan/mono.git'), str(clone))
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    assert 'no directory is ignored by every push workflow' in refused, refused
+    assert git(clone, 'rev-parse', '--abbrev-ref', 'HEAD').strip() == 'main', 'refusal must not switch branches'
+    import streams
+    (clone / '.github/workflows/deploy.yml').write_text(
+        'on:\n  push:\n    branches: [main, "release/**"]\njobs: {}\n', encoding='utf-8')
+    safe, notes = streams.deploy_safe_dirs(clone, 'orch/x', 'x')
+    assert safe == ['docs/orchestration/x'] and 'branches filter' in notes[0], (safe, notes)
+    (clone / '.github/workflows/deploy.yml').write_text(
+        "on:\n  push:\n    branches-ignore: ['orch/**']\njobs: {}\n", encoding='utf-8')
+    safe, notes = streams.deploy_safe_dirs(clone, 'orch/x', 'x')
+    assert safe == ['docs/orchestration/x'] and 'branches-ignore' in notes[0], (safe, notes)
+    (clone / '.github/workflows/deploy.yml').write_text(
+        'on: [push]\njobs: {}\n', encoding='utf-8')
+    assert streams.deploy_safe_dirs(clone, 'orch/x', 'x')[0] == []
+    (clone / '.github/workflows/deploy.yml').write_text(
+        "on:\n  push:\n    paths-ignore: [docs/**, 'notes/**']\njobs: {}\n", encoding='utf-8')
+    (clone / '.github/workflows/other.yml').write_text(
+        "on:\n  push:\n    paths-ignore:\n      - notes/**\njobs: {}\n", encoding='utf-8')
+    assert streams.deploy_safe_dirs(clone, 'orch/x', 'x')[0] == ['notes/orchestration/x']
+    print('PASS deploy scan: paths-ignore intersection, branch filters, refusal without a safe directory')
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -676,6 +803,8 @@ def main():
         test_p4_identity(tmp)
         test_streams_edges(tmp)
         test_legacy_shared_path(tmp)
+        test_cloud_in_repo(tmp)
+        test_cloud_deploy_scan(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 
