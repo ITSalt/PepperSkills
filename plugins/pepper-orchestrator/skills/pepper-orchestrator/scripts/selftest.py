@@ -153,13 +153,13 @@ def test_workflow(tmp, lang):
     repo = tmp / f'home-{lang}'
     repo.mkdir()
     git(repo, 'init', '-q')
-    run(repo, 'init', 'demo', '--lang', lang, '--sessions', 'local', '--title', 'Demo: "quoted" | program',
+    run(repo, 'init', 'demo', '--lang', lang, '--sessions', 'local', '--permission-mode', 'auto', '--title', 'Demo: "quoted" | program',
         '--module', 'db=~/projects/demo-db', '--module', 'web=~/projects/demo-web@develop')
     ws = repo / 'features/demo'
     config = orch.parse_yaml((ws / 'orch.yaml').read_text(encoding='utf-8'))
     assert config['title'] == 'Demo: "quoted" | program' and config['tag'] == 'DEMO'
     assert [m['base'] for m in config['modules']] == ['main', 'develop']
-    run(repo, 'init', 'demo', '--lang', lang, '--sessions', 'local', ok=False)  # never over an existing workspace
+    run(repo, 'init', 'demo', '--lang', lang, '--sessions', 'local', '--permission-mode', 'auto', ok=False)  # never over an existing workspace
     assert run(repo, 'lint').returncode == 0
     run(repo, 'new-wp', 'db', 'orders-table', '--title', 'Orders table')
     run(repo, 'new-wp', 'web', 'orders-page')
@@ -281,9 +281,9 @@ def test_lint_failures(repo, ws):
 def test_discovery(tmp):
     repo = tmp / 'multi'
     repo.mkdir()
-    run(repo, 'init', 'one', '--lang', 'en', '--sessions', 'local')
+    run(repo, 'init', 'one', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto')
     assert run(repo, 'queue').returncode == 0  # single features/*/orch.yaml is found
-    run(repo, 'init', 'two', '--lang', 'en', '--sessions', 'local')
+    run(repo, 'init', 'two', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto')
     assert 'several workspaces' in run(repo, 'queue', ok=False).stderr
     assert run(repo, '--workspace', 'features/two', 'queue').returncode == 0
     assert run(repo, 'queue', '--workspace', 'features/two').returncode == 0
@@ -344,11 +344,14 @@ def test_legacy_fixture(tmp):
     git(home, 'add', '-A')
     git(home, 'commit', '-qm', 'fixture 0.1.0')
     before = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file()}
-    assert run(home, 'lint').returncode == 0
+    legacy_lint = run(home, 'lint')
+    assert legacy_lint.returncode == 0 and 'no permission_mode' in legacy_lint.stderr, legacy_lint.stderr
     assert 'P-1' not in run(home, 'queue').stdout and 'R-1' in run(home, 'queue').stdout
     assert 'overlap: none' in run(home, 'overlap', '--planned').stdout
     assert run(home, 'worktrees').returncode == 0
-    assert 'dry run' in run(home, 'dispatch', 'WP-API-01', '--dry-run').stdout
+    refused = run(home, 'dispatch', 'WP-API-01', '--dry-run', ok=False).stderr
+    assert 'orch.py settings api' in refused and '--no-settings' in refused, refused
+    assert 'dry run' in run(home, 'dispatch', 'WP-API-01', '--dry-run', '--no-settings').stdout
     after = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file()}
     assert before == after, 'read-only commands changed a 0.1.0 workspace'
     run(home, 'new-wp', 'api', 'orders-import', '--title', 'Orders import')
@@ -356,9 +359,9 @@ def test_legacy_fixture(tmp):
     assert 'legacy/wp-api-02-orders-import' in text and 'cd ~/projects/example-api && claude --name' in text
     assert '-w ' not in text and '{{' not in text, 'old template must keep the 0.1.0 form'
     run(home, 'set', 'WP-API-02', 'status', 'READY')
-    command = run(home, 'dispatch', 'WP-API-01').stdout
+    command = run(home, 'dispatch', 'WP-API-01', '--no-settings').stdout
     assert command.startswith('cd ~/projects/example-api && claude --name legacy-api "'), command
-    assert 'dispatch refused' in run(home, 'dispatch', 'WP-API-02', ok=False).stderr  # same repo
+    assert 'dispatch refused' in run(home, 'dispatch', 'WP-API-02', '--no-settings', ok=False).stderr  # same repo
     run(home, 'owner', 'close', 'R-1', 'gh pr view 7: MERGED')
     run(home, 'decide', 'A', 'Import runs nightly')
     run(home, 'journal', 'legacy workspace still works')
@@ -422,9 +425,9 @@ def test_monorepo(tmp):
     home = tmp / 'mono-home'
     home.mkdir()
     git(home, 'init', '-q')
-    refused = run(mono, 'init', 'inside', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', ok=False)
+    refused = run(mono, 'init', 'inside', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}', ok=False)
     assert 'module repository' in refused.stderr, 'P4: workspace in a module checkout must be refused'
-    run(home, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
+    run(home, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}',
         '--area', 'admin=mono:apps/admin/**', '--area', 'app=mono:apps/app/**',
         '--domain', 'billing=mono:backend/src/billing/**')
     ws = home / 'features/shop'
@@ -440,6 +443,7 @@ def test_monorepo(tmp):
     ):
         safe_edit.replace_once(config, old, new)
     assert run(home, 'lint').returncode == 0, lint_errors(home)
+    run(home, 'settings', 'all')
     for mod, slug in (('admin', 'orders-list'), ('app', 'checkout'), ('billing', 'invoices')):
         run(home, 'new-wp', mod, slug)
     wps = ws / 'work-packages'
@@ -460,7 +464,9 @@ def test_monorepo(tmp):
     planned = run(home, 'overlap', '--planned', ok=False).stdout
     assert 'WP-APP-01 and WP-BILLING-01 both declare shared path pnpm-lock.yaml' in planned, planned
     out = run(home, 'dispatch', 'WP-APP-01').stdout
-    assert out.startswith(f'cd {mono} && claude -w wp-app-01-checkout --name shop-app "'), out
+    settings = (ws / 'orchestration/settings/app.json').resolve()
+    assert out.startswith(f'cd {mono} && claude -w wp-app-01-checkout --permission-mode auto --settings {settings} '
+                          '--name shop-app "'), out
     assert 'mono:pnpm-lock.yaml' in run(home, 'lock', 'list').stdout
     refusal = run(home, 'dispatch', 'WP-BILLING-01', ok=False).stderr
     assert 'lock mono:pnpm-lock.yaml is held by WP-APP-01' in refusal and 'queued' in refusal, refusal
@@ -533,15 +539,15 @@ def test_p4_identity(tmp):
     mono = make_monorepo(tmp / 'p4')
     wt_ok = tmp / 'p4/wt-orch'
     git(mono, 'worktree', 'add', '-q', '-b', 'orch/shop', str(wt_ok), 'main')
-    assert run(wt_ok, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}').returncode == 0
+    assert run(wt_ok, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}').returncode == 0
     wt_base = tmp / 'p4/wt-base'
     git(mono, 'switch', '-q', '-c', 'side')  # free main for a linked worktree
     git(mono, 'worktree', 'add', '-q', str(wt_base), 'main')
-    refused = run(wt_base, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', ok=False)
+    refused = run(wt_base, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}', ok=False)
     assert 'linked worktree of module repository' in refused.stderr, refused.stderr
     clone = tmp / 'p4/clone'
     git(tmp, 'clone', '-q', str(tmp / 'p4/mono.git'), str(clone))
-    refused = run(clone, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', ok=False)
+    refused = run(clone, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}', ok=False)
     assert 'checkout or clone of module repository' in refused.stderr, refused.stderr
     # commit is refused the same way when a workspace was copied onto a base worktree.
     shutil.copytree(wt_ok / 'features/shop', wt_base / 'features/shop',
@@ -550,7 +556,7 @@ def test_p4_identity(tmp):
     # L7: orch/ in the main checkout while a whole-repository module works there: warning.
     solo = make_monorepo(tmp / 'p4solo')
     git(solo, 'switch', '-q', '-c', 'orch/solo')
-    out = run(solo, 'init', 'solo', '--lang', 'en', '--sessions', 'local', '--module', f'core={solo}')
+    out = run(solo, 'init', 'solo', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'core={solo}')
     assert 'warning' in out.stdout and 'main checkout' in out.stdout, out.stdout
     assert 'main checkout' in run(solo, 'lint').stderr
     # git older than 2.31 echoes the unknown --path-format option and prints a relative path.
@@ -578,12 +584,12 @@ def test_streams_edges(tmp):
     home = tmp / 'edges/home'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'edge', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
+    run(home, 'init', 'edge', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}',
         '--area', 'web=mono:apps/{admin,app}/**', '--domain', 'admin-ui=mono:backend/src/billing/**')
     ws = home / 'features/edge'
     config = ws / 'orch.yaml'
     assert 'paths: ["apps/{admin,app}/**"]' in config.read_text(encoding='utf-8'), 'braces kept by init'
-    assert run(home, 'init', 'bad', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
+    assert run(home, 'init', 'bad', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}',
                '--area', 'x=mono:apps/{admin/**', ok=False).returncode == 1
     for old, new in (
         ('    merge_policy: sequential\n    shared_paths',
@@ -649,7 +655,7 @@ def test_legacy_shared_path(tmp):
     home = tmp / 'legacy2'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'two', '--lang', 'en', '--sessions', 'local', '--module', 'api=~/projects/example-api',
+    run(home, 'init', 'two', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', 'api=~/projects/example-api',
         '--module', 'lts=~/projects/example-api@release/1.x')
     out = run(home, 'lint')
     assert out.returncode == 0 and 'dispatched one at a time' in out.stderr, out.stderr
@@ -699,7 +705,7 @@ def test_cloud_in_repo(tmp):
     remote = tmp / 'cloud/mono.git'
     orch_clone = tmp / 'cloud/orchestrator'
     git(tmp, 'clone', '-q', str(remote), str(orch_clone))
-    out = run(orch_clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--cloud-environment', 'Project env', '--in-repo', 'app', '--cloud-env', 'Project env',
+    out = run(orch_clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--permission-mode', 'auto', '--cloud-environment', 'Project env', '--in-repo', 'app', '--cloud-env', 'Project env',
               '--area', 'admin=app:apps/admin/**', '--area', 'web=app:apps/app/**').stdout
     assert 'in-repo workspace on branch orch/demo, directory docs/orchestration/demo' in out, out
     assert 'deploy.yml: runs on push to orch/demo; ignored directories: docs' in out, out
@@ -758,7 +764,7 @@ def test_cloud_in_repo(tmp):
     home = tmp / 'cloud/home'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'sep', '--lang', 'en', '--sessions', 'local', '--repo', f'app={mono}', '--area', 'admin=app:apps/admin/**')
+    run(home, 'init', 'sep', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'app={mono}', '--area', 'admin=app:apps/admin/**')
     sep_config = home / 'features/sep/orch.yaml'
     safe_edit.replace_once(sep_config, '    checks: []\n', '    checks: []\n    sessions: cloud\n')
     run(home, 'new-wp', 'admin', 'list')
@@ -781,12 +787,12 @@ def test_cloud_deploy_scan(tmp):
     with_workflow(mono, 'name: Deploy\non:\n  push:\njobs: {}\n')
     clone = tmp / 'scan/clone'
     git(tmp, 'clone', '-q', str(tmp / 'scan/mono.git'), str(clone))
-    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', ok=False).stderr
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', ok=False).stderr
     assert 'no non-hidden directory is ignored by every push workflow' in refused, refused
     assert git(clone, 'rev-parse', '--abbrev-ref', 'HEAD').strip() == 'main', 'refusal must not switch branches'
     # H2: the working tree is not what gets pushed; deleting workflows locally changes nothing.
     shutil.rmtree(clone / '.github')
-    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', ok=False).stderr
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', ok=False).stderr
     assert 'ignored by every push workflow' in refused, 'judged from origin/main, not the working tree'
     git(clone, 'checkout', '-q', '--', '.github')
 
@@ -813,6 +819,13 @@ def test_cloud_deploy_scan(tmp):
     safe, _, _, _ = verdict("on:\n  push:\n    paths-ignore: ['.tl/**', 'notes/**']\njobs: {}\n")
     assert safe == ['notes/orchestration/x']
     assert streams.dir_is_safe('notes/orch/x', safe) and not streams.dir_is_safe('.tl/x', safe)
+    # 3a defect a: a positive `paths` filter is fine when the branch filter already excludes orch/<p>.
+    safe, notes, refusals, any_dir = verdict(
+        "on:\n  push:\n    branches: [main, 'release/**']\n    paths: ['src/**', 'package.json']\njobs: {}\n")
+    assert any_dir and not refusals and 'branches filter' in notes[0], (refusals, notes)
+    safe, notes, refusals, any_dir = verdict(
+        "on:\n  push:\n    branches-ignore: ['orch/**']\n    paths:\n      - '!docs/**'\njobs: {}\n")
+    assert any_dir and not refusals, refusals
     # H3: every unknown form is a refusal, never "safe".
     unknown = {
         'block list on': 'on:\n  - push\n',
@@ -826,14 +839,14 @@ def test_cloud_deploy_scan(tmp):
         'no on key': 'name: x\njobs: {}\n',
     }
     for label, text in unknown.items():
-        safe, _, refusals, _ = verdict(text)
-        assert refusals and not safe, (label, refusals)
+        safe, _, refusals, any_dir = verdict(text)  # candidates only serve an owner decision (D-n)
+        assert refusals and not any_dir, (label, refusals)
     git(clone, 'push', '-q', 'origin', 'HEAD:main')  # origin/main now has the negation-free "no on key" form
-    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', ok=False).stderr
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', ok=False).stderr
     assert 'cannot tell' in refused and '--deploy-override D-n' in refused, refused
-    assert run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', '--deploy-override', 'owner',
+    assert run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', '--deploy-override', 'owner',
                ok=False).returncode == 1
-    out = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', '--dir', 'notes/orch-x',
+    out = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', '--dir', 'notes/orch-x',
               '--deploy-override', 'D-1').stdout
     assert 'overridden by owner decision D-1' in out, out
     ws = clone / 'notes/orch-x'
@@ -844,11 +857,11 @@ def test_cloud_deploy_scan(tmp):
     with_workflow(mono2, "on:\n  push:\n    paths-ignore: ['notes/**']\njobs: {}\n")
     clone2 = tmp / 'scan2/clone'
     git(tmp, 'clone', '-q', str(tmp / 'scan2/mono.git'), str(clone2))
-    refused = run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', ok=False).stderr
+    refused = run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', ok=False).stderr
     assert 'no docs/ directory is ignored' in refused and 'notes/orchestration/y' in refused, refused
-    refused = run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', '--dir', 'src/orch', ok=False).stderr
+    refused = run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', '--dir', 'src/orch', ok=False).stderr
     assert 'not a non-hidden directory that every push workflow ignores' in refused, refused
-    assert run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', '--dir', 'notes/orchestration/y').returncode == 0
+    assert run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', '--dir', 'notes/orchestration/y').returncode == 0
     tracking = subprocess.run(['git', 'config', '--get', 'branch.orch/y.merge'], cwd=clone2,
                               capture_output=True, text=True)
     assert tracking.returncode != 0, 'orch/ must not track the base'
@@ -870,7 +883,7 @@ def test_cloud_dispatch_safety(tmp):
     remote = tmp / 'safety/mono.git'
     orch_clone = tmp / 'safety/orch'
     git(tmp, 'clone', '-q', str(remote), str(orch_clone))
-    run(orch_clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--cloud-environment', 'Project env', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
+    run(orch_clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--permission-mode', 'auto', '--cloud-environment', 'Project env', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
     ws = orch_clone / 'docs/orchestration/demo'
     config = ws / 'orch.yaml'
     safe_edit.replace_once(config, '    resources: []', '    resources: [staging]\n    push_deploys: true')
@@ -896,7 +909,7 @@ def test_cloud_dispatch_safety(tmp):
     second = tmp / 'safety/second'
     git(tmp, 'clone', '-q', str(remote), str(second))
     run(orch_clone, 'commit', 'demo: dispatched')
-    refused = run(second, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--cloud-environment', 'Project env', '--in-repo', 'app', ok=False).stderr
+    refused = run(second, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--permission-mode', 'auto', '--cloud-environment', 'Project env', '--in-repo', 'app', ok=False).stderr
     assert 'already exists' in refused and 'resume' in refused, refused
     # L4: detached HEAD is refused before anything is committed.
     head = git(orch_clone, 'rev-parse', 'HEAD').strip()
@@ -913,7 +926,7 @@ def test_review(tmp):
     home = tmp / 'review/home'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'rv', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
+    run(home, 'init', 'rv', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}',
         '--area', 'admin=mono:apps/admin/**', '--area', 'app=mono:apps/app/**')
     ws = home / 'features/rv'
     config = ws / 'orch.yaml'
@@ -1039,7 +1052,7 @@ def test_close(tmp):
     git(home, 'init', '-q')
     git(tmp, 'init', '-q', '--bare', str(tmp / 'close/home.git'))
     git(home, 'remote', 'add', 'origin', str(tmp / 'close/home.git'))
-    run(home, 'init', 'goal', '--lang', 'en', '--sessions', 'local', '--title', 'One goal', '--module', f'core={mono}')
+    run(home, 'init', 'goal', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--title', 'One goal', '--module', f'core={mono}')
     ws = home / 'features/goal'
     safe_edit.replace_once(ws / 'orch.yaml', 'push_after_milestone: false', 'push_after_milestone: true')
     plan = ws / 'PLAN.md'
@@ -1113,7 +1126,7 @@ def test_close(tmp):
     closed_lint = subprocess.run([*ORCH, '--workspace', str(archived), 'lint'], capture_output=True, text=True)
     assert 'program is closed but WP-CORE-01 is MERGED' in closed_lint.stderr, closed_lint.stderr
     status_file.write_text(original, encoding='utf-8')
-    run(home, 'init', 'next', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}')
+    run(home, 'init', 'next', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'core={mono}')
     found = subprocess.run([*ORCH, 'queue'], cwd=home, capture_output=True, text=True, env={**os.environ, **GIT_ENV})
     assert found.returncode == 0, 'only the active workspace is picked automatically'
     reopened = run(home, *wsarg, 'reopen', 'import is needed after all').stdout
@@ -1123,7 +1136,7 @@ def test_close(tmp):
     assert run(home, *wsarg, 'new-wp', 'core', 'import-again').returncode == 0
     # L2: a workspace that is the root of its own repository is closed but not moved.
     solo = tmp / 'close/solo'
-    run(tmp / 'close', 'init', 'solo', '--lang', 'en', '--sessions', 'local', '--dir', 'solo', '--module', f'core={mono}')
+    run(tmp / 'close', 'init', 'solo', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--dir', 'solo', '--module', f'core={mono}')
     git(solo, 'init', '-q')
     text = (solo / 'PLAN.md').read_text(encoding='utf-8')
     block = text[text.index('<The one goal'):text.index('## Scope')].rstrip()
@@ -1140,7 +1153,7 @@ def test_close_in_repo(tmp):
     remote = tmp / 'closecloud/mono.git'
     clone = tmp / 'closecloud/orch'
     git(tmp, 'clone', '-q', str(remote), str(clone))
-    run(clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--cloud-environment', 'Project env', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
+    run(clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--permission-mode', 'auto', '--cloud-environment', 'Project env', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
     run(clone, 'new-wp', 'admin', 'orders')
     run(clone, 'set', 'WP-ADMIN-01', 'status', 'DONE', '--evidence', 'verified')
     run(clone, 'commit', 'demo: done')
@@ -1184,7 +1197,7 @@ def test_models(tmp):
     home = tmp / 'models/home'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'mdl', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
+    run(home, 'init', 'mdl', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}',
         '--area', 'app=mono:apps/app/**', '--area', 'admin=mono:apps/admin/**')
     ws = home / 'features/mdl'
     config = ws / 'orch.yaml'
@@ -1205,7 +1218,8 @@ def test_models(tmp):
         run(home, 'set', wp, 'status', 'READY')
     before = (ws / 'status.md').read_text(encoding='utf-8')
     dry = run(home, 'dispatch', 'WP-APP-01', '--dry-run').stdout
-    assert 'model sonnet' in dry and f'claude -w wp-app-01-list --model sonnet --name mdl-app' in dry, dry
+    assert 'model sonnet' in dry and 'claude -w wp-app-01-list --permission-mode auto --settings ' in dry, dry
+    assert ' --model sonnet --name mdl-app' in dry, dry
     assert (ws / 'status.md').read_text(encoding='utf-8') == before, 'dry-run writes nothing'
     assert '--model opus --effort high' in run(home, 'dispatch', 'WP-ADMIN-01', '--dry-run').stdout
     # orch.py model: header rows, the start command and the journal change together.
@@ -1288,31 +1302,31 @@ def test_local_cloud_matrix(tmp):
         home_a = base / 'a'
         home_a.mkdir()
         git(home_a, 'init', '-q')
-        run(home_a, 'init', 'pa', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}')
+        run(home_a, 'init', 'pa', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'core={mono}')
         cases.append(('A', home_a, home_a / 'features/pa', 'core', 'local'))
         # B: separate workspace, local stream.
         home_b = base / 'b'
         home_b.mkdir()
         git(home_b, 'init', '-q')
-        run(home_b, 'init', 'pb', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
+        run(home_b, 'init', 'pb', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
         cases.append(('B', home_b, home_b / 'features/pb', 'app', 'local'))
         # C: in-repo workspace, local stream.
         clone_c = base / 'c'
         git(base, 'clone', '-q', str(remote), str(clone_c))
-        run(clone_c, 'init', 'pc', '--lang', 'en', '--in-repo', 'app', '--sessions', 'local',
+        run(clone_c, 'init', 'pc', '--lang', 'en', '--in-repo', 'app', '--sessions', 'local', '--permission-mode', 'auto',
             '--area', 'web=app:apps/app/**')
         cases.append(('C', clone_c, clone_c / 'docs/orchestration/pc', 'web', 'local'))
         # D: in-repo workspace, cloud module.
         clone_d = base / 'd'
         git(base, 'clone', '-q', str(remote), str(clone_d))
-        run(clone_d, 'init', 'pd', '--lang', 'en', '--in-repo', 'app', '--sessions', 'cloud',
+        run(clone_d, 'init', 'pd', '--lang', 'en', '--in-repo', 'app', '--sessions', 'cloud', '--permission-mode', 'auto',
             '--cloud-env', 'Project env', '--area', 'web=app:apps/app/**')
         cases.append(('D', clone_d, clone_d / 'docs/orchestration/pd', 'web', 'cloud'))
         # E: separate workspace, cloud module (the package travels as text).
         home_e = base / 'e'
         home_e.mkdir()
         git(home_e, 'init', '-q')
-        run(home_e, 'init', 'pe', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
+        run(home_e, 'init', 'pe', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
         safe_edit.replace_once(home_e / 'features/pe/orch.yaml', '    checks: []\n',
                                '    checks: []\n    sessions: cloud\n    cloud_environment: "Project env"\n')
         cases.append(('E', home_e, home_e / 'features/pe', 'app', 'cloud'))
@@ -1352,7 +1366,7 @@ def test_local_cloud_matrix(tmp):
         if not with_models:
             clone_f = base / 'f'
             git(base, 'clone', '-q', str(remote), str(clone_f))
-            out = run(clone_f, 'init', 'pf', '--lang', 'en', '--in-repo', 'app', '--sessions', 'local').stdout
+            out = run(clone_f, 'init', 'pf', '--lang', 'en', '--in-repo', 'app', '--sessions', 'local', '--permission-mode', 'auto').stdout
             config = clone_f / 'docs/orchestration/pf/orch.yaml'
             safe_edit.replace_once(config, 'modules: []\n', 'modules:\n  - id: core\n    repo: app\n')
             warned = run(clone_f, 'lint').stderr
@@ -1367,16 +1381,16 @@ def test_local_cloud_matrix(tmp):
             git(fresh, 'init', '-q')
             asked = run(fresh, 'init', 'q', '--lang', 'en', '--module', f'core={mono}', ok=False).stderr
             assert 'the owner chooses the session kind' in asked and 'locally' in asked and 'recommended' in asked
-            assert 'needs --cloud-environment' in run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'cloud',
+            assert 'needs --cloud-environment' in run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'cloud', '--permission-mode', 'auto',
                                                       '--module', f'core={mono}', ok=False).stderr
-            assert 'only for --sessions cloud' in run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local',
+            assert 'only for --sessions cloud' in run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
                                                       '--cloud-environment', 'X', '--module', f'core={mono}',
                                                       ok=False).stderr
             remote_env = {'CLAUDE_CODE_REMOTE': 'true'}
-            refused = run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}',
+            refused = run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'core={mono}',
                           ok=False, extra_env=remote_env).stderr
             assert 'local module sessions need a local orchestrator' in refused, refused
-            assert run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}').returncode == 0
+            assert run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'core={mono}').returncode == 0
             journal = (fresh / 'features/q/status.md').read_text(encoding='utf-8')
             assert 'session kind: local, confirmed by the owner' in journal
             run(fresh, 'new-wp', 'core', 'x')
@@ -1384,6 +1398,182 @@ def test_local_cloud_matrix(tmp):
             refused = run(fresh, 'dispatch', 'WP-CORE-01', '--dry-run', ok=False, extra_env=remote_env).stderr
             assert 'local module sessions need a local orchestrator' in refused, refused
     print('PASS local/cloud matrix: 5 fixtures x with/without models, outputs separated')
+
+def test_settings(tmp):
+    """3a: settings files, dispatch flags, permission mode, worktrees without secrets, on-demand locks."""
+    import session_settings
+    mono = make_monorepo(tmp / 'settings')
+    (mono / '.gitignore').write_text('.env\n', encoding='utf-8')
+    (mono / '.env').write_text('TOKEN=placeholder\n', encoding='utf-8')
+    single = make_monorepo(tmp / 'settings-db')
+    home = tmp / 'settings/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    args = ['init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
+            '--area', 'admin=mono:apps/admin/**', '--area', 'app=mono:apps/app/**', '--module', f'db={single}']
+    asked = run(home, *args, ok=False).stderr
+    assert 'Which permission mode' in asked and '--permission-mode' in asked, asked
+    out = run(home, *args, '--permission-mode', 'auto').stdout
+    ws = home / 'features/shop'
+    config = ws / 'orch.yaml'
+    assert orch.parse_yaml(config.read_text(encoding='utf-8'))['permission_mode'] == 'auto'
+    assert '--name shop-coord --permission-mode auto --settings orchestration/settings/orchestrator.json' in out, out
+    assert '"Messages from your other sessions" -> accept' in out, out
+    assert 'owner question: Repository mono: add `.worktreeinclude`' in out and ': .env (' in out, out
+    assert 'P-1' in run(home, 'queue').stdout
+    assert 'Repository db' not in out, 'a whole-repository module has no worktrees'
+    for old, new in (
+        ('    worktree_setup: []', '    worktree_setup: ["pnpm install --frozen-lockfile", '
+                                   '"cp ../../../.env .env", "cp -R ../../../.claude .claude"]'),
+        ('    shared_paths: []', '    shared_paths: [pnpm-lock.yaml, "backend/migrations/**"]'),
+        ('    resources: []', '    resources: [staging, {name: testgate, mode: on-demand}]'),
+        ('    checks: []', '    checks: ["./scripts/check-order.sh && echo ok"]'),
+        ('    session: shop-app\n', '    session: shop-app\n    tests: {scoped: ["pnpm --filter app test"], '
+                                   'full: ["pnpm -r test"]}\n    methodology: {name: m, forbidden: [m-release]}\n'),
+        ('    tests: []\n', '    tests: ["./scripts/test.sh"]\n    deploy_test: ./scripts/deploy.sh --target test\n'
+                          '    deploy_prod: ./scripts/deploy.sh --target prod\n'),
+        ('environments: {}', 'environments:\n  prod: {db_mcp: example-prod}'),
+        ('guards: {}', 'guards:\n  sql_select_only: [example-prod]'),
+    ):
+        safe_edit.replace_once(config, old, new)
+    warned = run(home, 'lint').stderr
+    assert 'worktree_setup `cp ../../../.env .env`' in warned and '.worktreeinclude' in warned, warned
+    assert 'worktree_setup `cp -R ../../../.claude .claude`' in warned, warned
+    assert 'older than orch.yaml' in warned, warned
+    (ws / 'orchestration/settings/admin.local.json').write_text('{"permissions": {"allow": ["Bash(make x)"]}}\n',
+                                                               encoding='utf-8')
+    out = run(home, 'settings', 'all').stdout
+    assert 'settings db: written' in out and 'settings orchestrator: written' in out, out
+    assert 'cp ../../../.env .env` is not allowed' in out, out
+    files = sorted(p.name for p in (ws / 'orchestration/settings').glob('*.json'))
+    assert files == ['admin.json', 'admin.local.json', 'app.json', 'db.json', 'orchestrator.json'], files
+    data = {n: json.loads((ws / f'orchestration/settings/{n}.json').read_text(encoding='utf-8'))
+            for n in ('admin', 'app', 'db', 'orchestrator')}
+    for name, item in data.items():
+        assert not session_settings.settings_errors(item), (name, session_settings.settings_errors(item))
+        assert item['crossSessionInbound'] == 'accept' and item['autoMode']['environment'][0] == '$defaults'
+    app = data['app']['permissions']
+    wsabs, monoabs = ws.resolve(), mono.resolve()
+    for rule in (f'Read(/{monoabs}/apps/app/**)', f'Read(/{monoabs}/**)', 'Bash(pnpm --filter app test)',
+                 'Bash(pnpm -r test)', 'Bash(./scripts/check-order.sh)', 'Bash(echo ok)',
+                 'Bash(pnpm install --frozen-lockfile)', 'Bash(git push origin feature/*)', 'Bash(sed -n *)'):
+        assert rule in app['allow'], (rule, app['allow'])
+    assert not any('.env' in r or '.claude' in r for r in app['allow']), app['allow']
+    for rule in ('Bash(gh pr merge *)', 'Bash(git push origin main)', 'Bash(git push origin HEAD:main)',
+                 'Bash(git push --force *)', 'Bash(gh workflow run *)', f'Edit(/{wsabs}/**)',
+                 'mcp__example-prod__*', 'Bash(ssh *)', 'Skill(m-release)'):
+        assert rule in app['deny'], (rule, app['deny'])
+    db = data['db']['permissions']
+    assert 'Bash(./scripts/deploy.sh --target test *)' in db['ask'], db['ask']
+    assert 'Bash(./scripts/deploy.sh --target prod)' in db['deny'] and 'Bash(./scripts/test.sh)' in db['allow']
+    orch_rules = data['orchestrator']['permissions']
+    assert f'Bash(python3 {HERE}/orch.py *)' in orch_rules['allow'] and 'Bash(gh pr merge *)' in orch_rules['deny']
+    assert not any('merge' in r for r in orch_rules['allow'])
+    assert any(line.startswith('Trusted repo: ') for line in data['app']['autoMode']['environment'])
+    for bad in ('Read(/abs/path/**)', 'mcp__server__x(y)', 'Bash()', 'Skill(a b c)', 'Write'):
+        assert session_settings.rule_errors(bad), bad
+    assert session_settings.split_commands('a && b "c && d" | e; f') == ['a', 'b "c && d"', 'e', 'f']
+    assert session_settings.secret_copies(['cp .env.example .env', 'cp -r ../x/certs certs']) == \
+        ['cp -r ../x/certs certs']
+    again = run(home, 'settings', 'all').stdout
+    assert 'settings app: unchanged' in again and 'written' not in again, again
+    assert 'make x' in (ws / 'orchestration/settings/admin.local.json').read_text(encoding='utf-8')
+    assert 'older than' not in run(home, 'lint').stderr
+    # Work packages, dispatch flags and refusal without the file.
+    for mod, slug in (('app', 'checkout'), ('admin', 'orders'), ('db', 'schema')):
+        run(home, 'new-wp', mod, slug)
+    wps = ws / 'work-packages'
+    app_wp = wps / 'WP-APP-01-checkout.md'
+    text = app_wp.read_text(encoding='utf-8')
+    assert '## 6. If a permission is denied' in text and 'QUESTION WP-APP-01 :: denied:' in text, text
+    assert 'LOCK WP-APP-01 :: <resource>' in text and '`testgate` (on-demand' in text, text
+    fill_header(app_wp, 'Resources (locks)', '`testgate`')
+    fill_header(app_wp, 'Shared paths touched', '`some.test.mjs`')
+    fill_header(wps / 'WP-ADMIN-01-orders.md', 'Resources (locks)', '`testgate`')
+    for wp in ('WP-APP-01', 'WP-ADMIN-01', 'WP-DB-01'):
+        run(home, 'set', wp, 'status', 'READY')
+    warned = run(home, 'lint').stderr
+    assert '`some.test.mjs` in the Shared paths or Resources row is not a lock of repo mono' in warned, warned
+    dry = run(home, 'dispatch', 'WP-APP-01', '--dry-run')
+    assert 'locks to take: none' in dry.stdout and 'on-demand locks, taken when the session sends LOCK: testgate' \
+        in dry.stderr and 'some.test.mjs' in dry.stderr, (dry.stdout, dry.stderr)
+    assert f'--permission-mode auto --settings {wsabs}/orchestration/settings/app.json --name shop-app' in dry.stdout
+    db_dry = run(home, 'dispatch', 'WP-DB-01', '--dry-run').stdout
+    assert f'cd {single} && claude --permission-mode auto --settings {wsabs}/orchestration/settings/db.json ' \
+        '--name shop-db' in db_dry, db_dry
+    moved = ws / 'orchestration/settings/db.json'
+    moved.rename(moved.with_suffix('.bak'))
+    refused = run(home, 'dispatch', 'WP-DB-01', '--dry-run', ok=False).stderr
+    assert 'orchestration/settings/db.json is missing: run orch.py settings db' in refused, refused
+    assert '--settings' not in run(home, 'dispatch', 'WP-DB-01', '--dry-run', '--no-settings').stdout
+    moved.with_suffix('.bak').rename(moved)
+    # On-demand locks: not taken at dispatch; LOCK -> acquire, queue, READY releases, stale warning.
+    run(home, 'dispatch', 'WP-APP-01')
+    run(home, 'dispatch', 'WP-ADMIN-01')
+    assert 'locks: none' in run(home, 'lock', 'list').stdout
+    assert 'held by WP-APP-01' in run(home, 'lock', 'acquire', 'testgate', '--wp', 'WP-APP-01').stdout
+    assert 'queued' in run(home, 'lock', 'acquire', 'testgate', '--wp', 'WP-ADMIN-01', ok=False).stderr
+    assert '(on-demand)' in run(home, 'lock', 'list').stdout
+    released = run(home, 'set', 'WP-APP-01', 'status', 'REVIEW').stderr
+    assert 'lock mono:testgate: released; next in queue: WP-ADMIN-01' in released, released
+    run(home, 'lock', 'acquire', 'testgate', '--wp', 'WP-ADMIN-01')
+    since = json.loads(run(home, 'lock', 'list', '--json').stdout)[0]['since']
+    later = (orch.dt.datetime.strptime(since, '%Y-%m-%d %H:%MZ') + orch.dt.timedelta(hours=5)).strftime('%Y-%m-%d %H:%MZ')
+    assert 'on-demand lock' not in run(home, 'lint').stderr
+    stale = run(home, 'lint', extra_env={'ORCH_NOW': later}).stderr
+    assert 'on-demand lock mono:testgate held by WP-ADMIN-01 for 5 h (limit 4 h)' in stale, stale
+    run(home, 'lock', 'release', 'testgate', '--wp', 'WP-ADMIN-01')
+    # A cloud module keeps its block without --settings.
+    safe_edit.replace_once(config, '\n  - id: admin\n',  # the commented example starts with '#'
+                           '\n  - id: admin\n    sessions: cloud\n    cloud_environment: "Env"\n')
+    assert 'settings admin: skipped' in run(home, 'settings', 'all').stdout
+    run(home, 'new-wp', 'admin', 'report')
+    run(home, 'set', 'WP-ADMIN-02', 'status', 'READY')
+    run(home, 'set', 'WP-ADMIN-01', 'status', 'CANCELLED (selftest)')
+    cloud = run(home, 'dispatch', 'WP-ADMIN-02', '--dry-run').stdout
+    assert 'New cloud session for WP-ADMIN-02' in cloud and '--settings' not in cloud, cloud
+    # d) the session name is checked against coordinator_session in modes and the bootstrap prompt.
+    modes = HERE.parent / 'references/modes'
+    for name in ('dispatch.md', 'resume.md'):
+        assert '/rename <coordinator_session>' in (modes / name).read_text(encoding='utf-8'), name
+    bootstrap = (ws / 'orchestration/bootstrap-prompt.md').read_text(encoding='utf-8')
+    assert '/rename shop-coord' in bootstrap and '--permission-mode\nauto --settings' in bootstrap, bootstrap
+    print('PASS settings: files per session, rules, dispatch flags and refusal, permission mode, '
+          '.worktreeinclude, on-demand locks, cloud unchanged')
+
+
+def test_deploy_override_first_candidate(tmp):
+    """3a defect a: a positive paths filter behind a branch filter passes; an override without --dir
+    takes the first readable candidate; no candidate at all asks for --dir."""
+    mono = make_monorepo(tmp / 'field')
+    with_workflow(mono, "on:\n  push:\n    branches: [main, 'release/**']\n    paths: ['src/**']\njobs: {}\n")
+    clone = tmp / 'field/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'field/mono.git'), str(clone))
+    out = run(clone, 'init', 'p', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
+              '--in-repo', 'app').stdout
+    assert 'directory docs/orchestration/p' in out, out
+    mono2 = make_monorepo(tmp / 'field2')
+    with_workflow(mono2, "on:\n  push:\n    paths-ignore: ['docs/**']\njobs: {}\n")
+    with_workflow(mono2, 'on:\n  - push\n', 'odd.yml')
+    clone2 = tmp / 'field2/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'field2/mono.git'), str(clone2))
+    refused = run(clone2, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
+                  '--in-repo', 'app', ok=False).stderr
+    assert 'odd.yml' in refused and 'docs/orchestration/q' in refused and '--dir <directory>' in refused, refused
+    out = run(clone2, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
+              '--in-repo', 'app', '--deploy-override', 'D-1').stdout
+    assert 'directory docs/orchestration/q' in out and 'overridden by owner decision D-1' in out, out
+    mono3 = make_monorepo(tmp / 'field3')
+    with_workflow(mono3, 'on: [push]\njobs: {}\n')
+    with_workflow(mono3, 'on:\n  - push\n', 'odd.yml')
+    clone3 = tmp / 'field3/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'field3/mono.git'), str(clone3))
+    refused = run(clone3, 'init', 'r', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
+                  '--in-repo', 'app', '--deploy-override', 'D-1', ok=False).stderr
+    assert 'cannot verify' in refused and 'no non-hidden directory' in refused and '--dir <directory>' in refused, \
+        refused
+    print('PASS deploy override: positive paths behind a branch filter, first candidate, --dir only without one')
+
 
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
@@ -1409,6 +1599,8 @@ def main():
         test_close_in_repo(tmp)
         test_models(tmp)
         test_local_cloud_matrix(tmp)
+        test_settings(tmp)
+        test_deploy_override_first_candidate(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

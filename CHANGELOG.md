@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.6.0 (preview)
+
+Session permissions: generated settings files for module and orchestrator sessions (narrow allow,
+deny for merge, base pushes, releases and production, owner checkpoints, auto mode environment,
+cross-session message delivery), the owner's explicit permission mode at init, worktrees without
+secrets through `.worktreeinclude`, on-demand locks, and fixes from the first field run. Preview,
+not yet released.
+
 ## Unreleased — pepper-orchestrator 0.5.0 (preview)
 
 Implementer model and effort per package in start commands, the owner's explicit session-kind

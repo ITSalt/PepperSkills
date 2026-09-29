@@ -29,6 +29,17 @@ a title and modules.
    program's `sessions`; repositories and modules inherit it, and a module gets another kind only
    by an explicit owner decision (same question; for cloud, the environment), set as `sessions`
    on that module.
+3b. **Ask the permission mode explicitly** and wait for the owner's own answer: "Which permission
+   mode should the program's sessions run in: auto (recommended: a classifier approves routine
+   actions, the generated rules hold merge, pushes to the base, releases and production), acceptEdits,
+   default, dontAsk or bypassPermissions?". `init` refuses without `--permission-mode`, writes
+   `permission_mode` to `orch.yaml` and the journal, generates `orchestration/settings/*.json`
+   (`orch.py settings all`) and prints the orchestrator's start command with
+   `--name <coordinator_session> --permission-mode <mode> --settings orchestration/settings/orchestrator.json`.
+   Give the owner that command and the one-line alternative: `/config` -> "Messages from your other
+   sessions" -> accept (user settings, all their sessions). Without `crossSessionInbound: accept`,
+   messages between sessions of different permission classes (bypass against auto, acceptEdits,
+   dontAsk, default) wait for approval in the receiver's window and are dropped after 5 minutes.
 4. **Find the modules.** From the request and a read-only look around:
    - **Whole repositories** (0.1.0 form): one module per repository, `--module id=PATH[@BASE]`.
    - **One repository with several streams** (monorepo, or areas and domains of one product):
@@ -43,9 +54,15 @@ a title and modules.
      a dev stack on fixed ports, IDs in a specification graph) are `resources`.
 5. **Take the repository's conventions.** `init` reads `git.branch_prefix` from the repository's
    `config.yaml` when present; otherwise it sets `<program>/` and prints a note: ask the owner and
-   fix `branch_prefix` by point edit. Also ask for the worktree preparation commands (copy of the
-   gitignored env with the stream's own test database and ports, dependency install) and whether
-   each merge into the base deploys production (`base_deploys`).
+   fix `branch_prefix` by point edit. Also ask for the worktree preparation commands (dependency
+   installs and code generation only) and whether each merge into the base deploys production
+   (`base_deploys`). Secrets never go through `worktree_setup`: copying `.env*`, secret, key or
+   certificate directories or `.claude/` into a worktree is what the auto mode classifier blocks
+   (and `lint` warns about). The gitignored files a worktree needs belong in `.worktreeinclude` in
+   the repository root (gitignore syntax; Claude Code copies them into every new worktree), and
+   `.claude/settings.local.json` is read from the main checkout by every worktree. `init` opens a
+   P-n item with a ready `.worktreeinclude` for each local repository with streams that has none: a
+   change of the project, made by a package in that repository, never by the plugin.
 6. **Workspace inside a module repository?** Use `--in-repo <repo-id>` from a checkout or clone of
    that repository (a local one, or the orchestrator's cloud session): it switches to
    `orch/<program>`, finds a directory every push workflow ignores (`paths-ignore`, branch
@@ -56,14 +73,17 @@ a title and modules.
    the working tree; hidden directories are never candidates and `docs/` comes first. It refuses
    when a workflow uses a form it does not understand, when no safe directory exists, when the
    only candidates are outside `docs/`, or when `--dir` points outside the safe directories: ask
-   the owner (P-n), record the answer (D-n), then pass `--dir` or `--deploy-override D-n`. The
+   the owner (P-n), record the answer (D-n), then pass `--dir` or `--deploy-override D-n`
+   (without `--dir` the override takes the first directory the readable workflows ignore; `--dir`
+   is needed only when there is none). A positive `paths` filter is fine when the workflow's branch
+   filter already excludes `orch/<program>`. The
    override is written to `orch.yaml` (`deploy_check_override`) and the journal; `commit` refuses
    while the check fails without it. Streams are added with `--area`/`--domain <id>=<repo-id>:<glob>`.
 7. **Create.**
 
    ```bash
    python3 SKILL_DIR/scripts/orch.py init <program> --lang <en|ru> --title "<title>" \
-     --sessions <local|cloud> [--cloud-environment "<name>"] \
+     --sessions <local|cloud> [--cloud-environment "<name>"] --permission-mode <mode> \
      --module <id>=<path>[@<base>] ... \
      --repo <id>=<path>[@<base>] --area <id>=<repo-id>:<glob>[,<glob>] --domain <id>=<repo-id>:<glob>
    ```
@@ -76,8 +96,13 @@ a title and modules.
    `deploy_workflows`, `base_deploys`, `push_deploys: true` when a push of any branch deploys the
    stand (packages then tell sessions to push only with the stand slot); per module
    `test_db`, `ports`, `tests {scoped, full}`, `methodology {name, allowed, forbidden}` (for a
-   methodology whose commands merge or deploy, list those commands as forbidden); per 0.1.0
-   module `tests`, deploy commands; `push_after_milestone`; `spec_graph` stays `none`.
+   methodology whose commands merge or deploy, list those commands as forbidden: they become
+   `Skill(<name>)` deny rules); per 0.1.0 module `tests`, deploy commands; `checkpoints` (owner
+   checkpoints that always ask: `push`, `pr`, `deploy_test`; default `deploy_test`);
+   `resources` entries `{name: <n>, mode: on-demand}` for resources a session takes only for a
+   moment (LOCK/UNLOCK); `push_after_milestone`; `spec_graph` stays `none`. Then regenerate the
+   settings: `orch.py settings all` (idempotent; the owner's own additions live in
+   `orchestration/settings/<name>.local.json`, which it never touches).
 9. **Verify and commit.**
 
    ```bash
@@ -97,6 +122,7 @@ a title and modules.
 - `orchestration/bootstrap-prompt.md`: the first message for a new orchestrator session.
 - Next step: `plan <task>`.
 
-Session settings files and PreToolUse guards are not generated in this version. The owner starts
-module sessions with the `Start command` of each package, without `--settings`; never write or
-reference a settings file by hand. The rules of concept section 12 apply as instructions.
+Settings files are generated, never written by hand: `orch.py settings <module|all|orchestrator>`.
+They are guard rails for the usual command forms, not a security boundary (branch protection and
+hooks are); PreToolUse guards are not generated in this version. The rules of concept section 12
+apply as instructions as well.

@@ -13,6 +13,14 @@ step. No argument, or the program name when several workspaces exist.
    report in `reports/`) together with the open archive items R/P of the owner queue
    (`orch.py queue`), and say: a new goal is a new program (`init`); to continue this goal,
    `reopen "<reason>"`. Do not look for work in it.
+2a. **Session name and settings.** Compare this session's name (`ListAgents`: "This session is
+   ...") with `coordinator_session`; if they differ, `/rename <coordinator_session>` before any
+   message. On the first resume, remind the owner that the orchestrator should run with
+   `--settings orchestration/settings/orchestrator.json` (or `/config` -> "Messages from your other
+   sessions" -> accept): a session cannot check how it was started, and without it messages from
+   sessions in another permission class are dropped after 5 minutes. `lint` warns about missing or
+   stale settings files (`orch.py settings all`). The protocol never relies on messages: READY is
+   also found by `gh pr list` and `orch.py ready`.
 3. **Read state.** `status.md` (WP table, owner queue, top of the journal), the tail of
    `decisions.md`, `orch.yaml`. `orch.py queue` lists open owner items.
 4. **Reconcile with reality** (concept section 11), read-only, delegated when long:
@@ -26,6 +34,7 @@ step. No argument, or the program name when several workspaces exist.
    | the stand | `gh run list --repo <r> --workflow <deploy_workflows entry> -L 5`: which branch deployed last, is it held by the `staging` lock holder |
    | branches of main checkouts | `git -C <repo> rev-parse --abbrev-ref HEAD`, lag behind `origin/<base>` |
    | paths | `orch.py overlap`: files outside allowed paths, undeclared or unlocked shared paths, repository checks |
+   | on-demand locks | `orch.py lock list` / `lint`: a lock held longer than `lock_stale_hours` (default 4) is a warning: ask its session whether it still needs it |
    | databases | migration journal and object definitions through a read-only tool, SELECT only |
    | deployed versions | version string in the served bundle, not the browser badge |
 

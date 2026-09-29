@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.6.0 — preview, unreleased
+
+Preview of stage 3a: session permissions, worktree preparation, message delivery, on-demand locks.
+
+- `orch.py settings <module|all|orchestrator>` writes `orchestration/settings/<name>.json` from
+  `orch.yaml` and `templates/settings/*.json`: `Read` of the repository, module paths and workspace;
+  narrow Bash rules (`cat`, `grep`, `rg`, `sed -n`, `ls`, `find`, `head`, `tail`, `wc`, git
+  status/diff/log/show/branch/fetch/add/commit/switch/`restore --staged`, `gh pr view/list/checks/diff`);
+  pushes of `<branch_prefix>*` and `gh pr create`; every command of `tests`, `checks` and
+  `worktree_setup` verbatim, one exact rule per simple command. Deny: `gh pr merge`, force pushes,
+  pushes to the base (`origin <base>`, `HEAD:<base>`, `*:<base>`), `gh workflow run`, `gh release`,
+  `Edit` of the workspace, production MCP servers from `environments.prod`, a module's
+  `deploy_prod` command, `ssh`/`psql`/`mysql` when `guards` are set, `Skill(<name>)` for
+  `methodology.forbidden`. Ask: `checkpoints` (`push`, `pr`, `deploy_test`; default
+  `deploy_test`). `autoMode.environment` = `$defaults` + trusted repository and source control;
+  `crossSessionInbound: accept`. Idempotent; rules are syntax-checked before writing;
+  `<name>.local.json` is never touched (and gitignored in new workspaces).
+- `dispatch` adds `--permission-mode <permission_mode> --settings <absolute path>` to local start
+  commands, refuses without the file (hint `orch.py settings <module>`), warns when the file is older
+  than `orch.yaml`; `--no-settings` keeps the pre-0.6.0 command. Cloud modules are unchanged.
+- `init` requires `--permission-mode` (auto recommended, asked explicitly), writes `permission_mode`,
+  generates all settings files, prints the orchestrator start command
+  (`--name <coordinator_session> --permission-mode <mode> --settings orchestration/settings/orchestrator.json`)
+  and the `/config` alternative, and opens a P-n item with a ready `.worktreeinclude` for local
+  repositories with streams that have none.
+- `lint`: `permission_mode` and `checkpoints` values are checked; warnings for a workspace without
+  `permission_mode`, missing or stale settings files, `cp`/`rsync`/`ln` of `.env*`, secret, key or
+  certificate directories or `.claude/` in `worktree_setup`, backticked names in Shared paths or
+  Resources rows that are not locks, on-demand locks older than `lock_stale_hours` (default 4).
+- On-demand locks: `resources` entries `{name, mode: on-demand}` are not taken at `dispatch`; the
+  session sends `LOCK`/`UNLOCK` (protocol), `lock acquire`/`release` as before; status `REVIEW`
+  (READY), `DONE` or `CANCELLED` releases them; `overlap --planned` reports package resources declared
+  by two packages; `lock list` marks on-demand locks.
+- Work package template: section 6 "If a permission is denied" (never work around a refusal,
+  `QUESTION` with the exact text, retry when the classifier is unavailable, LOCK/UNLOCK); the Start
+  command note describes the dispatch flags. Protocol: `LOCK`, `UNLOCK`, message delivery.
+  Bootstrap prompt and the `dispatch`/`resume` modes check the session name against
+  `coordinator_session`.
+- Field fixes: `init --in-repo` accepts a positive `paths` filter when the branch filter already
+  excludes `orch/<program>`; `--deploy-override D-n` without `--dir` takes the first directory the
+  readable workflows ignore and asks for `--dir` only when there is none, naming both reasons and both
+  options; backticked text that is not a lock no longer refuses `dispatch`.
+- README (EN/RU): "Session permissions and permission mode" and the scenario "A stream got a
+  refusal"; concept 1.5, sections 4 and 12.
+
 ## 0.5.0 — preview, unreleased
 
 Preview of stage 2e: implementer model per package, session kind chosen by the owner, cloud

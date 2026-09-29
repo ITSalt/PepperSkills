@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, resume, owner, decide, close, reopen. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.5.0
+  version: 0.6.0
 ---
 
 # Pepper Orchestrator
@@ -42,7 +42,8 @@ action in a session; read other sections when a mode points to them.
 10. **Locks before shared work.** Changing a shared path, pushing a migration, verifying on the
     stand or running the dev stack on fixed ports is done only by the lock holder
     (`orch.py lock`). With `merge_policy: sequential`, merges go one at a time through the merge
-    queue.
+    queue. An on-demand resource (`{name, mode: on-demand}`) is not taken at dispatch: the session
+    sends `LOCK <resource>`, you run `orch.py lock acquire`, and `UNLOCK` or READY gives it back.
 11. **Never in a module's checkout.** The workspace lives in a separate home repository, or on
     branch `orch/<program>` in its own worktree or clone of a module repository; never on another
     branch of a module checkout, linked worktree or clone (`init` and `commit` refuse it, comparing
@@ -89,9 +90,17 @@ unfinished goal. `ORCH_NO_GH=1` makes the scripts ignore `gh` (offline checks).
 Planned modes, not automated in this version: `verify`, `release`, `retro`. When the program
 needs them, follow the concept directly: verify per section 9, release per section 15. Record every result through `scripts/orch.py` as usual.
 
-Start commands never carry `--settings` in this version: session settings files are not generated
-yet. Never add `--settings`, never point to a settings file and never invent one (a missing
-settings file makes the session fail to start).
+**Session settings.** `orch.py settings <module|all|orchestrator>` generates
+`orchestration/settings/<name>.json` from `orch.yaml`: narrow allow rules (reading, the module's
+tests, checks and worktree setup verbatim, commits and pushes of the package branch), deny rules
+(merge, pushes to the base, force pushes, `gh workflow run`, `gh release`, production MCP servers and
+deploy commands, the orchestrator workspace, forbidden methodology commands as `Skill(<name>)`),
+owner checkpoints as ask rules, `autoMode.environment` and `crossSessionInbound: accept`. `dispatch`
+puts `--permission-mode <permission_mode> --settings <absolute path>` into every local start command
+and refuses without the file. Never write or edit a settings file by hand, never copy settings into
+a worktree; the owner's own additions live in `<name>.local.json`. A session that is denied never
+works around it: it sends `QUESTION` with the exact refusal text. Rules are guard rails for the
+usual command forms, not a security boundary: branch protection and hooks are.
 
 ## Tools
 

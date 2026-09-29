@@ -5,6 +5,9 @@ a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
 
 ## Steps
 
+0. **Check the session name first.** Compare this session's name (`ListAgents`: "This session is
+   ...") with `coordinator_session` in `orch.yaml`; if they differ, `/rename <coordinator_session>`
+   before any message or dispatch: packages tell sessions to report to that name.
 1. **Check without changing anything.**
 
    ```bash
@@ -16,9 +19,13 @@ a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
    repository, or runs in the same stream; when the paths overlap with another active package
    outside `shared_paths`; when a lock the package declares (shared paths touched, resources) is
    held by another package, or overlaps by glob with one (`backend/migrations/**` against
-   `backend/migrations/0002.sql`); when a declared resource is not one of the repository's
-   `resources` or a declared shared path lies outside its `shared_paths` (typos never create new
-   locks); when a released lock still has a queue and the package is not in it.
+   `backend/migrations/0002.sql`); when a released lock still has a queue and the package is not in
+   it; when the module's settings file `orchestration/settings/<module>.json` is missing (run
+   `orch.py settings <module>`; a workspace from before 0.6.0 can pass `--no-settings` for the old
+   start command). A declared name that is not one of the repository's `resources` and lies outside
+   its `shared_paths` is not a lock: dispatch warns and ignores it (typos never create new locks;
+   `lint` warns too). On-demand resources are not taken at dispatch: the session asks with `LOCK`
+   (step 6).
 2. **Refused:** explain each reason to the owner in one line, with what unblocks it (a merge, a
    lock release, an owner answer). Running `dispatch <WP>` without `--dry-run` also records the
    refusal in the journal and queues the package in the `Waiting` column of every busy lock;
@@ -33,7 +40,10 @@ a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
 
    It takes the declared locks, sets `DISPATCHING` with evidence (including the model and effort)
    and prints what to hand over. The package header is the source of truth for the model: the
-   printed command carries `--model <m> [--effort <e>]` from the header at dispatch time.
+   printed command carries `--model <m> [--effort <e>]` from the header at dispatch time, and for
+   a local module `--permission-mode <permission_mode> --settings <absolute path of the module's
+   settings file>` (a warning says when the file is older than `orch.yaml`: run `orch.py settings`
+   first).
    `--dry-run` never writes anything, for any kind of module.
 4. **Hand over.** Give the owner the printed command exactly as written, in its own code block.
    - A stream of a shared repository starts with `claude -w <wp-slug>`: the session gets its own
@@ -64,10 +74,21 @@ a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
    - In a repository where every push deploys the stand (`push_deploys`), a cloud package takes
      the `staging` lock for its whole life and its prompt says "push only once, when the work is
      complete"; the lock is released after merge and verification (`orch.py lock release`).
-   - Never add `--settings` and never invent a settings file in this version.
+   - Never edit a settings file or hand-craft `--settings`: the printed command already carries
+     the generated one. The owner's own additions go to `<module>.local.json`, never passed by
+     `dispatch`.
    - With `--live`, send the `TASK` line through cross-session messaging where the client has it;
      otherwise the owner relays it.
 5. **Commit.** `orch.py lint`, then `orch.py commit "<program>: dispatch <WP>"`.
+6. **LOCK and UNLOCK.** On `[TAG] LOCK <WP> :: <resource>` run
+   `orch.py lock acquire <resource> --wp <WP> --note "LOCK message"`: held -> answer `ACK`; busy ->
+   the package waits in the queue, answer `HOLD`. On `UNLOCK` run `orch.py lock release <resource>
+   --wp <WP>` and dispatch or `ACK` the next package in the queue. READY (status `REVIEW` through
+   `review-start` or `set`) releases the package's on-demand locks by itself.
+7. **Denied permissions.** A `QUESTION` with a refusal text is answered on the facts: a missing
+   narrow rule goes into `orch.yaml` (for example a test command) and `orch.py settings <module>`;
+   the owner restarts the session with the same command (or answers the prompt in its window). Never
+   tell a session to work around a refusal.
 
 After the session confirms it started (message, branch or draft PR), set `IN_PROGRESS` with that
 evidence. Do not poll the session.
