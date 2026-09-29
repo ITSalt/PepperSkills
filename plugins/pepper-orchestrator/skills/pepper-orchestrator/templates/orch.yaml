@@ -11,6 +11,11 @@ owner_language: {{LANG}}
 coordinator_session: {{COORDINATOR}}
 # true: orch.py commit also pushes (the owner reads from another device).
 push_after_milestone: false
+# Where the workspace lives: separate (its own home repository) | in-repo (branch orch/<program>
+# of a module repository, in a directory every push workflow ignores; init --in-repo sets
+# workspace_branch and workspace_dir). State commits go only to workspace_branch.
+# deploy_check_override: D-n is written only when the owner accepted an unverifiable deploy check.
+workspace_mode: separate
 
 # Repositories shared by several modules (streams). One writing session per worktree and branch.
 repos: []
@@ -27,6 +32,7 @@ repos: []
 #    checks: ["./scripts/check-migration-order.sh"]   # read-only commands; see below
 #    deploy_workflows: [deploy.yml]   # read by resume to see who holds the stand
 #    base_deploys: prod               # prod | staging | none: what a merge into base deploys
+#    sessions: cloud                  # local | cloud: module sessions are cloud sessions (own clones)
 #    push_deploys: true               # a push of any branch deploys the stand: sessions push only with the stand slot
 #
 # Paths are globs: `*` (one directory), `**` (any depth), `?` (one character), `{a,b}`

@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.1 — preview, unreleased
+
+Preview of stage 2c: cloud sessions over one repository.
+
+- In-repo workspace: `init --in-repo <repo-id>` switches to `orch/<program>` (created without
+  tracking the base), finds a directory every push workflow ignores (`on.push` `paths-ignore`,
+  `branches`, `branches-ignore` in `.github/workflows/*`) and refuses when there is none; new
+  `orch.yaml` keys `workspace_mode`, `workspace_branch`, `workspace_dir`; repository paths may be
+  relative to the workspace's repository (`path: .`). `commit` goes only to `workspace_branch` and
+  always pushes to the same-named remote branch.
+- `sessions: cloud` on a repository or module: work packages carry a cloud-session prompt (read the
+  package from `orch/<program>` or inline, branch from the base, PR with the package id, no message
+  back, never merge tools such as `mcp__github__merge_pull_request`); `dispatch` prints it
+  (`--inline` appends the package text).
+- `orch.py ready`: dispatched packages whose branch is on origin (`git ls-remote`), with the PR via
+  `gh` when available; `resume` describes the no-`gh` path through the session's GitHub tools.
+- Workspace discovery also finds nested in-repo workspaces (up to four levels below the current
+  directory); `lint` checks the in-repo keys and warns when the workspace directory is not
+  ignored by every push workflow.
+- `scripts/install-skill.sh` (repository root): idempotent copy of a canonical skill into
+  `~/.claude/skills` for cloud environment setup scripts; README section "Cloud sessions".
+- Skill: hard rule "no merge tools", cloud section, `/pepper-orchestrator <mode>` calls without
+  plugin commands. Concept 1.2 (EN and RU), section 20 "Cloud sessions".
+- Deploy check is strict: workflows are read from the pushed ref (`git ls-tree`/`git show`), a
+  missing ref or any workflow form outside the documented list is a refusal, hidden directories
+  are never candidates and `docs/` comes first; an unsafe `--dir` is refused; the only override is
+  an owner decision (`--deploy-override D-n`, stored as `deploy_check_override`). `commit` of an
+  in-repo workspace refuses while the check fails.
+- `dispatch --dry-run` writes nothing for any module; a cloud package must be on
+  `origin/orch/<program>` (same content) before its prompt is printed; with `push_deploys` a cloud
+  package holds the `staging` lock and its prompt says to push once.
+- `init --in-repo` fetches first and reuses an existing `origin/orch/<program>` (refusing a second
+  workspace); `commit` refuses a detached HEAD before committing, pushes to the branch's own remote
+  and keeps an existing upstream; repository names are read from GitHub and cloud proxy URLs;
+  `ready` reports only open PRs with the package id in their body.
+- README setup fragment never fails the environment's setup script; `install-skill.sh` removes its
+  temporary directory on failure.
+
 ## 0.2.0 — preview, unreleased
 
 Preview of stage 2a: streams in one repository and dispatch. A 0.1.0 workspace works unchanged

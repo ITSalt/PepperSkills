@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.2.1 (preview)
+
+Cloud sessions over one repository: in-repo workspace on `orch/<program>` in a deploy-ignored
+directory, cloud-session prompts from `dispatch`, readiness by branches and pull requests, and
+`scripts/install-skill.sh` for cloud environment setup scripts. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.2.0 (preview)
 
 Streams in one repository: modules as areas and domains with their own paths, worktree start

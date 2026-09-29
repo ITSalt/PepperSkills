@@ -33,7 +33,18 @@ a title and modules.
    fix `branch_prefix` by point edit. Also ask for the worktree preparation commands (copy of the
    gitignored env with the stream's own test database and ports, dependency install) and whether
    each merge into the base deploys production (`base_deploys`).
-6. **Create.**
+6. **Cloud program in one repository?** Use `--in-repo <repo-id>` from the repository checkout of
+   the orchestrator's cloud session: it switches to `orch/<program>`, finds a directory every push
+   workflow ignores (`paths-ignore`, branch filters) and puts the workspace there, marks module
+   sessions as `cloud` and turns on `push_after_milestone`. The check reads the workflows of the
+   ref that will be pushed (`origin/orch/<program>` if it exists, else `origin/<base>`), never
+   the working tree; hidden directories are never candidates and `docs/` comes first. It refuses
+   when a workflow uses a form it does not understand, when no safe directory exists, when the
+   only candidates are outside `docs/`, or when `--dir` points outside the safe directories: ask
+   the owner (P-n), record the answer (D-n), then pass `--dir` or `--deploy-override D-n`. The
+   override is written to `orch.yaml` (`deploy_check_override`) and the journal; `commit` refuses
+   while the check fails without it. Streams are added with `--area`/`--domain <id>=<repo-id>:<glob>`.
+7. **Create.**
 
    ```bash
    python3 SKILL_DIR/scripts/orch.py init <program> --lang <en|ru> --title "<title>" \
@@ -42,7 +53,7 @@ a title and modules.
    ```
 
    Default path: `features/<program>/`; override with `--dir`.
-7. **Complete `orch.yaml` by point edits** (`safe_edit.py --stdin`, never a rewrite): per repo
+8. **Complete `orch.yaml` by point edits** (`safe_edit.py --stdin`, never a rewrite): per repo
    `worktree_setup`, `merge_policy` (`sequential` if merges deploy the stand without CI),
    `shared_paths`, `resources`, `checks` (read-only commands; contract in `SKILL.md`),
    `deploy_workflows`, `base_deploys`, `push_deploys: true` when a push of any branch deploys the
@@ -50,7 +61,7 @@ a title and modules.
    `test_db`, `ports`, `tests {scoped, full}`, `methodology {name, allowed, forbidden}` (for a
    methodology whose commands merge or deploy, list those commands as forbidden); per 0.1.0
    module `tests`, deploy commands; `push_after_milestone`; `spec_graph` stays `none`.
-8. **Verify and commit.**
+9. **Verify and commit.**
 
    ```bash
    python3 SKILL_DIR/scripts/orch.py lint

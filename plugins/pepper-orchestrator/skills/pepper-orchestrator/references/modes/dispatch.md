@@ -32,11 +32,24 @@ a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
    ```
 
    It takes the declared locks, sets `DISPATCHING` with evidence and prints what to hand over.
+   `--dry-run` never writes anything, for any kind of module.
 4. **Hand over.** Give the owner the printed command exactly as written, in its own code block.
    - A stream of a shared repository starts with `claude -w <wp-slug>`: the session gets its own
      worktree and prepares it itself (section 0 of the package: branch from the base, the
      repository's `worktree_setup`, its own test database and ports).
    - A module that is a whole repository starts in the repository checkout, as in 0.1.0.
+   - A module with `sessions: cloud` gets a prompt for a **new cloud session** instead of a
+     command: open a cloud session on the repository (base branch) and paste it. With an in-repo
+     workspace the prompt tells the session to read the package from `orch/<program>`; with a
+     separate workspace, or `--inline`, the package text is printed after the prompt. The session
+     delivers a PR with the package id in its body and sends no message; `resume` and
+     `orch.py ready` find it.
+   - **Order for an in-repo workspace:** `orch.py commit` first (the package must be on
+     `origin/orch/<program>`); `dispatch` refuses while the package is missing there or differs from
+     the local file, then prints the prompt; commit again afterwards to record `DISPATCHING`.
+   - In a repository where every push deploys the stand (`push_deploys`), a cloud package takes
+     the `staging` lock for its whole life and its prompt says "push only once, when the work is
+     complete"; the lock is released after merge and verification (`orch.py lock release`).
    - Never add `--settings` and never invent a settings file in this version.
    - With `--live`, send the `TASK` line through cross-session messaging where the client has it;
      otherwise the owner relays it.

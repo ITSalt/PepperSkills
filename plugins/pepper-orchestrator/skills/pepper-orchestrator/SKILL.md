@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, resume, owner, decide. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.2.0
+  version: 0.2.1
 ---
 
 # Pepper Orchestrator
@@ -46,12 +46,18 @@ action in a session; read other sections when a mode points to them.
 11. **Never in a module's checkout.** The workspace lives in a separate home repository, or on
     branch `orch/<program>` in its own worktree or clone of a module repository; never on another
     branch of a module checkout, linked worktree or clone (`init` and `commit` refuse it, comparing
-    the git common directory and the origin URL): a commit there may deploy the stand.
+    the git common directory and the origin URL): a commit there may deploy the stand. An in-repo
+    workspace (`workspace_mode: in-repo`) commits only to its `workspace_branch`, never to the base.
+12. **No merge tools, anywhere.** Never call a merge operation: `gh pr merge`, the GitHub MCP or
+    built-in GitHub tools' merge (for example `mcp__github__merge_pull_request`), auto-merge,
+    or a push to a base branch. Cloud sessions have such tools; the rule is the same as locally.
 
 ## Modes
 
 The mode is the first word of the arguments (`plan add export to reports`) or the intent of the
-request. A short command such as `/pepper-orchestrator:plan` passes the mode explicitly.
+request. A short command such as `/pepper-orchestrator:plan` passes the mode explicitly. Where the
+plugin's commands are not installed (a cloud session that got the skill from a setup script), call
+the skill as `/pepper-orchestrator <mode> <arguments>` or by a phrase.
 
 | Mode | Intent | Instructions |
 |------|--------|--------------|
@@ -100,6 +106,7 @@ python3 SKILL_DIR/scripts/orch.py --help
 | `merge add\|done\|drop\|list <WP>` | merge queue per repository; `done` releases path locks |
 | `worktrees` | worktrees of every repository: branch, dirty, ahead/behind, package (read-only) |
 | `upgrade` | add the locks and merge queue tables to a 0.1.0 `status.md` |
+| `ready [--json]` | dispatched packages whose branch is on origin (READY without messages) |
 
 `scripts/safe_edit.py FILE --stdin` replaces fragments of any workspace file, each exactly once,
 all or nothing, from one or more stdin blocks (no temporary files). Never put a marker line
@@ -153,6 +160,31 @@ files and run Python. Client-specific capabilities are adapters:
 - **Session start commands** (`claude --name ...`, `claude -w <name>` for a stream worktree):
   elsewhere, the owner creates the worktree (`git worktree add <dir> -b <branch> origin/<base>`)
   and pastes the start prompt from the work package into a new session there.
+
+## Cloud sessions
+
+For programs run in cloud sessions (claude.ai/code): every session is its own clone, sees only its
+own repository, and its messages do not reach other sessions.
+
+- **Workspace in the repository:** `orch.py init <program> --in-repo <repo-id> ...` switches the
+  checkout to `orch/<program>` (never the base), puts the workspace in a non-hidden directory every
+  push workflow ignores (judged from the workflows of the pushed ref, `docs/` first), and commits
+  and pushes state only to that branch. A workflow form the check does not understand, or an
+  unsafe `--dir`, is refused; only an owner decision passed as `--deploy-override D-n` overrides
+  it. Start the orchestrator cloud session on `orch/<program>`.
+- **Modules as cloud sessions** (`sessions: cloud` on the repo or module): `dispatch` prints a
+  prompt for a new cloud session instead of a terminal command. The session reads the package with
+  `git fetch origin orch/<program> && git show origin/orch/<program>:<path>` (or gets the text
+  inline with a separate workspace or `--inline`), branches from the base and delivers a PR whose
+  body starts with the package id. No message back. Commit and push the package before
+  `dispatch`; it refuses otherwise. With `push_deploys`, the package holds the `staging` lock.
+- **Readiness:** `orch.py ready` lists dispatched packages whose branch is on origin; find the PR by
+  head branch and by package id with `gh` when present, otherwise with the session's GitHub tools
+  (list or search pull requests, read workflow runs). Never merge with them (hard rule 12).
+- **No writes to `.claude/`** in a cloud session: project skills and settings are committed by the
+  owner or a local session.
+- The skill needs no plugin: it runs from `~/.claude/skills/pepper-orchestrator` installed by the
+  environment's setup script (plugin README, "Cloud sessions"); `SKILL_DIR` is its base directory.
 
 ## Optional specification graph
 

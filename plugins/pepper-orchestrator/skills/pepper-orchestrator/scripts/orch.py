@@ -23,6 +23,7 @@ Commands:
   merge add|done|list                    merge queue per repository
   worktrees                              worktrees of every repository (read-only)
   upgrade                                add 0.2.0 tables to a 0.1.0 status.md
+  ready                                  pushed branches of dispatched packages (READY without messages)
 """
 import argparse
 import datetime as dt
@@ -252,6 +253,18 @@ def split_row(line):
     return [p.strip() for p in parts[1:-1]]
 
 
+def find_nested_configs(cwd, depth=4):
+    """orch.yaml files up to depth levels below cwd (in-repo workspaces such as docs/orchestration/x)."""
+    found = []
+    for dirpath, dirnames, filenames in os.walk(cwd):
+        rel = Path(dirpath).relative_to(cwd)
+        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d != 'node_modules'
+                       and len(rel.parts) < depth]
+        if 'orch.yaml' in filenames and rel.parts:
+            found.append(Path(dirpath) / 'orch.yaml')
+    return sorted(found)
+
+
 def find_workspace(explicit=None):
     if explicit:
         path = Path(explicit).expanduser().resolve()
@@ -265,7 +278,7 @@ def find_workspace(explicit=None):
     for parent in [cwd, *cwd.parents]:
         if (parent / 'orch.yaml').is_file():
             return parent
-    candidates = sorted(cwd.glob('features/*/orch.yaml'))
+    candidates = sorted(cwd.glob('features/*/orch.yaml')) or find_nested_configs(cwd)
     if len(candidates) == 1:
         return candidates[0].parent
     if candidates:
@@ -295,12 +308,26 @@ class Workspace:
 
         Resolved once per Workspace so that Repo objects compare by identity."""
         if not hasattr(self, '_streams'):
-            self._streams = streams.resolve(self.config)
+            self._streams = streams.resolve(self.config, base_dir=self.git_top)
         return self._streams[:3]
 
     def stream_warnings(self):
         self.streams()
         return self._streams[3]
+
+    @property
+    def git_top(self):
+        if not hasattr(self, '_git_top'):
+            self._git_top = streams.git_toplevel(self.root) or self.root.resolve()
+        return self._git_top
+
+    @property
+    def in_repo(self):
+        return self.config.get('workspace_mode') == 'in-repo'
+
+    @property
+    def workspace_branch(self):
+        return str(self.config.get('workspace_branch') or f'orch/{self.config.get("program", "program")}')
 
     @property
     def lang(self):
@@ -389,10 +416,11 @@ def cmd_init(args):
     if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', program):
         raise OrchError('program must match [a-z0-9][a-z0-9-]*')
     lang = args.lang
-    root = Path(args.dir or Path('features') / program).expanduser()
+    in_repo = in_repo_setup(args, program) if args.in_repo else None
+    root = in_repo['root'] if in_repo else Path(args.dir or Path('features') / program).expanduser()
     if root.exists() and any(root.iterdir()):
         raise OrchError(f'{root} exists and is not empty')
-    repos = []
+    repos = [in_repo['repo']] if in_repo else []
     for spec in args.repo or []:
         match = re.fullmatch(r'([a-z0-9][a-z0-9-]*)=([^@]+)(?:@(.+))?', spec)
         if not match:
@@ -413,8 +441,9 @@ def cmd_init(args):
     parent = root.resolve().parent
     while not parent.exists():
         parent = parent.parent
+    top = streams.git_toplevel(parent)
     conflict = streams.module_repo_conflict(
-        parent, [streams.Repo(r, program=program) for r in repos] +
+        parent, [streams.Repo(r, program=program, base_dir=top) for r in repos] +
         [streams.Repo({'id': m, 'path': spec.split('=', 1)[1].split('@')[0]}, program=program)
          for spec in args.module or [] for m in [spec.split('=', 1)[0]] if '=' in spec])
     if conflict:
@@ -456,11 +485,17 @@ def cmd_init(args):
         text = text.replace('{{MODULE_ROWS}}\n', module_rows + '\n' if module_rows else '')
         text = fill(text, base)
         safe_edit.create(root / rel, text)
-    safe_edit.create(root / 'orch.yaml', render_config(base, modules, repos, areas))
+    safe_edit.create(root / 'orch.yaml', render_config(base, modules, repos, areas, in_repo))
     safe_edit.create(root / '.gitignore', safe_edit.BACKUP_DIR_NAME + '/\n')
     ws = Workspace(root)
     ws.journal(f'workspace created ({lang})', evidence='orch.py init')
     print(f'workspace: {root}')
+    if in_repo and in_repo['override']:
+        ws.journal(f'deploy check overridden by {in_repo["override"]}', evidence='orch.py init --in-repo')
+    if in_repo:
+        print(f'in-repo workspace on branch {in_repo["branch"]}, directory {in_repo["dir"]}')
+        for note in in_repo['notes']:
+            print(f'deploy check: {note}')
     for warning in lint_warnings(ws):
         print(f'warning: {warning}')
     for r in repos:
@@ -470,14 +505,94 @@ def cmd_init(args):
     return 0
 
 
+def in_repo_setup(args, program):
+    """In-repo workspace: branch orch/<program> of the current repository, in a directory every
+    push workflow ignores, judged from the workflows of the ref that will be pushed. Unknown
+    workflow forms and unsafe directories are refused unless the owner decided otherwise
+    (--deploy-override D-n). Switches the checkout only after every check passed."""
+    top = streams.git_toplevel(Path.cwd())
+    if top is None:
+        raise OrchError('--in-repo must run inside the repository checkout')
+    branch = f'orch/{program}'
+    override = args.deploy_override
+    if override and not re.fullmatch(r'D-\d+', override):
+        raise OrchError('--deploy-override takes the owner decision id, for example D-3')
+    if streams.git(top, 'remote', 'get-url', 'origin').returncode:
+        raise OrchError('--in-repo needs an origin remote: the workspace branch is pushed there')
+    fetched = streams.git(top, 'fetch', '-q', '--prune', 'origin')
+    if fetched.returncode:
+        raise OrchError(f'git fetch origin failed: {fetched.stderr.strip()}')
+    base = args.base
+    if not base:
+        head = streams.git(top, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD')
+        base = head.stdout.strip().split('/', 1)[-1] if head.returncode == 0 and head.stdout.strip() else 'main'
+    remote_branch = streams.ref_exists(top, f'origin/{branch}')
+    ref = f'origin/{branch}' if remote_branch else f'origin/{base}'
+    if not streams.ref_exists(top, ref):
+        raise OrchError(f'neither origin/{branch} nor origin/{base} exists: nothing to judge the deploy by')
+    candidates, notes, refusals, any_dir = streams.deploy_safe_dirs(top, branch, program, ref)
+    if refusals and not override:
+        raise OrchError('the deploy check cannot tell whether workspace commits would start a workflow: '
+                        + '; '.join(refusals) + f'. {streams.DEPLOY_FORMS}. Ask the owner; after a '
+                        'recorded decision pass --deploy-override D-n')
+    if args.dir:
+        rel = os.path.normpath(os.path.relpath(Path(args.dir).expanduser().resolve(), top))
+        if rel.startswith('..'):
+            raise OrchError(f'--dir {args.dir} is outside the repository')
+        if not streams.dir_is_safe(rel, candidates, any_dir) and not override:
+            raise OrchError(f'{rel} is not a non-hidden directory that every push workflow ignores '
+                            f'(safe: {", ".join(candidates) or "none"}); ask the owner, then pass '
+                            '--deploy-override D-n with the recorded decision')
+    else:
+        if not candidates:
+            raise OrchError('no non-hidden directory is ignored by every push workflow '
+                            f'({"; ".join(notes)}); ask the owner where the workspace may live, then pass --dir')
+        if not any_dir and not candidates[0].startswith('docs/'):
+            raise OrchError(f'no docs/ directory is ignored by the deploy; candidates: {", ".join(candidates)}. '
+                            'Ask the owner which one to use, then pass --dir')
+        rel = candidates[0]
+    if remote_branch and not streams.git(top, 'cat-file', '-e', f'{ref}:{rel}/orch.yaml').returncode:
+        raise OrchError(f'a workspace already exists in {rel} on {ref}: switch to {branch} and resume')
+    target = top / rel
+    if target.exists() and any(target.iterdir()):
+        raise OrchError(f'{target} exists and is not empty')
+    current = streams.current_branch(top)
+    if current != branch:
+        if streams.git(top, 'status', '--porcelain').stdout.strip():
+            raise OrchError(f'the checkout has uncommitted changes; cannot switch to {branch}')
+        if streams.ref_exists(top, branch):
+            switch = ['switch', '-q', branch]
+        elif remote_branch:
+            switch = ['switch', '-q', '-c', branch, '--track', f'origin/{branch}']
+        else:
+            switch = ['switch', '-q', '--no-track', '-c', branch, f'origin/{base}']  # never track the base
+        result = streams.git(top, *switch)
+        if result.returncode:
+            raise OrchError(f'git {" ".join(switch)} failed: {result.stderr.strip()}')
+    if refusals or (args.dir and not streams.dir_is_safe(rel, candidates, any_dir)):
+        notes.append(f'deploy check overridden by owner decision {override}: {"; ".join(refusals) or rel}')
+    prefix = streams.detect_branch_prefix(str(top))
+    repo = {'id': args.in_repo, 'path': '.', 'base': base, 'branch_prefix': prefix,
+            'detected': prefix is not None, 'sessions': 'cloud'}
+    return {'root': target, 'dir': rel, 'branch': branch, 'repo': repo, 'notes': notes,
+            'override': override if (refusals or args.dir and not streams.dir_is_safe(rel, candidates, any_dir)) else None}
+
+
 def yaml_list(values):
     return '[' + ', '.join(json.dumps(v, ensure_ascii=False) for v in values) + ']'
 
 
-def render_config(base, modules, repos=(), areas=()):
+def render_config(base, modules, repos=(), areas=(), in_repo=None):
     title = json.dumps(base['PROGRAM_TITLE'], ensure_ascii=False)
     text = fill((TEMPLATES / 'orch.yaml').read_text(encoding='utf-8'),
                 {**base, 'PROGRAM_TITLE_YAML': title})
+    if in_repo:
+        text = text.replace('workspace_mode: separate\n',
+                            'workspace_mode: in-repo\n'
+                            f'workspace_branch: {in_repo["branch"]}\n'
+                            f'workspace_dir: {in_repo["dir"]}\n'
+                            + (f'deploy_check_override: {in_repo["override"]}\n' if in_repo['override'] else ''))
+        text = text.replace('push_after_milestone: false', 'push_after_milestone: true')
     if repos:
         blocks = []
         for r in repos:
@@ -492,7 +607,7 @@ def render_config(base, modules, repos=(), areas=()):
                 '    shared_paths: []',
                 '    resources: []',
                 '    checks: []',
-            ]))
+            ] + ([f'    sessions: {r["sessions"]}'] if r.get('sessions') else [])))
         text = text.replace('repos: []\n', 'repos:\n' + '\n'.join(blocks) + '\n')
     blocks = []
     if modules:
@@ -543,8 +658,10 @@ def cmd_new_wp(args):
                'BASE': sm.repo.base, 'SESSION': session,
                'TAG': ws.tag, 'WP_PATH': str(path.resolve()), 'DATE': today(),
                'COORDINATOR': ws.coordinator}
+    workspace = {'mode': 'in-repo' if ws.in_repo else 'separate', 'branch': ws.workspace_branch,
+                 'wp_rel': os.path.relpath(path.resolve(), ws.git_top) if ws.in_repo else None}
     mapping.update(streams.wp_fields(ws.lang, sm, wp, args.slug, str(path.resolve()), ws.tag,
-                                     ws.coordinator))
+                                     ws.coordinator, workspace))
     template = ws.wp_dir / '_TEMPLATE.md'
     safe_edit.create(path, fill(template.read_text(encoding='utf-8'), mapping))
     link = f'[{wp}](work-packages/{path.name})'
@@ -774,6 +891,15 @@ def lint(ws):
             errors.append(f'status.md: merge queue status must be queued, merged or dropped: {r["status"]}')
         if not r['n'].isdigit():
             errors.append(f'status.md: merge queue position must be a number: {r["n"]}')
+    if config.get('workspace_mode', 'separate') not in ('separate', 'in-repo'):
+        errors.append('orch.yaml: workspace_mode must be separate or in-repo')
+    if ws.in_repo:
+        if not ws.workspace_branch.startswith('orch/'):
+            errors.append('orch.yaml: workspace_branch must start with orch/')
+        rel = os.path.relpath(ws.root.resolve(), ws.git_top)
+        if config.get('workspace_dir') and os.path.normpath(str(config['workspace_dir'])) != rel:
+            errors.append(f'orch.yaml: workspace_dir {config["workspace_dir"]} does not match the workspace '
+                          f'location {rel}')
     dec_ids = [plain_id(r['id']) for r in tables.get('decisions', [])]
     for dup in sorted({i for i in dec_ids if dec_ids.count(i) > 1}):
         errors.append(f'decisions.md: duplicate {dup}')
@@ -800,11 +926,34 @@ def lint(ws):
     return errors
 
 
+def in_repo_deploy_problem(ws):
+    """Why a state commit of an in-repo workspace could start a deploy, or None."""
+    if not ws.in_repo or ws.config.get('deploy_check_override'):
+        return None
+    top, branch = ws.git_top, ws.workspace_branch
+    base = next((m.repo.base for m in ws.streams()[1].values() if m.repo.key == str(top)), 'main')
+    ref = next((r for r in (f'origin/{branch}', f'origin/{base}') if streams.ref_exists(top, r)), None)
+    if ref is None:
+        return f'neither origin/{branch} nor origin/{base} exists to judge the deploy by'
+    candidates, _, refusals, any_dir = streams.deploy_safe_dirs(top, branch, ws.config.get('program', ''), ref)
+    if refusals:
+        return 'the deploy check cannot verify the workflows: ' + '; '.join(refusals)
+    rel = os.path.relpath(ws.root.resolve(), top)
+    if not streams.dir_is_safe(rel, candidates, any_dir):
+        return f'{rel} is not under a directory every push workflow ignores (safe: {", ".join(candidates) or "none"})'
+    return None
+
+
 def lint_warnings(ws):
     """Non-blocking findings: 0.1.0 modules sharing a checkout, workspace in a module's main checkout."""
     warnings = list(ws.stream_warnings())
     _, modules, _ = ws.streams()
-    warning = streams.main_checkout_warning(ws.root, modules.values())
+    problem = in_repo_deploy_problem(ws)
+    if problem:
+        warnings.append(f'in-repo workspace: {problem}; commit refuses until the owner decides '
+                        '(deploy_check_override: D-n)')
+    local = [m for m in modules.values() if not m.cloud]
+    warning = streams.main_checkout_warning(ws.root, local)
     if warning:
         warnings.append(warning)
     return warnings
@@ -836,11 +985,23 @@ def cmd_commit(args):
         raise OrchError('lint failed; nothing committed')
     if git(ws.root, 'rev-parse', '--is-inside-work-tree', check=False).returncode:
         raise OrchError(f'{ws.root} is not inside a git repository')
+    branch = streams.current_branch(ws.root)
+    if not branch or branch == 'HEAD':
+        raise OrchError('detached HEAD: check out a branch first; nothing committed')
     repos, modules, _ = ws.streams()
     all_repos = list({m.repo.key: m.repo for m in modules.values()}.values()) + list(repos.values())
     conflict = streams.module_repo_conflict(ws.root, all_repos)
     if conflict:
         raise OrchError(conflict + '; nothing committed')
+    if ws.in_repo:
+        problem = in_repo_deploy_problem(ws)
+        if problem:
+            raise OrchError(f'in-repo workspace: {problem}; nothing committed. After an owner decision set '
+                            'deploy_check_override: D-n in orch.yaml')
+        branch = streams.current_branch(ws.root)
+        if branch != ws.workspace_branch:
+            raise OrchError(f'in-repo workspace: commits go only to {ws.workspace_branch}, the checkout is on '
+                            f'{branch}; nothing committed')
     for warning in lint_warnings(ws):
         print(f'lint: warning: {warning}', file=sys.stderr)
     git(ws.root, 'add', '-A', '--', '.')
@@ -851,8 +1012,16 @@ def cmd_commit(args):
     sha = git(ws.root, 'rev-parse', '--short', 'HEAD').stdout.strip()
     print(f'commit: {sha}')
     if ws.config.get('push_after_milestone') and not args.no_push:
+        # Always push the current branch to the same-named branch of its remote: an upstream that
+        # points elsewhere (for example a branch created from origin/main) is never used.
+        remote = git(ws.root, 'config', f'branch.{branch}.remote', check=False).stdout.strip() or 'origin'
         upstream = git(ws.root, 'rev-parse', '--abbrev-ref', '@{u}', check=False)
-        push = ['push'] if upstream.returncode == 0 else ['push', '-u', 'origin', 'HEAD']
+        push = ['push', remote, f'HEAD:refs/heads/{branch}']
+        if upstream.returncode:
+            push.insert(1, '-u')
+        elif upstream.stdout.strip() != f'{remote}/{branch}':
+            print(f'note: upstream {upstream.stdout.strip()} left as is; pushed to {remote}/{branch}',
+                  file=sys.stderr)
         result = git(ws.root, *push, check=False)
         if result.returncode:
             print(f'push failed: {result.stderr.strip()}', file=sys.stderr)
@@ -1143,6 +1312,26 @@ def dispatch_problems(ws, wp):
         if exact and exact[0]['holder'] == FREE and waiting_of(exact[0]) and wp not in waiting_of(exact[0]):
             busy[exact[0]['lock']] = exact[0]
             problems.append(f'lock {exact[0]["lock"]} is free but {waiting_of(exact[0])[0]} is first in its queue')
+    if module.cloud and module.repo.push_deploys:
+        if 'staging' not in module.repo.resources:
+            problems.append(f'repo {module.repo.id} deploys on every push (push_deploys) but has no `staging` '
+                            'resource: a cloud package needs the stand slot while it runs')
+        elif 'staging' not in wanted:
+            wanted.append('staging')
+            for lock in lock_conflicts(ws, module.repo, 'staging', wp):
+                busy[lock['lock']] = lock
+                problems.append(f'lock {lock["lock"]} (stand slot) is held by {lock["holder"]}')
+    if module.cloud and ws.in_repo:
+        path = ws.wp_path(r['wp'])
+        rel = os.path.relpath(path.resolve(), ws.git_top) if path else None
+        streams.git(ws.git_top, 'fetch', '-q', 'origin', ws.workspace_branch)
+        shown = streams.git(ws.git_top, 'show', f'origin/{ws.workspace_branch}:{rel}') if rel else None
+        if not shown or shown.returncode:
+            problems.append(f'{rel} is not on origin/{ws.workspace_branch} yet: run orch.py commit first, '
+                            'the cloud session reads the package from there')
+        elif shown.stdout != path.read_text(encoding='utf-8'):
+            problems.append(f'{rel} on origin/{ws.workspace_branch} differs from the local file: '
+                            'run orch.py commit first')
     return problems, wanted, busy, r, module
 
 
@@ -1165,12 +1354,23 @@ def cmd_dispatch(args):
         return 1
     path = ws.wp_path(r['wp'])
     text = path.read_text(encoding='utf-8') if path else ''
+    if args.dry_run:  # never writes anything, for any kind of module
+        print(f'dispatch {wp}: ok (dry run); locks to take: {", ".join(wanted) or "none"}')
+        return 0
+    if module.cloud:
+        prompt = re.search(r'## 5\.[^\n]*\n+```text\n(.*?)\n```', text, re.S)
+        for name in wanted:
+            if acquire(ws, module.repo, name, wp, 'dispatch'):
+                raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
+        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='DISPATCHING',
+                                   quiet=True, evidence='cloud session prompt handed to the owner'))
+        print(prompt.group(1).strip() if prompt else f'{wp}: no start prompt in section 5')
+        if args.inline or not ws.in_repo:
+            print('\n---\n' + text.strip())
+        return 0
     blocks = [b.strip() for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)]
     commands = [b for b in blocks if b.startswith('cd ') and ' claude ' in b]
     command = commands[-1] if commands else None
-    if args.dry_run:
-        print(f'dispatch {wp}: ok (dry run); locks to take: {", ".join(wanted) or "none"}')
-        return 0
     for name in wanted:
         if acquire(ws, module.repo, name, wp, 'dispatch'):
             raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
@@ -1377,6 +1577,62 @@ def cmd_worktrees(args):
     return 0
 
 
+def cmd_ready(args):
+    """Packages whose branch is on origin: READY candidates when messages cannot arrive."""
+    ws = Workspace(find_workspace(args.workspace))
+    report = []
+    for wp, r in ws.wp_rows().items():
+        if r['status'] not in ('DISPATCHING', 'IN_PROGRESS', 'REVISE'):
+            continue
+        try:
+            _, module, meta = wp_context(ws, wp)
+        except OrchError:
+            continue
+        entry = {'wp': wp, 'status': r['status'], 'branch': meta['branch'], 'sha': None, 'pr': None,
+                 'note': None}
+        if meta['branch'] and module.repo.local.is_dir():
+            heads = streams.git(module.repo.local, 'ls-remote', '--heads', 'origin', meta['branch'])
+            if heads.returncode == 0 and heads.stdout.strip():
+                entry['sha'] = heads.stdout.split()[0][:12]
+                name = streams.origin_name(module.repo)
+                if name and shutil_which('gh'):
+                    prs = subprocess.run(['gh', 'pr', 'list', '--repo', name, '--head', meta['branch'],
+                                          '--state', 'open', '--json', 'url,body'],
+                                         text=True, capture_output=True)
+                    try:
+                        found = json.loads(prs.stdout or '[]')
+                    except ValueError:
+                        found = []
+                    with_id = [pr['url'] for pr in found if wp in (pr.get('body') or '')]
+                    entry['pr'] = with_id[0] if with_id else None
+                    if found and not with_id:
+                        entry['note'] = 'open PR without the package id in its body'
+        elif meta['branch']:
+            entry['note'] = f'repository {module.repo.path} is not available locally'
+
+        report.append(entry)
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+    for e in report:
+        if e['sha']:
+            where = e['pr'] or e['note'] or ('find the open PR by head branch with the package id in its body '
+                                             '(gh, or the session GitHub tools)')
+            print(f'{e["wp"]}: branch {e["branch"]} pushed at {e["sha"]} -> {where}')
+        elif e['note']:
+            print(f'{e["wp"]}: {e["note"]}; ask the owner for the PR link')
+        else:
+            print(f'{e["wp"]}: no pushed branch {e["branch"] or "?"} yet ({e["status"]})')
+    if not report:
+        print('ready: no dispatched packages')
+    return 0
+
+
+def shutil_which(name):
+    import shutil
+    return shutil.which(name)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='orch.py', description=__doc__.split('\n\n')[0])
     parser.add_argument('--workspace', help='workspace directory (contains orch.yaml)')
@@ -1401,6 +1657,12 @@ def build_parser():
                    help='module that is an area (section) of a --repo')
     p.add_argument('--domain', action='append', metavar='ID=REPO_ID:GLOB[,GLOB]',
                    help='module that is a domain of a --repo')
+    p.add_argument('--in-repo', metavar='REPO_ID',
+                   help='workspace inside this repository on branch orch/<program>, in a deploy-ignored '
+                        'directory; modules run as cloud sessions')
+    p.add_argument('--base', help='base branch of the --in-repo repository (default: origin HEAD)')
+    p.add_argument('--deploy-override', metavar='D-n',
+                   help='owner decision that accepts an unverifiable deploy check or an unsafe --dir')
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser('new-wp', parents=[common], help='create a work package')
@@ -1452,7 +1714,13 @@ def build_parser():
     p.add_argument('wp')
     p.add_argument('--live', action='store_true', help='print a TASK line for a live session')
     p.add_argument('--dry-run', action='store_true', help='only check; change nothing')
+    p.add_argument('--inline', action='store_true',
+                   help='cloud module: append the whole package text to the prompt')
     p.set_defaults(func=cmd_dispatch)
+
+    p = sub.add_parser('ready', parents=[common], help='pushed branches of dispatched packages (READY by branch)')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_ready)
 
     p = sub.add_parser('overlap', parents=[common], help='path overlaps and repository checks (read-only)')
     p.add_argument('--planned', action='store_true', help='declared paths only, no git')

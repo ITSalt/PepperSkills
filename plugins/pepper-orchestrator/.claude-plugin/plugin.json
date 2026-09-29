@@ -1,6 +1,6 @@
 {
   "name": "pepper-orchestrator",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Preview: one orchestrator session runs work across several repositories or parallel streams of one repository - plan, work packages, dispatch with worktrees and locks, owner queue, state in files. Start with /pepper-orchestrator:init <program>, then /pepper-orchestrator:plan <task>.",
   "author": {
     "name": "ITSalt",
@@ -17,6 +17,7 @@
     "planning",
     "hub-and-spoke",
     "worktrees",
-    "monorepo"
+    "monorepo",
+    "cloud-sessions"
   ]
 }

@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.2.0).** Modes `init`, `plan`, `dispatch`, `resume`, `owner`, `decide`; streams in one
+> **Preview (0.2.1).** Modes `init`, `plan`, `dispatch`, `resume`, `owner`, `decide`; streams in one
 > repository with worktrees and locks.
 > Formats and commands may change before 1.0.0.
 
@@ -30,11 +30,43 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:owner` | owner queue as commands; on "done" verify and close |
 | `/pepper-orchestrator:decide <text>` | record D-n / A-n / Q-n or open an owner question P-n |
 
-Version 0.2.0 is a preview (stage 2a). Modules can be whole repositories or areas and domains of
+Version 0.2.1 is a preview (stages 2a and 2c). Modules can be whole repositories or areas and domains of
 one repository: each stream runs in its own worktree (`claude -w`), shared paths and resources are
 held by locks, merges into one repository go through a queue. Review, verify, release and retro
 modes, reviewer and scout subagents and PreToolUse guards come in later versions; until then the
 skill follows the concept for those steps by instructions.
+
+## Cloud sessions
+
+Cloud sessions (claude.ai/code) do not install plugins from project settings, and a session must
+not write to `.claude/`. Give them the skill through the cloud environment's **setup script**,
+which runs before Claude starts; files it writes stay in the environment:
+
+```bash
+# pepper-orchestrator skill (PepperSkills); change this comment to refresh the cached environment.
+# A failure here must not block the environment: the subshell reports it and setup continues.
+(
+  set -e
+  pepper_dir="$HOME/.cache/pepperskills"
+  if [ -d "$pepper_dir/.git" ]; then
+    git -C "$pepper_dir" pull --ff-only -q
+  else
+    git clone -q --depth 1 https://github.com/ITSalt/PepperSkills "$pepper_dir"
+  fi
+  bash "$pepper_dir/scripts/install-skill.sh" pepper-orchestrator
+) || echo "pepper-orchestrator: skill not installed; setup continues" >&2
+```
+
+A non-zero exit of a setup script stops every session of the environment from starting, so the
+fragment never fails: a clone or install error is printed and setup goes on without the skill.
+`install-skill.sh` is idempotent: it copies `plugins/<name>/skills/<name>` into
+`~/.claude/skills/<name>` (or `--dest`) and prints the version. The environment is cached after
+the first run, so the skill is refreshed when the setup script changes or the cache expires.
+
+In a cloud session there are no plugin commands: call `/pepper-orchestrator <mode> <arguments>`
+(for example `/pepper-orchestrator resume`) or use a phrase. A cloud program keeps its workspace
+in the repository on branch `orch/<program>` (`init --in-repo`), module sessions are cloud sessions
+started from the prompt `dispatch` prints, and readiness is found by branches and pull requests.
 
 ## When it fits
 

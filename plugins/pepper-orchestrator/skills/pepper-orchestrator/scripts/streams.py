@@ -56,6 +56,23 @@ TEXT = {
         'ref_pr': '<PR URL>',
         'ref_local': 'branch {branch}',
         'methodology_any': 'any, within this package',
+        'kind_cloud': 'none: a cloud session works in its own clone',
+        'prep_cloud_branch': 'In the cloud session\'s clone, create the package branch: `git fetch origin && git switch -c {branch} origin/{base}`.',
+        'prep_cloud_setup': 'Prepare the clone if the environment\'s setup script has not done it already:',
+        'delivery_cloud': ('- Push `{branch}` and open a PR to `{base}`; its body starts with `{wp}` and holds the '
+                           'development report + `Deviations`. Do not merge.\n'
+                           '- No message back is needed: the orchestrator finds the PR by branch and package id.'),
+        'prompt_cloud': ('Cloud session for work package {wp} in repository {repo_name}, starting from branch {base}. '
+                         '{read} Do section 0, then implement the package on branch {branch} from origin/{base}. '
+                         '{push_rule}Deliver: push {branch} and open a PR to {base} whose body starts with {wp} and '
+                         'holds the development report and Deviations. Never merge (no merge tool such as '
+                         'mcp__github__merge_pull_request, no gh pr merge), never push to {base}, never edit .claude/. '
+                         'No message back: the orchestrator finds your PR by branch and package id.'),
+        'read_branch': 'Read the package: git fetch origin {wbranch} && git show origin/{wbranch}:{wp_rel} .',
+        'read_inline': 'The package text follows this prompt.',
+        'push_rule_cloud': ('A push of any branch of this repository deploys the stand; this package holds the stand '
+                            'slot while it runs: push only once, when the work is complete. '),
+        'command_cloud': '# no terminal command: open a new cloud session on {repo_name}, branch {base}, and paste the prompt above',
         'push_slot': ('- Pushing any branch of this repository deploys the stand: commit locally and do not push '
                       'until the orchestrator gives you the stand slot (the `staging` lock); push once, then '
                       'report.'),
@@ -89,6 +106,23 @@ TEXT = {
         'ref_pr': '<PR URL>',
         'ref_local': 'branch {branch}',
         'methodology_any': 'любые, в рамках пакета',
+        'kind_cloud': 'нет: облачная сессия работает в своём клоне',
+        'prep_cloud_branch': 'В клоне облачной сессии создай ветку пакета: `git fetch origin && git switch -c {branch} origin/{base}`.',
+        'prep_cloud_setup': 'Подготовь клон, если setup-скрипт окружения ещё не сделал этого:',
+        'delivery_cloud': ('- Запушь `{branch}` и открой PR в `{base}`; тело PR начинается с `{wp}` и содержит отчёт '
+                           'разработки + `Deviations`. Не мержить.\n'
+                           '- Сообщение назад не нужно: оркестратор найдёт PR по ветке и ID пакета.'),
+        'prompt_cloud': ('Облачная сессия для пакета {wp} в репозитории {repo_name}, стартовая ветка {base}. '
+                         '{read} Выполни раздел 0, затем пакет в ветке {branch} от origin/{base}. '
+                         '{push_rule}Сдача: запушь {branch} и открой PR в {base}; тело PR начинается с {wp} и содержит '
+                         'отчёт разработки и Deviations. Никогда не мержить (никаких инструментов merge вроде '
+                         'mcp__github__merge_pull_request, никакого gh pr merge), не пушить в {base}, не править .claude/. '
+                         'Сообщение назад не нужно: оркестратор найдёт PR по ветке и ID пакета.'),
+        'read_branch': 'Прочитай пакет: git fetch origin {wbranch} && git show origin/{wbranch}:{wp_rel} .',
+        'read_inline': 'Текст пакета — после этого промпта.',
+        'push_rule_cloud': ('Push любой ветки этого репозитория выкатывает стенд; пакет держит слот стенда, пока '
+                            'идёт работа: пушь один раз, когда работа готова. '),
+        'command_cloud': '# без команды терминала: открой новую облачную сессию на {repo_name}, ветка {base}, и вставь промпт выше',
         'push_slot': ('- Push любой ветки этого репозитория выкатывает стенд: коммить локально и не пушь, пока '
                       'оркестратор не выдаст слот стенда (замок `staging`); запушь один раз и сообщи.'),
         'shared_hint': 'Общие пути этого репозитория (объяви те, что трогает пакет): {shared}.',
@@ -241,8 +275,18 @@ def as_list(value):
     return [str(value)]
 
 
+def local_path(path, base_dir=None):
+    """Expand ~; a relative path (`.` for the repository holding an in-repo workspace) is taken
+    from base_dir, the git toplevel of the workspace."""
+    expanded = Path(os.path.expanduser(path or '.'))
+    if not expanded.is_absolute() and base_dir is not None:
+        expanded = Path(base_dir) / expanded
+    return Path(os.path.normpath(str(expanded)))
+
+
 class Repo:
-    def __init__(self, data, implicit=False, program='program'):
+    def __init__(self, data, implicit=False, program='program', base_dir=None):
+        self.base_dir = base_dir
         self.id = str(data.get('id'))
         self.path = str(data.get('path') or '')
         self.base = str(data.get('base') or 'main')
@@ -256,16 +300,17 @@ class Repo:
         self.deploy_workflows = as_list(data.get('deploy_workflows'))
         self.base_deploys = str(data.get('base_deploys') or 'none')
         self.push_deploys = bool(data.get('push_deploys'))
+        self.sessions = str(data.get('sessions') or 'local')
         self.implicit = implicit
 
     @property
     def key(self):
         """Same checkout on disk: modules of one key never write at the same time unless streams."""
-        return os.path.normpath(os.path.expanduser(self.path))
+        return str(self.local)
 
     @property
     def local(self):
-        return Path(os.path.expanduser(self.path))
+        return local_path(self.path, self.base_dir)
 
 
 class Module:
@@ -278,6 +323,7 @@ class Module:
         self.test_db = data.get('test_db')
         self.ports = data.get('ports') if isinstance(data.get('ports'), dict) else {}
         self.tests = data.get('tests')
+        self.sessions = str(data.get('sessions') or repo.sessions or 'local')
         methodology = data.get('methodology') if isinstance(data.get('methodology'), dict) else {}
         self.methodology = {'name': methodology.get('name'),
                             'allowed': as_list(methodology.get('allowed')),
@@ -288,8 +334,13 @@ class Module:
     def worktree_mode(self):
         return self.kind != 'repo'
 
+    @property
+    def cloud(self):
+        """Started as a cloud session (its own clone): no local worktree, no messages back."""
+        return self.sessions == 'cloud'
 
-def resolve(config):
+
+def resolve(config, base_dir=None):
     """Return (repos, modules, errors, warnings); the 0.1.0 form maps to implicit repos."""
     program = str(config.get('program') or 'program')
     errors, warnings, repos, modules = [], [], {}, {}
@@ -297,7 +348,7 @@ def resolve(config):
         if not isinstance(data, dict) or not data.get('id') or not data.get('path'):
             errors.append(f'orch.yaml: repo needs id and path: {data}')
             continue
-        repo = Repo(data, program=program)
+        repo = Repo(data, program=program, base_dir=base_dir)
         if repo.id in repos:
             errors.append(f'orch.yaml: duplicate repo id {repo.id}')
         if repo.merge_policy not in MERGE_POLICIES:
@@ -317,10 +368,10 @@ def resolve(config):
             repo = repos[ref]
         else:
             # 0.1.0 form: one implicit repository per (path, base), so each module keeps its base.
-            key = (os.path.normpath(os.path.expanduser(ref)), str(data.get('base') or 'main'))
+            key = (str(local_path(ref, base_dir)), str(data.get('base') or 'main'))
             if key not in implicit:
                 implicit[key] = Repo({'id': str(data['id']), 'path': ref, 'base': data.get('base')},
-                                     implicit=True, program=program)
+                                     implicit=True, program=program, base_dir=base_dir)
             repo = implicit[key]
         module = Module(data, repo, program)
         if module.kind not in KINDS:
@@ -333,6 +384,8 @@ def resolve(config):
                 expand_braces(pattern)
             except StreamError as error:
                 errors.append(f'orch.yaml: module {module.id}: {error}')
+        if module.sessions not in ('local', 'cloud'):
+            errors.append(f'orch.yaml: module {module.id}: sessions must be local or cloud')
         modules[module.id] = module
     by_key = {}
     for module in modules.values():
@@ -481,8 +534,11 @@ def git_toplevel(path):
 
 
 def current_branch(path):
-    result = git(path, 'rev-parse', '--abbrev-ref', 'HEAD')
-    return result.stdout.strip() if result.returncode == 0 else None
+    """Branch name (also for a branch without commits yet), 'HEAD' when detached, None outside git."""
+    result = git(path, 'symbolic-ref', '--short', '-q', 'HEAD')
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip()
+    return 'HEAD' if git(path, 'rev-parse', '--git-dir').returncode == 0 else None
 
 
 def _abs_git_path(path, flag):
@@ -509,17 +565,33 @@ def is_linked_worktree(path):
     return git_dir is not None and common is not None and git_dir != common
 
 
+def normalize_url(url, base=None):
+    """A remote URL as host/owner/name (lowercase, no scheme, user, port or .git).
+
+    Handles https and scp-style GitHub URLs and the cloud git proxy form
+    http://<user>@127.0.0.1:<port>/git/<owner>/<repo>. Local paths are resolved against base."""
+    if not url:
+        return None
+    if url.startswith(('/', '.', '~', 'file:')):
+        local = url[len('file://'):] if url.startswith('file://') else url
+        return str((Path(base or '.') / os.path.expanduser(local)).resolve())
+    match = re.match(r'^(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)(?::(\d+))?[:/](.+?)(?:\.git)?/?$', url)
+    if not match:
+        return url.lower()
+    host, path = match.group(1).lower(), match.group(3).lower()
+    proxy = re.match(r'^(?:.*/)?git/([^/]+/[^/]+)$', path)
+    if proxy:  # cloud git proxy: /git/<owner>/<repo>
+        path = proxy.group(1)
+    return f'{host}/{path}'
+
+
 def normalized_origin(path):
-    """remote.origin.url as host/owner/name (lowercase, no scheme, user or .git); local paths resolved."""
+    """remote.origin.url of the checkout at path, normalized by normalize_url."""
     result = git(path, 'config', '--get', 'remote.origin.url')
     url = result.stdout.strip()
     if result.returncode or not url:
         return None
-    match = re.match(r'^(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)[:/](.+?)(?:\.git)?/?$', url)
-    if match and not url.startswith(('/', '.', 'file:')):
-        return f'{match.group(1).lower()}/{match.group(2).lower()}'
-    local = url[len('file://'):] if url.startswith('file://') else url
-    return str((Path(path) / os.path.expanduser(local)).resolve())
+    return normalize_url(url, path)
 
 
 def same_repository(path, repo):
@@ -562,10 +634,201 @@ def main_checkout_warning(home, modules):
     return None
 
 
+def origin_name(repo):
+    """owner/name of the repository's origin when it is a hosted remote (also behind the cloud proxy)."""
+    if not repo.local.is_dir():
+        return None
+    origin = normalized_origin(repo.local)
+    if not origin or origin.startswith('/'):
+        return None
+    return '/'.join(origin.split('/')[-2:])
+
+
+# ---------------------------------------------------------------- deploy check (in-repo workspaces)
+
+DEPLOY_FORMS = (
+    'supported workflow trigger forms: `on: push`; `on: [push, ...]` on one line; `on:` as a block '
+    'mapping with plain keys; under `push:` only `branches`, `branches-ignore` and `paths-ignore`, '
+    'each a one-line flow list or a block list of plain or quoted patterns made of letters, digits, '
+    '`.`, `_`, `-`, `/` and `*`; no anchors, aliases, negations (`!`), character classes or other keys')
+PATTERN_OK = re.compile(r'^[A-Za-z0-9._/*-]+$')
+
+
+class DeployFormError(Exception):
+    """A workflow trigger in a form the check does not understand: never treated as safe."""
+
+
+def _indent(line):
+    return len(line) - len(line.lstrip(' '))
+
+
+def _pattern_list(key, value, following):
+    """Values of a list key: one-line flow list or block list of plain/quoted patterns."""
+    value = value.split(' #')[0].strip()
+    items = []
+    if value:
+        if not (value.startswith('[') and value.endswith(']')):
+            raise DeployFormError(f'`{key}` must be a list, got `{value}`')
+        items = [v.strip() for v in value[1:-1].split(',') if v.strip()]
+    else:
+        for line in following:
+            if not line.strip() or line.strip().startswith('#'):
+                continue
+            m = re.match(r'^\s*-\s*(.+?)\s*(?:#.*)?$', line)
+            if not m:
+                raise DeployFormError(f'`{key}`: unsupported list item `{line.strip()}`')
+            items.append(m.group(1))
+        if not items:
+            raise DeployFormError(f'`{key}` is empty or not a block list')
+    patterns = []
+    for item in items:
+        if len(item) >= 2 and item[0] == item[-1] and item[0] in '\'"':
+            item = item[1:-1]
+        if not PATTERN_OK.match(item):
+            raise DeployFormError(f'`{key}`: pattern `{item}` uses unsupported syntax')
+        patterns.append(item)
+    return patterns
+
+
+def parse_push_trigger(text, name):
+    """(runs_on_push, branches, branches_ignore, paths_ignore) or DeployFormError."""
+    lines = text.split('\n')
+    for line in lines:
+        code = '' if line.lstrip().startswith('#') else line.split(' #')[0]
+        if re.search(r'(^|[\s:\[,])[&*][A-Za-z_*]', code):
+            raise DeployFormError(f'{name}: YAML anchor, alias or unquoted `*` pattern: `{code.strip()}`')
+    tops = [i for i, l in enumerate(lines) if l and not l.startswith((' ', '#')) and ':' in l]
+    on_lines = [i for i in tops if re.match(r'^on:(\s|$)', lines[i])]
+    if any(re.match(r'^["\']on["\']\s*:|^true\s*:', lines[i]) for i in tops):
+        raise DeployFormError(f'{name}: quoted or boolean `on` key')
+    if len(on_lines) != 1:
+        raise DeployFormError(f'{name}: no single top-level `on:` key')
+    start = on_lines[0]
+    head = lines[start].split(':', 1)[1].split(' #')[0].strip()
+    if head:
+        if re.fullmatch(r'[A-Za-z_]+', head):
+            return head == 'push', None, None, None
+        if re.fullmatch(r'\[\s*[A-Za-z_]+(\s*,\s*[A-Za-z_]+)*\s*\]', head):
+            events = [e.strip() for e in head[1:-1].split(',')]
+            return 'push' in events, None, None, None
+        raise DeployFormError(f'{name}: `on: {head}`')
+    end = next((k for k in tops if k > start), len(lines))
+    block = [l for l in lines[start + 1:end]]
+    keys = [(k, l) for k, l in enumerate(block) if l.strip() and not l.lstrip().startswith('#')]
+    if not keys:
+        raise DeployFormError(f'{name}: empty `on:` block')
+    level = _indent(keys[0][1])
+    push_at = None
+    for k, line in keys:
+        if _indent(line) != level:
+            continue
+        m = re.match(r'^\s*([A-Za-z_]+):\s*(.*)$', line)
+        if not m:
+            raise DeployFormError(f'{name}: unsupported `on:` entry `{line.strip()}`')
+        if m.group(1) == 'push':
+            if m.group(2).split(' #')[0].strip() not in ('', '{}', 'null', '~'):
+                raise DeployFormError(f'{name}: `push: {m.group(2).strip()}`')
+            push_at = k
+    if push_at is None:
+        return False, None, None, None
+    push_indent = _indent(block[push_at])
+    body = []
+    for line in block[push_at + 1:]:
+        if line.strip() and _indent(line) <= push_indent:
+            break
+        body.append(line)
+    found = {'branches': None, 'branches-ignore': None, 'paths-ignore': None}
+    entries = [(k, l) for k, l in enumerate(body) if l.strip() and not l.lstrip().startswith('#')]
+    if entries:
+        inner = _indent(entries[0][1])
+        for pos, (k, line) in enumerate(entries):
+            if _indent(line) != inner:
+                continue
+            m = re.match(r'^\s*([A-Za-z_-]+):\s*(.*)$', line)
+            if not m or m.group(1) not in found:
+                raise DeployFormError(f'{name}: unsupported push filter `{line.strip()}`')
+            following = []
+            for line2 in body[k + 1:]:
+                if line2.strip() and _indent(line2) <= inner:
+                    break
+                following.append(line2)
+            found[m.group(1)] = _pattern_list(m.group(1), m.group(2), following)
+    return True, found['branches'], found['branches-ignore'], found['paths-ignore']
+
+
+def workflow_texts(repo_root, ref):
+    """{name: text} of .github/workflows/*.y*ml in the tree of ref (never the working tree)."""
+    listing = git(repo_root, 'ls-tree', '--name-only', f'{ref}:.github/workflows')
+    if listing.returncode:
+        if git(repo_root, 'cat-file', '-e', f'{ref}^{{commit}}').returncode:
+            raise DeployFormError(f'ref {ref} not found')
+        return {}  # the ref has no workflows directory
+    texts = {}
+    for name in listing.stdout.split():
+        if name.endswith(('.yml', '.yaml')):
+            texts[name] = git(repo_root, 'show', f'{ref}:.github/workflows/{name}').stdout
+    return texts
+
+
+def deploy_safe_dirs(repo_root, branch, program, ref):
+    """(candidates, notes, refusals, any_dir) for commits on branch, from the workflows in the tree of ref.
+
+    any_dir: no push workflow runs on branch at all, so any non-hidden directory is safe.
+
+    Candidates are non-hidden directories every push workflow running on branch ignores,
+    `docs` first. Any workflow in an unknown form is a refusal, never 'safe'."""
+    notes, refusals, candidates, relevant = [], [], None, []
+    try:
+        texts = workflow_texts(repo_root, ref)
+    except DeployFormError as error:
+        return [], notes, [str(error)], False
+    if not texts:
+        notes.append(f'{ref} has no .github/workflows: no push workflow runs')
+    for name, text in sorted(texts.items()):
+        try:
+            on_push, branches, branches_ignore, paths_ignore = parse_push_trigger(text, name)
+        except DeployFormError as error:
+            refusals.append(str(error) if str(error).startswith(name) else f'{name}: {error}')
+            continue
+        if not on_push:
+            notes.append(f'{name}: does not run on push')
+            continue
+        if branches is not None and not any(glob_match(branch, b) for b in branches):
+            notes.append(f'{name}: push on {branch} does not run it (branches filter)')
+            continue
+        if branches_ignore and any(glob_match(branch, b) for b in branches_ignore):
+            notes.append(f'{name}: {branch} is in branches-ignore')
+            continue
+        relevant.append(name)
+        dirs = [p[:-3] for p in (paths_ignore or []) if p.endswith('/**') and '*' not in p[:-3]
+                and not any(part.startswith('.') for part in p[:-3].split('/'))]
+        notes.append(f'{name}: runs on push to {branch}; ignored directories: {", ".join(dirs) or "none"}')
+        candidates = dirs if candidates is None else [d for d in candidates if d in dirs]
+    if refusals:
+        return [], notes, refusals, False
+    if not relevant:
+        return [f'docs/orchestration/{program}'], notes, [], True
+    ordered = sorted(candidates or [], key=lambda d: (d != 'docs', d))
+    return [f'{d}/orchestration/{program}' for d in ordered], notes, [], False
+
+
+def dir_is_safe(rel, candidates, any_dir=False):
+    """rel is a non-hidden directory inside one of the ignored directories behind the candidates."""
+    if any(part.startswith('.') for part in Path(rel).parts):
+        return False
+    if any_dir:
+        return True
+    roots = [c.rsplit('/orchestration/', 1)[0] for c in candidates]
+    return any(rel == r or rel.startswith(r + '/') for r in roots)
+
+
 # ---------------------------------------------------------------- work package fields
 
-def wp_fields(lang, module, wp, slug, wp_path, tag, coord):
-    """Placeholder values for the 0.2.0 work package template."""
+def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None):
+    """Placeholder values for the 0.2.0 work package template.
+
+    workspace: {'mode', 'branch', 'wp_rel'} for an in-repo workspace (cloud sessions read the
+    package from its branch)."""
     t = TEXT[lang]
     repo = module.repo
     branch = f'{repo.branch_prefix}{wp.lower()}-{slug}'
@@ -577,7 +840,27 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord):
     finish = (t['finish_pr'] if remote else t['finish_local']).format(**fmt)
     ref = (t['ref_pr'] if remote else t['ref_local']).format(**fmt)
     ports = ', '.join(f'{k}={v}' for k, v in module.ports.items()) or t['none']
-    if module.worktree_mode:
+    if module.cloud:
+        steps = [t['prep_cloud_branch'].format(**fmt)]
+        if repo.worktree_setup:
+            steps.append(t['prep_cloud_setup'] + '\n\n   ```bash\n' +
+                         '\n'.join(f'   {c}' for c in repo.worktree_setup) + '\n   ```')
+        if module.test_db or module.ports:
+            steps.append(t['prep_env'].format(test_db=module.test_db or t['none'], ports=ports))
+        steps.append(t['prep_paths'])
+        prep = '\n'.join(f'{i}. {s}' for i, s in enumerate(steps, 1))
+        repo_name = origin_name(repo) or (normalized_origin(repo.local) if repo.local.is_dir() else None) \
+            or repo.local.name or repo.path
+        ws = workspace or {}
+        if ws.get('mode') == 'in-repo' and ws.get('wp_rel'):
+            read = t['read_branch'].format(wbranch=ws['branch'], wp_rel=ws['wp_rel'])
+        else:
+            read = t['read_inline']
+        push_rule = t['push_rule_cloud'] if repo.push_deploys else ''
+        prompt = t['prompt_cloud'].format(repo_name=repo_name, read=read, push_rule=push_rule, **fmt)
+        command = t['command_cloud'].format(repo_name=repo_name, base=repo.base)
+        worktree = t['kind_cloud']
+    elif module.worktree_mode:
         steps = [t['prep_branch'].format(fetch='git fetch origin && ' if remote else '', **fmt)]
         if repo.worktree_setup:
             steps.append(t['prep_setup'] + '\n\n   ```bash\n' +
@@ -607,7 +890,11 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord):
     if repo.resources:
         hints.append(t['resources_hint'].format(resources=', '.join(f'`{r}`' for r in repo.resources)))
     delivery = (t['delivery_pr'] if remote else t['delivery_local']).format(**fmt)
-    if remote and repo.push_deploys:
+    if module.cloud:
+        delivery = t['delivery_cloud'].format(**fmt)
+        if repo.push_deploys:
+            delivery = '- ' + t['push_rule_cloud'].strip() + '\n' + delivery
+    elif remote and repo.push_deploys:
         delivery = t['push_slot'] + '\n' + delivery
     return {
         'BRANCH': branch, 'KIND': module.kind, 'LINE': repo.base, 'WORKTREE': worktree,
