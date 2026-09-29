@@ -37,6 +37,12 @@ a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
      worktree and prepares it itself (section 0 of the package: branch from the base, the
      repository's `worktree_setup`, its own test database and ports).
    - A module that is a whole repository starts in the repository checkout, as in 0.1.0.
+   - A module with `sessions: cloud` gets a prompt for a **new cloud session** instead of a
+     command: open a cloud session on the repository (base branch) and paste it. With an in-repo
+     workspace the prompt tells the session to read the package from `orch/<program>`; with a
+     separate workspace, or `--inline`, the package text is printed after the prompt. The session
+     delivers a PR with the package id in its body and sends no message; `resume` and
+     `orch.py ready` find it.
    - Never add `--settings` and never invent a settings file in this version.
    - With `--live`, send the `TASK` line through cross-session messaging where the client has it;
      otherwise the owner relays it.

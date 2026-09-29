@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.1 — preview, unreleased
+
+Preview of stage 2c: cloud sessions over one repository.
+
+- In-repo workspace: `init --in-repo <repo-id>` switches to `orch/<program>` (created without
+  tracking the base), finds a directory every push workflow ignores (`on.push` `paths-ignore`,
+  `branches`, `branches-ignore` in `.github/workflows/*`) and refuses when there is none; new
+  `orch.yaml` keys `workspace_mode`, `workspace_branch`, `workspace_dir`; repository paths may be
+  relative to the workspace's repository (`path: .`). `commit` goes only to `workspace_branch` and
+  always pushes to the same-named remote branch.
+- `sessions: cloud` on a repository or module: work packages carry a cloud-session prompt (read the
+  package from `orch/<program>` or inline, branch from the base, PR with the package id, no message
+  back, never merge tools such as `mcp__github__merge_pull_request`); `dispatch` prints it
+  (`--inline` appends the package text).
+- `orch.py ready`: dispatched packages whose branch is on origin (`git ls-remote`), with the PR via
+  `gh` when available; `resume` describes the no-`gh` path through the session's GitHub tools.
+- Workspace discovery also finds nested in-repo workspaces (up to four levels below the current
+  directory); `lint` checks the in-repo keys and warns when the workspace directory is not
+  ignored by every push workflow.
+- `scripts/install-skill.sh` (repository root): idempotent copy of a canonical skill into
+  `~/.claude/skills` for cloud environment setup scripts; README section "Cloud sessions".
+- Skill: hard rule "no merge tools", cloud section, `/pepper-orchestrator <mode>` calls without
+  plugin commands. Concept 1.2 (EN and RU), section 20 "Cloud sessions".
+
 ## 0.2.0 — preview, unreleased
 
 Preview of stage 2a: streams in one repository and dispatch. A 0.1.0 workspace works unchanged

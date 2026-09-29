@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.2.0).** Режимы `init`, `plan`, `dispatch`, `resume`, `owner`, `decide`; потоки в одном
+> **Preview (0.2.1).** Режимы `init`, `plan`, `dispatch`, `resume`, `owner`, `decide`; потоки в одном
 > репозитории с worktree и замками.
 > Форматы и команды могут измениться до 1.0.0.
 
@@ -35,6 +35,32 @@ PROD и запись в БД остаются за владельцем — в �
 замками, слияния в один репозиторий идут очередью. Режимы review, verify, release, retro,
 субагенты-рецензенты и PreToolUse-хуки появятся в следующих версиях; до тех пор скилл ведёт эти шаги
 по концепции инструкциями.
+
+## Облачные сессии
+
+Облачные сессии (claude.ai/code) не ставят плагины из проектных настроек, а писать в `.claude/`
+облачной сессии нельзя. Скилл им даёт **setup-скрипт** облачного окружения: он выполняется до старта
+Claude, записанные им файлы остаются в окружении:
+
+```bash
+# pepper-orchestrator skill (PepperSkills); change this comment to refresh the cached environment
+pepper_dir="$HOME/.cache/pepperskills"
+if [ -d "$pepper_dir/.git" ]; then
+  git -C "$pepper_dir" pull --ff-only -q
+else
+  git clone -q --depth 1 https://github.com/ITSalt/PepperSkills "$pepper_dir"
+fi
+bash "$pepper_dir/scripts/install-skill.sh" pepper-orchestrator
+```
+
+`install-skill.sh` идемпотентен: копирует `plugins/<name>/skills/<name>` в
+`~/.claude/skills/<name>` (или в `--dest`) и печатает версию. После первого запуска окружение
+кэшируется, поэтому скилл обновится при изменении setup-скрипта или истечении кэша.
+
+Команд плагина в облаке нет: вызывайте `/pepper-orchestrator <режим> <аргументы>` (например,
+`/pepper-orchestrator resume`) или фразой. Облачная программа держит рабочее пространство в самом
+репозитории на ветке `orch/<program>` (`init --in-repo`), сессии модулей — облачные, их запускают по
+промпту из `dispatch`, готовность находится по веткам и PR.
 
 ## Когда подходит
 

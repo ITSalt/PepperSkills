@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.1 · 2026-09-28 (1.1: streams in one repository, rules P1-P5, section 19) · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.2 · 2026-09-29 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -388,3 +388,25 @@ an unmerged branch breaks the deploy for everyone.
 - The same applies to other project changes the plugin does not make (`.worktreeinclude`, mock
   modes of paid external services, the order of a methodology's changelog): the orchestrator finds
   them, asks the owner, and they are done as ordinary packages in the project.
+
+## 20. Cloud sessions
+
+When the orchestrator and the module sessions are cloud sessions over one repository, each session
+is its own clone, sees only its own repository, and messages from it do not reach other sessions.
+The concept holds because it rests on files and reconciliation, not on messages:
+
+- **The workspace lives in the repository, on its own branch.** Branch `orch/<program>` is
+  long-lived and never merged into the base; the workspace directory is one that every push
+  workflow ignores (for example under a `paths-ignore` path), so state commits start no deploy.
+  The orchestrator cloud session starts on that branch. Nothing is ever committed to the base.
+- **Packages are read from that branch.** A module session gets a prompt that tells it to fetch
+  `orch/<program>` and read its package from there (or the package text inline), to branch from
+  the base and to deliver a pull request with the package id in its body.
+- **Readiness is found, not announced.** No READY message arrives from a cloud session: the
+  orchestrator finds pushed branches and pull requests (through the GitHub tools of its session
+  when there is no `gh`) on every resume.
+- **Merge tools stay unused.** Cloud sessions can have tools that merge pull requests; the
+  orchestrator and module sessions never call them. Merge remains the owner's action.
+- **Configuration is delivered from outside the session.** A cloud session does not install
+  plugins from project settings and must not edit `.claude/`; the skill reaches it through the
+  environment's setup script (or as a project skill committed by the owner).

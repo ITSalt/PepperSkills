@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.2.0).** Modes `init`, `plan`, `dispatch`, `resume`, `owner`, `decide`; streams in one
+> **Preview (0.2.1).** Modes `init`, `plan`, `dispatch`, `resume`, `owner`, `decide`; streams in one
 > repository with worktrees and locks.
 > Formats and commands may change before 1.0.0.
 
@@ -35,6 +35,32 @@ one repository: each stream runs in its own worktree (`claude -w`), shared paths
 held by locks, merges into one repository go through a queue. Review, verify, release and retro
 modes, reviewer and scout subagents and PreToolUse guards come in later versions; until then the
 skill follows the concept for those steps by instructions.
+
+## Cloud sessions
+
+Cloud sessions (claude.ai/code) do not install plugins from project settings, and a session must
+not write to `.claude/`. Give them the skill through the cloud environment's **setup script**,
+which runs before Claude starts; files it writes stay in the environment:
+
+```bash
+# pepper-orchestrator skill (PepperSkills); change this comment to refresh the cached environment
+pepper_dir="$HOME/.cache/pepperskills"
+if [ -d "$pepper_dir/.git" ]; then
+  git -C "$pepper_dir" pull --ff-only -q
+else
+  git clone -q --depth 1 https://github.com/ITSalt/PepperSkills "$pepper_dir"
+fi
+bash "$pepper_dir/scripts/install-skill.sh" pepper-orchestrator
+```
+
+`install-skill.sh` is idempotent: it copies `plugins/<name>/skills/<name>` into
+`~/.claude/skills/<name>` (or `--dest`) and prints the version. The environment is cached after
+the first run, so the skill is refreshed when the setup script changes or the cache expires.
+
+In a cloud session there are no plugin commands: call `/pepper-orchestrator <mode> <arguments>`
+(for example `/pepper-orchestrator resume`) or use a phrase. A cloud program keeps its workspace
+in the repository on branch `orch/<program>` (`init --in-repo`), module sessions are cloud sessions
+started from the prompt `dispatch` prints, and readiness is found by branches and pull requests.
 
 ## When it fits
 
