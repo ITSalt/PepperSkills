@@ -56,6 +56,7 @@ a title and modules.
 8. **Complete `orch.yaml` by point edits** (`safe_edit.py --stdin`, never a rewrite): per repo
    `worktree_setup`, `merge_policy` (`sequential` if merges deploy the stand without CI),
    `shared_paths`, `resources`, `checks` (read-only commands; contract in `SKILL.md`),
+   `review_setup` (setup of review clones, run in the clone root with `ORCH_MAIN_CHECKOUT`),
    `deploy_workflows`, `base_deploys`, `push_deploys: true` when a push of any branch deploys the
    stand (packages then tell sessions to push only with the stand slot); per module
    `test_db`, `ports`, `tests {scoped, full}`, `methodology {name, allowed, forbidden}` (for a

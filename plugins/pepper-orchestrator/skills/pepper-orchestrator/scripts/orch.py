@@ -24,6 +24,7 @@ Commands:
   worktrees                              worktrees of every repository (read-only)
   upgrade                                add 0.2.0 tables to a 0.1.0 status.md
   ready                                  pushed branches of dispatched packages (READY without messages)
+  review-start <WP>                      automatic review findings, report skeleton, clone command
 """
 import argparse
 import datetime as dt
@@ -1458,6 +1459,166 @@ def cmd_merge(args):
     return 0
 
 
+def file_findings(wp, meta, repo, files, held):
+    """Findings for the files a package's branch changes: outside its paths, shared paths
+    undeclared or changed without the package holding the lock."""
+    found = []
+    for f in files:
+        if streams.matches_any(f, repo.shared_paths) or streams.matches_any(f, meta['shared']):
+            if not streams.matches_any(f, meta['shared']):
+                found.append(f'{wp}: shared path {f} changed but not declared')
+            elif not streams.matches_any(f, held):
+                found.append(f'{wp}: shared path {f} changed without the lock')
+        elif not streams.matches_any(f, meta['paths']):
+            found.append(f'{wp}: {f} is outside the allowed paths')
+    return found
+
+
+def run_checks(repo, branches):
+    """The repository's own check commands (contract in SKILL.md); failures become findings."""
+    found = []
+    if not repo.checks or not repo.local.is_dir():
+        return found
+    env = {**os.environ, 'ORCH_BASE_REF': streams.base_ref(repo), 'ORCH_BRANCHES': ' '.join(branches)}
+    for check in repo.checks:
+        try:
+            result = subprocess.run(check, shell=True, cwd=repo.local, env=env, text=True,
+                                    capture_output=True, timeout=300)
+        except subprocess.TimeoutExpired:
+            found.append(f'{repo.id}: `{check}` timed out')
+            continue
+        if result.returncode:
+            out = (result.stdout + result.stderr).strip().split('\n')[:5]
+            found.append(f'{repo.id}: `{check}` failed: ' + ' / '.join(out))
+    return found
+
+
+def review_auto(ws, wp, module, meta, ref):
+    """Automatic review findings for one package at ref: paths, shared paths and locks, a stale
+    merge-base, repository checks. Returns (sha, files, findings) with findings as (kind, text)."""
+    repo = module.repo
+    resolved = streams.resolve_ref(repo, ref)
+    if resolved is None:
+        raise OrchError(f'{ref} not found in {repo.path} (fetch it or pass --ref <sha>)')
+    sha = streams.git(repo.local, 'rev-parse', resolved).stdout.strip()
+    base = streams.base_ref(repo)
+    files = [f for f in streams.git(repo.local, 'diff', '--name-only', f'{base}...{sha}').stdout.split('\n') if f]
+    held = [l['lock'].split(':', 1)[-1] for l in locks(ws) if l['holder'] == wp]
+    findings = [('paths', t) for t in file_findings(wp, meta, repo, files, held)]
+    mb, behind, overlapping = streams.merge_base_report(repo, sha, files)
+    if behind:
+        if overlapping:
+            findings.append(('merge-base', f'{wp}: branch point {mb[:10]} is {behind} commits behind {base}, which '
+                                           f'changed {len(overlapping)} of the branch\'s files since: '
+                                           + ', '.join(overlapping[:10]) + ' - rebase and re-run the tests'))
+        else:
+            findings.append(('merge-base', f'{wp}: branch point {mb[:10]} is {behind} commits behind {base} '
+                                           '(no overlapping files) - rebase before merge'))
+    findings.extend(('check', t) for t in run_checks(repo, [sha]))
+    return sha, files, findings
+
+
+REPORT_TEXT = {
+    'en': {'none': 'none found', 'kinds': {'paths': 'paths and locks', 'merge-base': 'merge-base',
+                                          'check': 'repository check'}},
+    'ru': {'none': 'не найдено', 'kinds': {'paths': 'пути и замки', 'merge-base': 'merge-base',
+                                          'check': 'проверка репозитория'}},
+}
+
+
+def cmd_review_start(args):
+    """Start a review round: automatic findings, report skeleton, clone command, status REVIEW."""
+    ws = Workspace(find_workspace(args.workspace))
+    wp = args.wp
+    r, module, meta = wp_context(ws, wp)
+    if not module.repo.local.is_dir():
+        raise OrchError(f'{module.repo.path} is not available locally: clone it (read-only) or pass --workspace '
+                        'from a place where it is')
+    if not args.no_fetch:  # updates the remote-tracking refs of the module repository
+        fetched = streams.git(module.repo.local, 'fetch', '-q', 'origin')
+        if fetched.returncode:
+            raise OrchError(f'git fetch origin failed in {module.repo.path}: {fetched.stderr.strip()} '
+                            '(pass --no-fetch to review the refs as they are)')
+    warnings = []
+    ref = args.ref
+    if not ref:
+        branch = meta['branch']
+        if not branch or not streams.ref_exists(module.repo.local, f'origin/{branch}'):
+            raise OrchError(f'{wp}: no pushed branch origin/{branch or "?"}; pass --ref <PR head sha>')
+        ref = f'origin/{branch}'
+        local = streams.git(module.repo.local, 'rev-parse', '--verify', '-q', branch).stdout.strip()
+        remote = streams.git(module.repo.local, 'rev-parse', ref).stdout.strip()
+        if local and local != remote:
+            warnings.append(f'local branch {branch} ({local[:10]}) differs from {ref} ({remote[:10]}); '
+                            f'reviewing {ref} - pass --ref <PR head sha> to be explicit')
+    sha, files, findings = review_auto(ws, wp, module, meta, ref)
+    base = streams.base_ref(module.repo)
+    base_sha = streams.git(module.repo.local, 'rev-parse', base).stdout.strip()
+    text = REPORT_TEXT[ws.lang]
+    auto = '\n'.join(f'- **{text["kinds"][k]}**: {t}' for k, t in findings) or f'- {text["none"]}'
+    stat = streams.git(module.repo.local, 'diff', '--shortstat', f'{base}...{sha}').stdout.strip()
+    revision = ''
+    if args.since:
+        old = streams.resolve_ref(module.repo, args.since)
+        if old is None:
+            raise OrchError(f'--since {args.since} not found')
+        revision = (f'git -C {module.repo.path} range-diff {base}..{old} {base}..{sha}'
+                    if streams.git(module.repo.local, 'merge-base', '--is-ancestor', old, sha).returncode
+                    else f'git -C {module.repo.path} diff {old} {sha}')
+    date = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
+    reports = ws.root / 'reports'
+    name = f'{wp.lower()}-review-{date}' + (f'-r{args.round}' if args.round else '') + '.md'
+    path = reports / name
+    template = (TEMPLATES / ws.lang / 'review-report.md').read_text(encoding='utf-8')
+    base_label = f'{module.repo.base} @ {base_sha[:10]}'
+    body = fill(template, {'WP': wp, 'PR': args.pr or r['pr'], 'SHA': sha[:10], 'BASE': base_label, 'DATE': today(),
+                           'ROUND': str(args.round or 1), 'FILES': str(len(files)), 'STAT': stat or '—',
+                           'AUTO': auto, 'REVISION': revision or '—'})
+    safe_edit.create(path, body)
+    if args.pr:
+        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='pr', text=args.pr, quiet=True,
+                                   evidence=None))
+    if r['status'] in ('DISPATCHING', 'IN_PROGRESS', 'REVISE'):
+        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='REVIEW', quiet=True,
+                                   evidence=f'{sha[:10]}; report reports/{name}'))
+    else:
+        ws.journal(f'{wp}: review round {args.round or 1} started at {sha[:10]}', wp=wp,
+                   evidence=f'reports/{name}')
+    origin = streams.git(module.repo.local, 'config', '--get', 'remote.origin.url').stdout.strip()
+    tests = module.tests if isinstance(module.tests, dict) else {'full': module.tests or []}
+    commands = [c for c in streams.as_list(tests.get('scoped')) + streams.as_list(tests.get('full'))]
+    clone = [f'ORCH_MAIN_CHECKOUT={module.repo.local}', 'bash', str(SKILL_DIR / 'scripts' / 'review_clone.sh'),
+             '--repo', origin or str(module.repo.local), '--sha', sha]
+    for c in module.repo.review_setup:
+        clone += ['--setup', c]
+    for c in commands:
+        clone += ['--test', c]
+    result = {'wp': wp, 'sha': sha, 'base': base_label, 'files': files, 'stat': stat, 'report': str(path),
+              'warnings': warnings,
+              'findings': [{'kind': k, 'finding': t} for k, t in findings],
+              'clone_command': ' '.join(shlex_quote(c) for c in clone), 'revision_diff': revision or None}
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    for warning in warnings:
+        print(f'warning: {warning}')
+    print(f'review {wp} at {sha[:10]} against {base_label}: {stat or "no changes"}')
+    print(f'report: {path}')
+    for k, t in findings:
+        print(f'[{k}] {t}')
+    if not findings:
+        print('automatic findings: none')
+    print(f'clone and tests: {result["clone_command"]}')
+    if revision:
+        print(f'revision diff: {revision}')
+    return 0
+
+
+def shlex_quote(text):
+    import shlex
+    return shlex.quote(text)
+
+
 def cmd_overlap(args):
     ws = Workspace(find_workspace(args.workspace))
     repos, modules, errors = ws.streams()
@@ -1495,16 +1656,10 @@ def cmd_overlap(args):
             if files is None:
                 findings.append(('actual', f'{wp}: branch {branch or "?"} not found in {module.repo.path}'))
                 continue
-            shared = module.repo.shared_paths
             for f in files:
                 touched.setdefault((module.repo.key, f), []).append(wp)
-                if streams.matches_any(f, shared) or streams.matches_any(f, meta['shared']):
-                    if not streams.matches_any(f, meta['shared']):
-                        findings.append(('actual', f'{wp}: shared path {f} changed but not declared'))
-                    elif not streams.matches_any(f, held.get(wp, [])):
-                        findings.append(('actual', f'{wp}: shared path {f} changed without the lock'))
-                elif not streams.matches_any(f, meta['paths']):
-                    findings.append(('actual', f'{wp}: {f} is outside the allowed paths'))
+            findings.extend(('actual', text) for text in file_findings(wp, meta, module.repo, files,
+                                                                        held.get(wp, [])))
         for (_, f), wps in sorted(touched.items(), key=lambda kv: kv[0][1]):
             if len(wps) > 1:
                 findings.append(('actual', f'{" and ".join(wps)} both change {f}'))
@@ -1518,20 +1673,7 @@ def cmd_overlap(args):
                 seen[module.repo.key] = module.repo
             seen.update({r.key: r for r in repos.values()})
             for key, repo in seen.items():
-                if not repo.checks or not repo.local.is_dir():
-                    continue
-                env = {**os.environ, 'ORCH_BASE_REF': streams.base_ref(repo),
-                       'ORCH_BRANCHES': ' '.join(branches.get(key, []))}
-                for check in repo.checks:
-                    try:
-                        result = subprocess.run(check, shell=True, cwd=repo.local, env=env, text=True,
-                                                capture_output=True, timeout=300)
-                    except subprocess.TimeoutExpired:
-                        findings.append(('check', f'{repo.id}: `{check}` timed out'))
-                        continue
-                    if result.returncode:
-                        out = (result.stdout + result.stderr).strip().split('\n')[:5]
-                        findings.append(('check', f'{repo.id}: `{check}` failed: ' + ' / '.join(out)))
+                findings.extend(('check', text) for text in run_checks(repo, branches.get(key, [])))
     if args.json:
         print(json.dumps([{'kind': k, 'finding': f} for k, f in findings], ensure_ascii=False, indent=2))
     else:
@@ -1748,6 +1890,18 @@ def build_parser():
     p = sub.add_parser('worktrees', parents=[common], help='worktrees of every repository (read-only)')
     p.add_argument('--json', action='store_true')
     p.set_defaults(func=cmd_worktrees)
+
+    p = sub.add_parser('review-start', parents=[common],
+                       help='automatic findings, report skeleton and clone command for a review round')
+    p.add_argument('wp')
+    p.add_argument('--ref', help='branch or SHA to review (default: the package branch)')
+    p.add_argument('--pr', help='PR URL, recorded in the WP row')
+    p.add_argument('--since', help='previous reviewed SHA: prints the revision diff command')
+    p.add_argument('--round', type=int, help='resubmission number (report file suffix -rN)')
+    p.add_argument('--no-fetch', action='store_true',
+                   help='do not fetch origin (by default review-start updates remote-tracking refs)')
+    p.add_argument('--json', action='store_true')
+    p.set_defaults(func=cmd_review_start)
 
     p = sub.add_parser('upgrade', parents=[common], help='add 0.2.0 tables to a 0.1.0 status.md')
     p.set_defaults(func=cmd_upgrade)

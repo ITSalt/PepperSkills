@@ -896,6 +896,123 @@ def test_cloud_dispatch_safety(tmp):
     assert git(orch_clone, 'rev-parse', 'HEAD').strip() == head
     print('PASS cloud dispatch safety: dry-run read-only, package on origin first, stand slot, existing branch, detached')
 
+
+def test_review(tmp):
+    """2b: automatic review findings on the demo monorepo, report skeleton, disposable clone."""
+    mono = make_monorepo(tmp / 'review')
+    home = tmp / 'review/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'rv', '--lang', 'en', '--repo', f'mono={mono}',
+        '--area', 'admin=mono:apps/admin/**', '--area', 'app=mono:apps/app/**')
+    ws = home / 'features/rv'
+    config = ws / 'orch.yaml'
+    for old, new in (('    shared_paths: []', '    shared_paths: [pnpm-lock.yaml, "backend/migrations/**"]'),
+                     ('    resources: []', '    resources: [migrations]'),
+                     ('    checks: []', '    checks: ["test -n \\"$ORCH_BRANCHES\\""]\n'
+                                      '    review_setup: ["cp \\"$ORCH_MAIN_CHECKOUT/config.yaml\\" copied.yaml"]')):
+        safe_edit.replace_once(config, old, new)
+    safe_edit.replace_once(config, '    paths: ["apps/app/**"]\n',
+                           '    paths: ["apps/app/**"]\n    tests: {scoped: ["test -f apps/app/src/page.tsx"], '
+                           'full: ["grep -q change apps/app/src/page.tsx"]}\n')
+    run(home, 'new-wp', 'app', 'checkout')
+    wp = ws / 'work-packages/WP-APP-01-checkout.md'
+    fill_header(wp, 'Shared paths touched', '`pnpm-lock.yaml`')
+    run(home, 'set', 'WP-APP-01', 'status', 'READY')
+    run(home, 'dispatch', 'WP-APP-01')
+    run(home, 'lock', 'release', 'pnpm-lock.yaml', '--wp', 'WP-APP-01')  # the branch will change it unlocked
+    wt = branch_with(mono, 'feature/wp-app-01-checkout',
+                     ['apps/app/src/page.tsx', 'apps/admin/src/page.tsx', 'pnpm-lock.yaml',
+                      'backend/migrations/0002_orders.sql'])
+    git(wt, 'push', '-q', 'origin', 'feature/wp-app-01-checkout')
+    # The base moves on and changes one of the branch's files: a stale merge-base.
+    (mono / 'apps/app/src/page.tsx').write_text('export const App = () => 2;\n', encoding='utf-8')
+    git(mono, 'commit', '-qam', 'base moves on')
+    git(mono, 'push', '-q', 'origin', 'main')
+    out = run(home, 'review-start', 'WP-APP-01', '--pr', 'https://example.invalid/pull/5', '--json').stdout
+    result = json.loads(out)
+    found = [f['finding'] for f in result['findings']]
+    assert 'WP-APP-01: apps/admin/src/page.tsx is outside the allowed paths' in found, found
+    assert 'WP-APP-01: shared path pnpm-lock.yaml changed without the lock' in found, found
+    assert 'WP-APP-01: shared path backend/migrations/0002_orders.sql changed but not declared' in found
+    stale = [f for f in found if 'commits behind origin/main' in f]
+    assert stale and 'apps/app/src/page.tsx' in stale[0] and 'rebase' in stale[0], found
+    assert not any(f.startswith('mono:') for f in found), 'passing repository check is not a finding'
+    report = Path(result['report'])
+    text = report.read_text(encoding='utf-8')
+    assert report.name.startswith('wp-app-01-review-') and 'https://example.invalid/pull/5' in text
+    assert 'outside the allowed paths' in text and '{{' not in text
+    rows = orch.Workspace(ws).wp_rows()
+    assert rows['WP-APP-01']['status'] == 'REVIEW' and rows['WP-APP-01']['pr'] == 'https://example.invalid/pull/5'
+    assert "--test 'test -f apps/app/src/page.tsx'" in result['clone_command'], result['clone_command']
+    assert result['clone_command'].startswith(f'ORCH_MAIN_CHECKOUT={mono} bash ')
+    assert 'copied.yaml' in result['clone_command'] and 'pnpm install' not in result['clone_command']
+    assert result['base'].startswith('main @ ') and 'main @ ' in text
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    # The review command runs the clone exactly as printed (review_setup with ORCH_MAIN_CHECKOUT).
+    printed = subprocess.run(['bash', '-c', result['clone_command'].replace("'test -f apps/app/src/page.tsx'",
+                                                                            "'test -f copied.yaml'", 1)],
+                             capture_output=True, text=True)
+    assert 'setup: cp' in printed.stdout and 'test: test -f copied.yaml -> exit 0' in printed.stdout, printed.stdout
+    # M2: an unpushed local commit on the branch is not reviewed; the default is origin/<branch>.
+    (wt / 'apps/app/src/local.tsx').write_text('local only\n', encoding='utf-8')
+    git(wt, 'add', '-A')
+    git(wt, 'commit', '-qm', 'not pushed')
+    local = json.loads(run(home, 'review-start', 'WP-APP-01', '--round', '9', '--json').stdout)
+    assert local['sha'] == result['sha'] and 'differs from origin/feature/wp-app-01-checkout' in local['warnings'][0]
+    git(wt, 'reset', '-q', '--hard', 'HEAD~1')
+    # L2: a failing fetch stops the review unless --no-fetch.
+    git(mono, 'remote', 'set-url', 'origin', str(tmp / 'review/missing.git'))
+    assert 'git fetch origin failed' in run(home, 'review-start', 'WP-APP-01', '--round', '8', ok=False).stderr
+    assert run(home, 'review-start', 'WP-APP-01', '--round', '8', '--no-fetch').returncode == 0
+    git(mono, 'remote', 'set-url', 'origin', str(tmp / 'review/mono.git'))
+    # Resubmission: the revision diff command, a second report without clobbering the first.
+    old_sha = result['sha']
+    (wt / 'apps/app/src/page.tsx').write_text('fixed\n', encoding='utf-8')
+    git(wt, 'commit', '-qam', 'resubmission 1')
+    git(wt, 'push', '-q', 'origin', 'feature/wp-app-01-checkout')
+    run(home, 'review-start', 'WP-APP-01', ok=False)  # same-day report exists: needs --round
+    second = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', old_sha, '--round', '2',
+                            '--json').stdout)
+    assert second['report'].endswith('-r2.md') and f'diff {old_sha}' in second['revision_diff']
+    # L1: after a rebase the revision diff is a range-diff over base..old and base..new.
+    git(wt, 'fetch', '-q', 'origin')
+    git(wt, 'rebase', '-q', '-X', 'theirs', 'origin/main')
+    git(wt, 'push', '-q', '-f', 'origin', 'feature/wp-app-01-checkout')
+    third = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', second['sha'], '--round', '3',
+                           '--json').stdout)
+    command = third['revision_diff']
+    assert f'range-diff origin/main..{second["sha"]} origin/main..{third["sha"]}' in command, command
+    rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, text=True)
+    assert rd.returncode == 0 and 'resubmission 1' in rd.stdout, rd.stdout
+    assert 'base moves on' not in rd.stdout, 'base commits must not show up in the revision diff'
+    sym = subprocess.run(command.replace('..', '...').split(), capture_output=True, text=True)
+    assert 'base moves on' in sym.stdout, 'control: the symmetric form would show the base commit'
+    # The disposable clone: tests pass at the new head, fail at the old one, cleanup is guarded.
+    clone = [sys.executable, '-c', 'import sys, subprocess; sys.exit(subprocess.call(sys.argv[1:]))',
+             'bash', str(HERE / 'review_clone.sh'), '--repo', str(tmp / 'review/mono.git')]
+    ok = subprocess.run(clone + ['--sha', second['sha'], '--test', 'test -f apps/app/src/page.tsx',
+                                 '--test', 'grep -q fixed apps/app/src/page.tsx'], capture_output=True, text=True)
+    assert ok.returncode == 0 and 'test: grep -q fixed apps/app/src/page.tsx -> exit 0' in ok.stdout, ok.stdout
+    bad = subprocess.run(clone + ['--sha', old_sha, '--test', 'grep -q fixed apps/app/src/page.tsx'],
+                         capture_output=True, text=True)
+    assert bad.returncode == 1 and '-> exit 1' in bad.stdout, bad.stdout
+    kept = subprocess.run(clone + ['--sha', old_sha, '--keep'], capture_output=True, text=True)
+    kept_dir = kept.stdout.split('--cleanup ')[1].split('\n')[0].strip()
+    assert Path(kept_dir, 'repo/apps/app/src/page.tsx').is_file()
+    refused = subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--cleanup', str(tmp)], capture_output=True,
+                             text=True)
+    assert refused.returncode == 2 and Path(tmp).is_dir(), 'cleanup only removes marked clone directories'
+    subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--cleanup', kept_dir], check=True, capture_output=True)
+    assert not Path(kept_dir).exists()
+    missing = subprocess.run(clone + ['--sha', 'deadbeef'], capture_output=True, text=True)
+    assert missing.returncode == 2
+    dangling = subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--repo', 'x', '--sha'], capture_output=True,
+                              text=True, timeout=10)
+    assert dangling.returncode == 2 and 'needs a value' in dangling.stderr
+    print('PASS review: automatic findings (outside paths, unlocked/undeclared shared, stale merge-base), '
+          'report, rounds, disposable clone')
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -915,6 +1032,7 @@ def main():
         test_cloud_in_repo(tmp)
         test_cloud_deploy_scan(tmp)
         test_cloud_dispatch_safety(tmp)
+        test_review(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

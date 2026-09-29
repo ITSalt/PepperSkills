@@ -293,6 +293,9 @@ class Repo:
         self.branch_prefix = str(data.get('branch_prefix') or f'{program}/')
         self.worktree_root = str(data.get('worktree_root') or '.claude/worktrees')
         self.worktree_setup = as_list(data.get('worktree_setup'))
+        # Setup for review clones (run in the clone root, ORCH_MAIN_CHECKOUT = the main checkout);
+        # worktree_setup is written for session worktrees and is never reused for clones.
+        self.review_setup = as_list(data.get('review_setup'))
         self.merge_policy = str(data.get('merge_policy') or 'free')
         self.shared_paths = as_list(data.get('shared_paths'))
         self.resources = as_list(data.get('resources'))
@@ -487,6 +490,30 @@ def branch_files(repo, branch):
             if result.returncode == 0:
                 return [f for f in result.stdout.split('\n') if f]
     return None
+
+
+def resolve_ref(repo, ref):
+    """A commit-ish of the module repository: local ref, origin/<ref> or a SHA (fetched if needed)."""
+    for candidate in (ref, f'origin/{ref}'):
+        if ref_exists(repo.local, candidate):
+            return candidate
+    if re.fullmatch(r'[0-9a-f]{7,40}', ref or ''):
+        git(repo.local, 'fetch', '-q', 'origin', ref)
+        if ref_exists(repo.local, ref):
+            return ref
+    return None
+
+
+def merge_base_report(repo, ref, files):
+    """(merge_base, behind, overlapping) of ref against the base: commits the base gained since the
+    branch point and which of the branch's files the base changed meanwhile."""
+    base = base_ref(repo)
+    mb = git(repo.local, 'merge-base', base, ref).stdout.strip()
+    if not mb:
+        return None, None, []
+    behind = int(git(repo.local, 'rev-list', '--count', f'{mb}..{base}').stdout.strip() or 0)
+    changed = [f for f in git(repo.local, 'diff', '--name-only', mb, base).stdout.split('\n') if f]
+    return mb, behind, sorted(set(changed) & set(files))
 
 
 def worktrees(repo):

@@ -30,6 +30,7 @@ repos: []
 #    shared_paths: [pnpm-lock.yaml, "**/package.json", "backend/migrations/**"]
 #    resources: [staging, migrations, dev-stack]
 #    checks: ["./scripts/check-migration-order.sh"]   # read-only commands; see below
+#    review_setup: ["cp \"$ORCH_MAIN_CHECKOUT/.env\" .env", "pnpm install --frozen-lockfile"]  # review clones
 #    deploy_workflows: [deploy.yml]   # read by resume to see who holds the stand
 #    base_deploys: prod               # prod | staging | none: what a merge into base deploys
 #    sessions: cloud                  # local | cloud: module sessions are cloud sessions (own clones)
@@ -37,7 +38,7 @@ repos: []
 #
 # Paths are globs: `*` (one directory), `**` (any depth), `?` (one character), `{a,b}`
 # (alternatives); `[` and `]` are literal.
-# checks: run by `orch.py overlap` through the shell in the repository's main checkout, env
+# checks: run by `orch.py overlap` and `orch.py review-start` through the shell in the repository's main checkout, env
 # ORCH_BASE_REF (base ref) and ORCH_BRANCHES (active package branches, space separated), timeout
 # 300 s; a non-zero exit is a finding. Checks must only read.
 

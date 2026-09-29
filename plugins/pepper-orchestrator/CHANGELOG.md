@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.3.0 — preview, unreleased
+
+Preview of stage 2b: review of module deliveries.
+
+- Mode `review` and command `/pepper-orchestrator:review`: automatic findings, the
+  `orchestrator-reviewer` agent on the first submission, the revision diff on resubmissions,
+  verdict REVISE/ACCEPTED, report from the `review-report` template (EN/RU), REVISE message and
+  ACCEPTED hand-over (merge queue, owner merge item). Never merges, approves or comments.
+- `orch.py review-start <WP>`: automatic findings reusing the stream rules (files outside the
+  allowed paths, shared paths undeclared or without the lock, repository `checks`) plus a stale
+  merge-base with the branch files the base changed since; report skeleton; status `REVIEW`; the
+  disposable clone command; `--since/--round` for resubmissions (`git range-diff` after a rebase).
+- `scripts/review_clone.sh`: clone at a SHA into a marked temporary directory, setup, tests,
+  removal (`--keep` for mutations, `--cleanup` only for marked directories); never pushes.
+- Agents (Claude Code adapter): `orchestrator-reviewer` (read-only, disposable clone, mutations,
+  claims as claims, base comparison) and `orchestrator-scout` (read-only facts, SELECT only).
+- `references/review-brief.md`: brief template and risk checklists (state machines, migrations,
+  registries and shared types, UI, permissions, integrations).
+- README: "Typical workflows" (EN/RU) with exact calls for local and cloud sessions.
+- `review-start` reviews `origin/<branch>` or the given `--ref` (never a local branch), warns when
+  the local branch differs, stops on a failing fetch (`--no-fetch` to skip), prints
+  `git range-diff <base>..<old> <base>..<new>` after a rebase, and puts `main @ <sha>` in the
+  report header. Review clones use the repository's own `review_setup` with
+  `ORCH_MAIN_CHECKOUT`, never `worktree_setup`. `review_clone.sh` checks flag values and `mktemp`.
+- Agents state honestly that MCP tools are not available to them (the orchestrator collects
+  database and GitHub-tool facts) and forbid database clients and `ssh` through Bash; the cloud
+  review brief allows only reading GitHub tools. The report template has an "Owner questions"
+  section, and small fixes that need the owner's consent become conditional REVISE items.
+
 ## 0.2.1 — preview, unreleased
 
 Preview of stage 2c: cloud sessions over one repository.
