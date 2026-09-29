@@ -17,8 +17,10 @@ ORCH = [sys.executable, str(HERE / 'orch.py')]
 GIT_ENV = {
     'GIT_AUTHOR_NAME': 'Selftest', 'GIT_AUTHOR_EMAIL': 'selftest@example.invalid',
     'GIT_COMMITTER_NAME': 'Selftest', 'GIT_COMMITTER_EMAIL': 'selftest@example.invalid',
-    'GIT_CONFIG_COUNT': '2', 'GIT_CONFIG_KEY_0': 'commit.gpgsign', 'GIT_CONFIG_VALUE_0': 'false',
+    'GIT_CONFIG_COUNT': '3', 'GIT_CONFIG_KEY_0': 'commit.gpgsign', 'GIT_CONFIG_VALUE_0': 'false',
     'GIT_CONFIG_KEY_1': 'core.hooksPath', 'GIT_CONFIG_VALUE_1': '/dev/null',
+    # Like CI runners: a default branch other than main must not break any fixture.
+    'GIT_CONFIG_KEY_2': 'init.defaultBranch', 'GIT_CONFIG_VALUE_2': 'master',
 }
 
 
@@ -374,6 +376,7 @@ def make_monorepo(tmp):
     remote = tmp / 'mono.git'
     repo = tmp / 'mono'
     git(tmp, 'init', '-q', '--bare', str(remote))
+    git(remote, 'symbolic-ref', 'HEAD', 'refs/heads/main')  # explicit initial branch on any git
     for rel, content in {
         'apps/admin/src/page.tsx': 'export const Admin = () => null;\n',
         'apps/app/src/page.tsx': 'export const App = () => null;\n',
@@ -385,7 +388,8 @@ def make_monorepo(tmp):
     }.items():
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
         (repo / rel).write_text(content, encoding='utf-8')
-    git(repo, 'init', '-q', '-b', 'main')
+    git(repo, 'init', '-q')
+    git(repo, 'symbolic-ref', 'HEAD', 'refs/heads/main')
     git(repo, 'add', '-A')
     git(repo, 'commit', '-qm', 'init')
     git(repo, 'remote', 'add', 'origin', str(remote))
@@ -761,31 +765,136 @@ def test_cloud_in_repo(tmp):
 
 
 def test_cloud_deploy_scan(tmp):
+    """Deploy check reads the pushed ref, refuses unknown forms and hidden or unsafe directories."""
+    import streams
     mono = make_monorepo(tmp / 'scan')
     with_workflow(mono, 'name: Deploy\non:\n  push:\njobs: {}\n')
     clone = tmp / 'scan/clone'
     git(tmp, 'clone', '-q', str(tmp / 'scan/mono.git'), str(clone))
     refused = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
-    assert 'no directory is ignored by every push workflow' in refused, refused
+    assert 'no non-hidden directory is ignored by every push workflow' in refused, refused
     assert git(clone, 'rev-parse', '--abbrev-ref', 'HEAD').strip() == 'main', 'refusal must not switch branches'
-    import streams
-    (clone / '.github/workflows/deploy.yml').write_text(
-        'on:\n  push:\n    branches: [main, "release/**"]\njobs: {}\n', encoding='utf-8')
-    safe, notes = streams.deploy_safe_dirs(clone, 'orch/x', 'x')
-    assert safe == ['docs/orchestration/x'] and 'branches filter' in notes[0], (safe, notes)
-    (clone / '.github/workflows/deploy.yml').write_text(
-        "on:\n  push:\n    branches-ignore: ['orch/**']\njobs: {}\n", encoding='utf-8')
-    safe, notes = streams.deploy_safe_dirs(clone, 'orch/x', 'x')
-    assert safe == ['docs/orchestration/x'] and 'branches-ignore' in notes[0], (safe, notes)
-    (clone / '.github/workflows/deploy.yml').write_text(
-        'on: [push]\njobs: {}\n', encoding='utf-8')
-    assert streams.deploy_safe_dirs(clone, 'orch/x', 'x')[0] == []
-    (clone / '.github/workflows/deploy.yml').write_text(
-        "on:\n  push:\n    paths-ignore: [docs/**, 'notes/**']\njobs: {}\n", encoding='utf-8')
-    (clone / '.github/workflows/other.yml').write_text(
-        "on:\n  push:\n    paths-ignore:\n      - notes/**\njobs: {}\n", encoding='utf-8')
-    assert streams.deploy_safe_dirs(clone, 'orch/x', 'x')[0] == ['notes/orchestration/x']
-    print('PASS deploy scan: paths-ignore intersection, branch filters, refusal without a safe directory')
+    # H2: the working tree is not what gets pushed; deleting workflows locally changes nothing.
+    shutil.rmtree(clone / '.github')
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    assert 'ignored by every push workflow' in refused, 'judged from origin/main, not the working tree'
+    git(clone, 'checkout', '-q', '--', '.github')
+
+    def verdict(text, name='deploy.yml', extra=None):
+        wf = clone / '.github/workflows'
+        for f in wf.glob('*'):
+            f.unlink()
+        (wf / name).write_text(text, encoding='utf-8')
+        for other, body in (extra or {}).items():
+            (wf / other).write_text(body, encoding='utf-8')
+        git(clone, 'add', '-A')
+        git(clone, 'commit', '-qm', 'variant', '--allow-empty')
+        return streams.deploy_safe_dirs(clone, 'orch/x', 'x', 'HEAD')
+
+    safe, notes, refusals, any_dir = verdict('on:\n  push:\n    branches: [main, "release/**"]\njobs: {}\n')
+    assert any_dir and not refusals and 'branches filter' in notes[0], notes
+    safe, notes, refusals, any_dir = verdict("on:\n  push:\n    branches-ignore: ['orch/**']\njobs: {}\n")
+    assert any_dir and 'branches-ignore' in notes[0], notes
+    assert verdict('on: [push]\njobs: {}\n')[0] == []
+    safe, _, refusals, any_dir = verdict(
+        "on:\n  push:\n    paths-ignore: ['.tl/**', '.claude/**', docs/**, 'notes/**']\njobs: {}\n",
+        extra={'other.yml': 'on:\n  push:\n    paths-ignore:\n      - notes/**\n      - docs/**\n      - .tl/**\n'})
+    assert safe == ['docs/orchestration/x', 'notes/orchestration/x'] and not any_dir, safe  # docs first, no hidden
+    safe, _, _, _ = verdict("on:\n  push:\n    paths-ignore: ['.tl/**', 'notes/**']\njobs: {}\n")
+    assert safe == ['notes/orchestration/x']
+    assert streams.dir_is_safe('notes/orch/x', safe) and not streams.dir_is_safe('.tl/x', safe)
+    # H3: every unknown form is a refusal, never "safe".
+    unknown = {
+        'block list on': 'on:\n  - push\n',
+        'quoted key': 'on:\n  "push":\n    branches: [main]\n',
+        'multi-line flow': "on:\n  push:\n    branches: [\n      '**'\n    ]\n",
+        'alias': "x: &all ['**']\non:\n  push:\n    branches: *all\n",
+        'scalar branches': "on:\n  push:\n    branches: '**'\n",
+        'character class': "on:\n  push:\n    branches: ['[oO]rch/**']\n",
+        'negation': "on:\n  push:\n    paths-ignore: ['!docs/keep/**', 'docs/**']\n",
+        'positive paths': "on:\n  push:\n    paths: ['src/**']\n",
+        'no on key': 'name: x\njobs: {}\n',
+    }
+    for label, text in unknown.items():
+        safe, _, refusals, _ = verdict(text)
+        assert refusals and not safe, (label, refusals)
+    git(clone, 'push', '-q', 'origin', 'HEAD:main')  # origin/main now has the negation-free "no on key" form
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    assert 'cannot tell' in refused and '--deploy-override D-n' in refused, refused
+    assert run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', '--deploy-override', 'owner',
+               ok=False).returncode == 1
+    out = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', '--dir', 'notes/orch-x',
+              '--deploy-override', 'D-1').stdout
+    assert 'overridden by owner decision D-1' in out, out
+    ws = clone / 'notes/orch-x'
+    assert 'deploy_check_override: D-1' in (ws / 'orch.yaml').read_text(encoding='utf-8')
+    assert 'deploy check overridden by D-1' in (ws / 'status.md').read_text(encoding='utf-8')
+    # M2: an unsafe --dir without a decision is refused (origin/main: paths-ignore notes/** only).
+    mono2 = make_monorepo(tmp / 'scan2')
+    with_workflow(mono2, "on:\n  push:\n    paths-ignore: ['notes/**']\njobs: {}\n")
+    clone2 = tmp / 'scan2/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'scan2/mono.git'), str(clone2))
+    refused = run(clone2, 'init', 'y', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    assert 'no docs/ directory is ignored' in refused and 'notes/orchestration/y' in refused, refused
+    refused = run(clone2, 'init', 'y', '--lang', 'en', '--in-repo', 'app', '--dir', 'src/orch', ok=False).stderr
+    assert 'not a non-hidden directory that every push workflow ignores' in refused, refused
+    assert run(clone2, 'init', 'y', '--lang', 'en', '--in-repo', 'app', '--dir', 'notes/orchestration/y').returncode == 0
+    tracking = subprocess.run(['git', 'config', '--get', 'branch.orch/y.merge'], cwd=clone2,
+                              capture_output=True, text=True)
+    assert tracking.returncode != 0, 'orch/ must not track the base'
+    # M5: repository names from GitHub URLs and the cloud git proxy.
+    assert streams.normalize_url('https://github.com/Owner/Repo.git') == 'github.com/owner/repo'
+    assert streams.normalize_url('git@github.com:Owner/Repo.git') == 'github.com/owner/repo'
+    assert streams.normalize_url('http://local_proxy@127.0.0.1:43123/git/Owner/Repo') == '127.0.0.1/owner/repo'
+    git(clone2, 'remote', 'set-url', 'origin', 'http://local_proxy@127.0.0.1:43123/git/Owner/Repo')
+    assert streams.origin_name(streams.Repo({'id': 'r', 'path': str(clone2)})) == 'owner/repo'
+    git(clone2, 'remote', 'set-url', 'origin', 'https://github.com/Owner/Repo')
+    assert streams.origin_name(streams.Repo({'id': 'r', 'path': str(clone2)})) == 'owner/repo'
+    print('PASS deploy check: pushed ref, unknown forms refused, hidden dirs skipped, docs first, D-n override, URLs')
+
+
+def test_cloud_dispatch_safety(tmp):
+    """H4 dry-run writes nothing, M4 package must be on origin first, M3 stand slot, L1, L4."""
+    mono = make_monorepo(tmp / 'safety')
+    with_workflow(mono, DEPLOY_WORKFLOW)
+    remote = tmp / 'safety/mono.git'
+    orch_clone = tmp / 'safety/orch'
+    git(tmp, 'clone', '-q', str(remote), str(orch_clone))
+    run(orch_clone, 'init', 'demo', '--lang', 'en', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
+    ws = orch_clone / 'docs/orchestration/demo'
+    config = ws / 'orch.yaml'
+    safe_edit.replace_once(config, '    resources: []', '    resources: [staging]\n    push_deploys: true')
+    run(orch_clone, 'new-wp', 'admin', 'orders')
+    wp_text = (ws / 'work-packages/WP-ADMIN-01-orders.md').read_text(encoding='utf-8')
+    assert 'this package holds the stand slot while it runs: push only once' in wp_text
+    run(orch_clone, 'set', 'WP-ADMIN-01', 'status', 'READY')
+    before = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file() and '.orch-backup' not in p.parts}
+    refused = run(orch_clone, 'dispatch', 'WP-ADMIN-01', '--dry-run', ok=False).stderr
+    assert 'is not on origin/orch/demo yet' in refused, refused  # M4
+    after = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file() and '.orch-backup' not in p.parts}
+    assert before == after, 'dry-run must write nothing'
+    run(orch_clone, 'commit', 'demo: package')
+    before = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file() and '.orch-backup' not in p.parts}
+    assert 'ok (dry run); locks to take: staging' in run(orch_clone, 'dispatch', 'WP-ADMIN-01', '--dry-run').stdout
+    after = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file() and '.orch-backup' not in p.parts}
+    assert before == after, 'dry-run of a cloud module must write nothing (H4)'
+    prompt = run(orch_clone, 'dispatch', 'WP-ADMIN-01').stdout
+    assert 'push only once' in prompt, prompt
+    held = json.loads(run(orch_clone, 'lock', 'list', '--json').stdout)
+    assert [(l['lock'], l['holder']) for l in held] == [('app:staging', 'WP-ADMIN-01')], held
+    # L1: a fresh clone finds the existing orch/demo on origin and refuses a second workspace.
+    second = tmp / 'safety/second'
+    git(tmp, 'clone', '-q', str(remote), str(second))
+    run(orch_clone, 'commit', 'demo: dispatched')
+    refused = run(second, 'init', 'demo', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    assert 'already exists' in refused and 'resume' in refused, refused
+    # L4: detached HEAD is refused before anything is committed.
+    head = git(orch_clone, 'rev-parse', 'HEAD').strip()
+    git(orch_clone, 'checkout', '-q', '--detach')
+    run(orch_clone, 'journal', 'detached test')
+    assert 'detached HEAD' in run(orch_clone, 'commit', 'x', ok=False).stderr
+    assert git(orch_clone, 'rev-parse', 'HEAD').strip() == head
+    print('PASS cloud dispatch safety: dry-run read-only, package on origin first, stand slot, existing branch, detached')
 
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
@@ -805,6 +914,7 @@ def main():
         test_legacy_shared_path(tmp)
         test_cloud_in_repo(tmp)
         test_cloud_deploy_scan(tmp)
+        test_cloud_dispatch_safety(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 
