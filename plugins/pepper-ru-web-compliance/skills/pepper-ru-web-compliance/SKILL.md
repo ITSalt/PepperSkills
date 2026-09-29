@@ -38,7 +38,7 @@ metadata:
 ### 1. Единый сетевой запуск
 
 ```bash
-uv run --no-project --with playwright python -m playwright install chromium
+uv run --no-project --with playwright==1.56.0 python -m playwright install chromium
 uv run --no-project scripts/audit.py <URL> --out artifacts/ --findings findings.json --max-pages 20
 ```
 
@@ -105,7 +105,7 @@ uv run --no-project scripts/detect.py --artifacts artifacts/ --out findings.json
 ### 5. Документы
 
 ```bash
-uv run --no-project --with playwright scripts/render.py --findings findings.json --out-dir report/ --format md,html,pdf
+uv run --no-project --with playwright==1.56.0 scripts/render.py --findings findings.json --out-dir report/ --format md,html,pdf
 ```
 
 Без браузера используй `uv run --no-project scripts/render.py --findings
@@ -181,4 +181,4 @@ POST, расширение `.php` и названия вроде `fields` не �
 - Проверка без сети: `uv run --no-project scripts/selftest.py`.
 
 Базовые скрипты используют Python 3.10+ и стандартную библиотеку. Playwright
-подключается через `--with playwright`, только когда нужен браузер или PDF.
+подключается через `--with playwright==1.56.0`, только когда нужен браузер или PDF.

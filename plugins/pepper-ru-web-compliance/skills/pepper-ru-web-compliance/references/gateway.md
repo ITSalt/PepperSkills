@@ -31,7 +31,7 @@ DNS/TLS. Он не запускает браузер и не принимает 
 ## Запуск и повтор
 
 ```bash
-uv run --no-project --with playwright python -m playwright install chromium
+uv run --no-project --with playwright==1.56.0 python -m playwright install chromium
 uv run --no-project scripts/audit.py https://example.ru --out artifacts/ --findings findings.json
 uv run --no-project scripts/audit.py --offline --out artifacts/ --findings findings.json
 ```

@@ -19,11 +19,11 @@
 Нужен [uv](https://docs.astral.sh/uv/getting-started/installation/); Python 3.10+
 указан в PEP 723 заголовках скриптов. `uv run --no-project` использует отдельное
 окружение, не добавляя зависимости в проект сайта. Офлайн-детекторы работают на стандартной библиотеке. Сетевой сбор использует
-`h11` и Playwright; зависимости указаны в заголовках скриптов. Для браузера/PDF добавляйте `--with playwright`
+`h11` и Playwright; зависимости указаны в заголовках скриптов. Для браузера/PDF добавляйте `--with playwright==1.56.0`
 при каждом запуске. Команды выполняются из корня распакованного скилла:
 
 ```bash
-uv run --no-project --with playwright python -m playwright install chromium
+uv run --no-project --with playwright==1.56.0 python -m playwright install chromium
 ```
 
 Для разработки: `gen_checklist.py --write` требует PyYAML; `--check` проверяет

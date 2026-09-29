@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["h11>=0.16,<0.17", "playwright>=1.55,<2"]
+# dependencies = ["h11>=0.16,<0.17", "playwright==1.56.0"]
 # ///
 """collect.py — слой сбора данных о сайте.
 
@@ -47,21 +47,6 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 )
-
-# Страницы, которые почти всегда несут юридически значимый текст. Пробуем их
-# явно, потому что ссылка из футера может быть отрисована скриптом или скрыта.
-CANDIDATE_PATHS = [
-    "/privacy", "/privacy-policy", "/policy", "/politika", "/personal-data",
-    "/personalnye-dannye", "/confidentiality", "/konfidencialnost",
-    "/offer", "/oferta", "/terms", "/agreement", "/soglashenie", "/dogovor",
-    "/contacts", "/contact", "/kontakty", "/about", "/o-kompanii",
-    "/requisites", "/rekvizity",
-    "/delivery", "/dostavka", "/payment", "/oplata",
-    "/return", "/vozvrat", "/warranty", "/garantiya",
-    "/login", "/signin", "/auth", "/vhod", "/register", "/signup", "/registraciya",
-    "/cart", "/korzina", "/checkout", "/order", "/zakaz",
-    "/cookies", "/cookie-policy",
-]
 
 # Текстовые маркеры для распознавания cookie-баннера. Список намеренно широкий:
 # лучше найти лишний кандидат и отфильтровать его по кнопкам, чем пропустить
@@ -119,6 +104,8 @@ class RunManifest:
     finished_at: str = ""
     degraded: bool = False
     degraded_reason: str | None = None
+    partial_pages: bool = False
+    visual_complete: bool = True
     browser: str | None = None
     pages: list[dict[str, Any]] = field(default_factory=list)
     refusal: dict[str, Any] = field(default_factory=dict)
@@ -350,8 +337,6 @@ def score_url(url: str) -> int:
 def build_page_list(target: str, max_pages: int) -> list[str]:
     host = urllib.parse.urlparse(target).netloc.split(":")[0]
     seen: dict[str, None] = {target + "/": None}
-    for path in CANDIDATE_PATHS:
-        seen[target + path] = None
     for url in discover_from_sitemap(target):
         if same_host(url, host):
             seen[url] = None
@@ -641,7 +626,7 @@ def browser_collect(target: str, pages: list[str], out: Path,
         before = NetworkRecorder()
         before.attach(page, "before_consent", target + "/")
         try:
-            page.goto(target + "/", wait_until="domcontentloaded", timeout=timeout_ms)
+            page.goto(target + "/", wait_until="commit", timeout=timeout_ms)
         except Exception as exc:
             manifest.notes.append(f"первый проход: {type(exc).__name__}: {exc}")
         page.wait_for_timeout(2500)
@@ -664,14 +649,19 @@ def browser_collect(target: str, pages: list[str], out: Path,
                  if same_host(l, host)},
                 key=lambda u: (-score_url(u), len(u)))
             discovered.extend(internal)
-            known = {u.rstrip("/") for u in pages}
-            for url in discovered:
-                clean = url.split("#")[0]
-                if clean.rstrip("/") not in known and len(pages) < max_pages + 10:
-                    pages.append(clean)
-                    known.add(clean.rstrip("/"))
-            manifest.notes.append(f"добавлено по ссылкам с главной: "
-                                  f"{len(pages) - len(known) + len(discovered)}")
+            home = target + "/"
+            prior = {u.rstrip("/") for u in pages}
+            candidates = {u.split("#")[0].rstrip("/"): u.split("#")[0]
+                          for u in pages + discovered if same_host(u, host)}
+            candidates[home.rstrip("/")] = home
+            ranked = sorted((u for key, u in candidates.items() if key != home.rstrip("/")),
+                            key=lambda u: (-score_url(u), len(u)))
+            pages[:] = [home] + ranked[:max_pages - 1]
+            added = sum(u.rstrip("/") not in prior for u in pages)
+            manifest.notes.append(f"добавлено по ссылкам с главной: {added}")
+            if len(ranked) > max_pages - 1:
+                manifest.notes.append(f"бюджет обхода {max_pages}: "
+                                      f"не посещено {len(ranked) - (max_pages - 1)} адресов")
         except Exception as exc:
             manifest.notes.append(f"разбор ссылок главной: {type(exc).__name__}")
 
@@ -684,8 +674,12 @@ def browser_collect(target: str, pages: list[str], out: Path,
         cookies_before = ctx.cookies()
         (out / "cookies" / "before_consent.json").write_text(
             json.dumps(cookies_before, ensure_ascii=False, indent=2), encoding="utf-8")
-        page.screenshot(path=str(out / "pages" / "home_before_consent.png"),
-                        full_page=False)
+        try:
+            page.screenshot(path=str(out / "pages" / "home_before_consent.png"),
+                            full_page=False, timeout=5000)
+        except Exception as exc:
+            manifest.visual_complete = False
+            manifest.notes.append(f"снимок до согласия: {type(exc).__name__}")
 
         banner = {
             "found": bool(banner_candidates),
@@ -713,15 +707,19 @@ def browser_collect(target: str, pages: list[str], out: Path,
                     break
 
         try:
-            page.reload(wait_until="domcontentloaded", timeout=timeout_ms)
+            page.reload(wait_until="commit", timeout=timeout_ms)
         except Exception:
             pass
         page.wait_for_timeout(2000)
         cookies_after = ctx.cookies()
         (out / "cookies" / "after_consent.json").write_text(
             json.dumps(cookies_after, ensure_ascii=False, indent=2), encoding="utf-8")
-        page.screenshot(path=str(out / "pages" / "home_after_consent.png"),
-                        full_page=False)
+        try:
+            page.screenshot(path=str(out / "pages" / "home_after_consent.png"),
+                            full_page=False, timeout=5000)
+        except Exception as exc:
+            manifest.visual_complete = False
+            manifest.notes.append(f"снимок после согласия: {type(exc).__name__}")
         manifest.banner = banner
 
         after.detach()
@@ -740,7 +738,7 @@ def browser_collect(target: str, pages: list[str], out: Path,
             p = ctx.new_page()
             walker.attach(p, "walk", url)
             try:
-                resp = p.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                resp = p.goto(url, wait_until="commit", timeout=timeout_ms)
                 art.status = resp.status if resp else None
                 art.final_url = p.url
                 p.wait_for_timeout(1200)
@@ -756,9 +754,11 @@ def browser_collect(target: str, pages: list[str], out: Path,
                 (page_dir / "dom.html").write_text(p.content(), encoding="utf-8")
                 (page_dir / "text.txt").write_text(data["text"], encoding="utf-8")
                 try:
-                    p.screenshot(path=str(page_dir / "screenshot.png"), full_page=False)
-                except Exception:
-                    pass
+                    p.screenshot(path=str(page_dir / "screenshot.png"), full_page=False,
+                                 timeout=5000)
+                except Exception as exc:
+                    manifest.visual_complete = False
+                    manifest.notes.append(f"снимок {url}: {type(exc).__name__}")
             except Exception as exc:
                 art.error = f"{type(exc).__name__}: {exc}"
             finally:
@@ -789,7 +789,7 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
     recorder = NetworkRecorder()
     recorder.attach(page, "before_reject", target + "/")
     try:
-        page.goto(target + "/", wait_until="domcontentloaded", timeout=timeout_ms)
+        page.goto(target + "/", wait_until="commit", timeout=timeout_ms)
         page.wait_for_timeout(2500)
         candidates = page.evaluate(FIND_BANNER_JS, {
             "selectorHints": BANNER_SELECTOR_HINTS, "textMarkers": BANNER_TEXT_MARKERS,
@@ -818,7 +818,11 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
         write_jsonl(out / "network/after_reject.jsonl", recorder.requests)
         rows.extend(recorder.requests)
         (out / "cookies/after_reject.json").write_text(json.dumps(ctx.cookies(), ensure_ascii=False))
-        page.screenshot(path=str(out / "pages/home_after_reject.png"))
+        try:
+            page.screenshot(path=str(out / "pages/home_after_reject.png"), timeout=5000)
+        except Exception as exc:
+            manifest.visual_complete = False
+            manifest.notes.append(f"снимок после отказа: {type(exc).__name__}")
         if result["click_status"] != "clicked":
             return rows
         # JSON state captures cookie + localStorage; no reuse of the accepted context.
@@ -831,13 +835,17 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
         page = ctx.new_page()
         recorder = NetworkRecorder()
         recorder.attach(page, "revisit_reject", target + "/")
-        page.goto(target + "/", wait_until="domcontentloaded", timeout=timeout_ms)
+        page.goto(target + "/", wait_until="commit", timeout=timeout_ms)
         page.wait_for_timeout(2500)
         recorder.detach()
         write_jsonl(out / "network/revisit_reject.jsonl", recorder.requests)
         rows.extend(recorder.requests)
         (out / "cookies/revisit_reject.json").write_text(json.dumps(ctx.cookies(), ensure_ascii=False))
-        page.screenshot(path=str(out / "pages/home_revisit_reject.png"))
+        try:
+            page.screenshot(path=str(out / "pages/home_revisit_reject.png"), timeout=5000)
+        except Exception as exc:
+            manifest.visual_complete = False
+            manifest.notes.append(f"снимок при повторном визите: {type(exc).__name__}")
         result["revisit_completed"] = True
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -972,6 +980,10 @@ def collect(args):
         # заблокированным, если ни одна страница не открылась, а отказы были.
         statuses = [p.get("status") for p in manifest.pages]
         denied = sum(1 for st in statuses if st in (401, 403, 429))
+        if denied:
+            manifest.partial_pages = True
+            manifest.notes.append(f"часть страниц недоступна: {denied} из {len(statuses)} "
+                                  "вернули 401, 403 или 429")
         if not any(st == 200 for st in statuses) and denied:
             manifest.blocked = True
             manifest.notes.append(
@@ -980,7 +992,8 @@ def collect(args):
 
         transport.current().status()
         transport.current().metadata["complete"] = not (
-            transport.current().metadata.get("transport_error") or manifest.blocked or
+            transport.current().metadata.get("transport_error") or manifest.blocked or manifest.degraded or
+            manifest.partial_pages or
             any(p.get("error") for p in manifest.pages))
     except Exception as exc:
         transport.current().metadata.update(complete=False, transport_error=(

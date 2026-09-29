@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["h11>=0.16,<0.17", "playwright>=1.55,<2"]
+# dependencies = ["h11>=0.16,<0.17", "playwright==1.56.0"]
 # ///
 """One explicit network launch; all later analysis uses local evidence."""
 import argparse

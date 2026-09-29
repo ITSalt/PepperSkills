@@ -1637,7 +1637,14 @@ def run(ctx: Context) -> dict[str, Any]:
     attach_semantic_reviews(ctx, findings)
     if ctx.manifest.get("network") and not ctx.manifest["network"].get("complete"):
         for f in findings:
-            # A failed transport can hide evidence needed for applicability too.
+            # Direct observations on opened pages and independent registry/DNS
+            # checks remain usable. Absence and applicability claims need the
+            # pages that failed to load, so they stay UNKNOWN.
+            if f.rule_id in ("INF-001", "INF-002", "PDN-010") or f.group == "internal":
+                continue
+            if f.status in ("FAIL", "WARN") and f.evidence:
+                f.summary = "Неполный обход; на доступных страницах: " + f.summary
+                continue
             original = f.status
             f.status = "UNKNOWN"
             f.summary = f"Сетевой этап неполон (предварительно {original}): " + f.summary
@@ -1660,7 +1667,14 @@ def run(ctx: Context) -> dict[str, Any]:
             "schema_version": ctx.manifest.get("schema_version"),
             "started_at": ctx.manifest.get("started_at"),
             "finished_at": ctx.manifest.get("finished_at"),
+            "visual_complete": ctx.manifest.get("visual_complete"),
+            "partial_pages": ctx.manifest.get("partial_pages"),
             "network": ctx.manifest.get("network"),
+            "network_observations": {
+                "count": sum(len(rows) for rows in ctx.net.values()),
+                "versions": sorted({str(row.get("observation_version", 1))
+                                    for rows in ctx.net.values() for row in rows}),
+            },
         },
         "artifacts_sha256": artifact_fingerprint(ctx),
         "target": ctx.target,

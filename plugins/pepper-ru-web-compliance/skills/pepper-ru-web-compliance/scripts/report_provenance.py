@@ -47,26 +47,40 @@ def provenance_line(data):
             '; формат наблюдений: ' + str(collector.get('observation_version', 'не установлен')) +
             '; транспорт: ' + str(network.get('mode', 'не установлен')) +
             '; выход: ' + str(egress.get('ip', 'не установлен')) +
-            '; полный сбор: ' + str(network.get('complete', 'не установлен')) + '.')
+            '; полный сетевой сбор: ' + str(network.get('complete', 'не установлен')) +
+            '; снимки страниц: ' + ('неполны' if collection.get('visual_complete') is False
+                                     else 'сохранены' if collection.get('visual_complete') is True
+                                     else 'не установлено') + '.')
 
 
 def collection_issues(data):
     collection = data.get('collection') or {}
     collector = collection.get('collector') or {}
     network = collection.get('network') or {}
+    observations = collection.get('network_observations') or {}
     missing_origin = (collector.get('name') != 'pepper-ru-web-compliance' or
             collector.get('observation_version') != 2 or
             not collection.get('started_at') or not collection.get('finished_at') or
-            not network.get('mode') or network.get('complete') is not True or
-            not (network.get('egress') or {}).get('ip'))
-    legacy = any((e.get('context') or {}).get('observation_version') != 2
-                 for row in data.get('findings', [])
-                 for e in row.get('evidence', []) + row.get('basis_evidence', [])
-                 if e.get('kind') == 'request')
+            not network.get('mode') or
+            not (network.get('egress') or {}).get('ip') or
+            not observations.get('count'))
+    # Evidence objects are summaries and may omit request metadata. The raw
+    # phase journals, counted by detect, are the authoritative format check.
+    legacy = bool(observations.get('count')) and observations.get('versions') != ['2']
     if missing_origin or legacy:
         label = 'старый журнал сетевых наблюдений; ' if legacy else ''
         return [label + 'происхождение или полнота сетевого сбора не подтверждены; выводы по сайту предварительные.']
     return []
+
+
+def collection_warnings(data):
+    collection = data.get('collection') or {}
+    warnings = []
+    if (collection.get('network') or {}).get('complete') is not True:
+        warnings.append('Сетевой обход неполон: выводы об отсутствии признаков ограничены доступными страницами.')
+    if collection.get('visual_complete') is False:
+        warnings.append('Часть снимков страниц не сохранена; визуальные признаки требуют ручной проверки.')
+    return warnings
 
 
 def consistency_issues(data):

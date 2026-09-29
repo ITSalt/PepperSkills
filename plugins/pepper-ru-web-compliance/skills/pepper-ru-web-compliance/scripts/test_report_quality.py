@@ -11,7 +11,7 @@ import unittest
 import detect
 import render
 import report_evidence
-from report_provenance import consistency_issues, current_producer, provenance_issues
+from report_provenance import collection_issues, collection_warnings, consistency_issues, current_producer, provenance_issues
 from selftest import artifacts_fixture
 
 
@@ -33,7 +33,8 @@ class ReportQuality(unittest.TestCase):
                 'pages_analysed': 1, 'producer': current_producer(), 'findings': list(rows),
                 'collection': {'collector': {'name': 'pepper-ru-web-compliance', 'version': '2.4.0', 'observation_version': 2},
                                'schema_version': 1, 'started_at': '2026-09-28', 'finished_at': '2026-09-28',
-                               'network': {'mode': 'managed', 'complete': True, 'egress': {'ip': '203.0.113.1', 'country': 'RU'}}}}
+                               'network': {'mode': 'managed', 'complete': True, 'egress': {'ip': '203.0.113.1', 'country': 'RU'}},
+                               'network_observations': {'count': 1, 'versions': ['2']}}}
 
     def test_no_total_or_repeat_offence_in_summary(self):
         rows = [self.finding(r, status='FAIL',
@@ -164,6 +165,20 @@ class ReportQuality(unittest.TestCase):
         self.assertEqual(provenance_issues(data), [])
         data['findings'] = [f for f in data['findings'] if f['rule_id'] != 'LI-001']
         self.assertIn('LI-001', ' '.join(provenance_issues(data)))
+
+    def test_mixed_raw_observation_versions_limit_report(self):
+        data = self.data(self.finding('PDN-004', status='FAIL'))
+        self.assertEqual(collection_issues(data), [])
+        data['collection']['network_observations']['versions'] = ['1', '2']
+        self.assertTrue(collection_issues(data))
+        self.assertEqual(render.public_data(data)['findings'][0]['status'], 'UNKNOWN')
+
+    def test_partial_network_warns_without_erasing_direct_findings(self):
+        data = self.data(self.finding('PDN-004', status='FAIL'))
+        data['collection']['network']['complete'] = False
+        self.assertEqual(collection_issues(data), [])
+        self.assertTrue(collection_warnings(data))
+        self.assertEqual(render.public_data(data)['findings'][0]['status'], 'FAIL')
         data['producer']['skill_version'] = '1.0.1'
         self.assertGreater(len(provenance_issues(data)), 1)
 

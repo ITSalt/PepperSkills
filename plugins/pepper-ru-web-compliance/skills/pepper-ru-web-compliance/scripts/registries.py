@@ -255,7 +255,7 @@ COMMON_WORDS = frozenset("""
 очень первый перед по под после потом почти при про раз работа рука с сам свой
 себя сейчас сказать слово снова со совсем так такой там твой те тем теперь то
 тобой тогда только том тот три ту тут ты у уже хорошо хуже чего чем через что
-чтобы эта эти это этот я
+чтобы эта эти это этот я служба поддержки
 """.split())
 
 
@@ -928,7 +928,7 @@ def fetch_live(spec: RegistrySpec) -> RegistryData:
                 via_proxy=bool(transport.ACTIVE or _proxy_url),
                 origin="live",
                 stale_days=stale,
-                error=note or None,
+                error="; ".join(errors) or None,
                 entries=[asdict(e) for e in entries],
             )
         except Exception as exc:

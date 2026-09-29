@@ -40,7 +40,8 @@ class NetworkEvidence(unittest.TestCase):
                                               'observation_version': 2},
                                'started_at': '2026-09-28', 'finished_at': '2026-09-28',
                                'network': {'mode': 'managed', 'complete': True,
-                                           'egress': {'ip': '203.0.113.1', 'country': 'RU'}}}}
+                                           'egress': {'ip': '203.0.113.1', 'country': 'RU'}},
+                               'network_observations': {'count': 1, 'versions': ['2']}}}
 
     def test_six_report_urls_and_csp_alone_never_prescribe_database_move(self):
         for urls in (SYNTHETIC_URLS, [SYNTHETIC_URLS[4]]):
@@ -49,6 +50,7 @@ class NetworkEvidence(unittest.TestCase):
             self.assertEqual([f.status for f in rows], ['UNKNOWN', 'UNKNOWN'])
             self.assertEqual(len(rows[0].evidence), len(urls))
             data = self.data(*rows)
+            data['collection']['network_observations'] = {'count': len(urls), 'versions': ['1']}
             original = copy.deepcopy(data)
             for plan in (render.plan_md(data), render.plan_html(data)):
                 self.assertIn('Проверка открытых вопросов', plan)

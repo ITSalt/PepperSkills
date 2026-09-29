@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from report_provenance import collection_issues, consistency_issues, provenance_issues, provenance_line
+from report_provenance import collection_issues, collection_warnings, consistency_issues, provenance_issues, provenance_line
 from network_evidence import safe_url
 import report_evidence
 from review_contract import valid_action_review
@@ -416,7 +416,7 @@ def report_md(data: dict[str, Any]) -> str:
     add(provenance_line(data))
     for issue in provenance_issues(data):
         add("> **Несовместимые входные данные.** " + issue)
-    for issue in collection_issues(data):
+    for issue in collection_issues(data) + collection_warnings(data):
         add("> **Ограниченный снимок.** " + issue)
     for issue in consistency_issues(data):
         add("> **Противоречивые выводы.** " + issue)
@@ -1063,7 +1063,7 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
     add(f"<p class=meta>{esc(provenance_line(data))}</p>")
     for issue in provenance_issues(data):
         add(f"<div class=alert>Несовместимые входные данные. {esc(issue)}</div>")
-    for issue in collection_issues(data):
+    for issue in collection_issues(data) + collection_warnings(data):
         add(f"<div class=alert>Ограниченный снимок. {esc(issue)}</div>")
     for issue in consistency_issues(data):
         add(f"<div class=alert>Противоречивые выводы. {esc(issue)}</div>")
