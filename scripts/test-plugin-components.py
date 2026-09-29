@@ -113,7 +113,12 @@ def test_orchestrator_modes():
         assert f'`{mode} $ARGUMENTS`' in body, mode
         assert '${CLAUDE_PLUGIN_ROOT}/skills/pepper-orchestrator' in body, mode
     assert commands == {m for m, _ in modes}, 'every command must map to a documented mode'
-    print(f'PASS pepper-orchestrator: modes, mode files and commands agree ({len(modes)})')
+    agents = ROOT / 'plugins/pepper-orchestrator/agents'
+    scout, _ = frontmatter(agents / 'orchestrator-scout.md')
+    reviewer, _ = frontmatter(agents / 'orchestrator-reviewer.md')
+    assert scout.get('model') == 'opus', 'orchestrator-scout runs on opus (owner decision)'
+    assert 'model' not in reviewer, 'orchestrator-reviewer inherits the orchestrator model'
+    print(f'PASS pepper-orchestrator: modes, mode files and commands agree ({len(modes)}); agent models')
 
 
 if __name__ == '__main__':

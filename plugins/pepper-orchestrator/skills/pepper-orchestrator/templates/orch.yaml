@@ -5,6 +5,9 @@
 program: {{PROGRAM}}
 # active | closed: `close --apply` closes the program (one program, one goal), `reopen` reopens it.
 state: active
+# Session kind of module sessions, the owner's explicit choice at init: local (recommended) | cloud.
+# Repositories and modules inherit it; a module may set its own `sessions` after an owner decision.
+sessions: local
 title: {{PROGRAM_TITLE_YAML}}
 # [{{TAG}}] in messages and PR titles.
 tag: {{TAG}}
@@ -18,6 +21,14 @@ push_after_milestone: false
 # workspace_branch and workspace_dir). State commits go only to workspace_branch.
 # deploy_check_override: D-n is written only when the owner accepted an unverifiable deploy check.
 workspace_mode: separate
+
+# Implementer models (recommendation per package; the owner may change it before starting):
+# aliases sonnet | opus | fable | haiku | opusplan or a full claude-... id; effort low | medium |
+# high | xhigh | max. Without `models`, start commands carry no model flags (the owner's default).
+# models:
+#   implement: sonnet
+#   escalate: opus
+#   escalate_effort: high
 
 # Repositories shared by several modules (streams). One writing session per worktree and branch.
 repos: []
@@ -36,6 +47,7 @@ repos: []
 #    deploy_workflows: [deploy.yml]   # read by resume to see who holds the stand
 #    base_deploys: prod               # prod | staging | none: what a merge into base deploys
 #    sessions: cloud                  # local | cloud: module sessions are cloud sessions (own clones)
+#    cloud_environment: Project env   # name of the owner's cloud environment (never variable values)
 #    push_deploys: true               # a push of any branch deploys the stand: sessions push only with the stand slot
 #
 # Paths are globs: `*` (one directory), `**` (any depth), `?` (one character), `{a,b}`
@@ -66,6 +78,8 @@ modules: []
 #    ports: {app: 3120}
 #    tests: {scoped: ["pnpm --filter admin test"], full: ["pnpm -r test"]}
 #    methodology: {name: nacl, allowed: [nacl-tl-fix, nacl-tl-ship], forbidden: [nacl-tl-release, nacl-tl-deploy]}
+#    model: opus                      # overrides models.implement for this module
+#    effort: high
 
 environments: {}
 guards: {}

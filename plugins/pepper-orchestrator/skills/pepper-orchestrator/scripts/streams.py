@@ -26,6 +26,9 @@ WP_LABELS = {
     'resources': ('Resources (locks)', 'Ресурсы (замки)'),
     'depends': ('Depends on', 'Зависит от'),
     'branch': ('Work branch', 'Рабочая ветка'),
+    'model': ('Model', 'Модель'),
+    'effort': ('Effort', 'Усилие'),
+    'model_reason': ('Model reason', 'Почему такая модель'),
 }
 
 TEXT = {
@@ -57,6 +60,9 @@ TEXT = {
         'ref_local': 'branch {branch}',
         'methodology_any': 'any, within this package',
         'kind_cloud': 'none: a cloud session works in its own clone',
+        'reason_module': 'module override in orch.yaml',
+        'reason_implement': 'default implementer model (orch.yaml models.implement)',
+        'reason_none': 'owner default model (no models in orch.yaml)',
         'prep_cloud_branch': 'In the cloud session\'s clone, create the package branch: `git fetch origin && git switch -c {branch} origin/{base}`.',
         'prep_cloud_setup': 'Prepare the clone if the environment\'s setup script has not done it already:',
         'delivery_cloud': ('- Push `{branch}` and open a PR to `{base}`; its body starts with `{wp}` and holds the '
@@ -107,6 +113,9 @@ TEXT = {
         'ref_local': 'branch {branch}',
         'methodology_any': 'любые, в рамках пакета',
         'kind_cloud': 'нет: облачная сессия работает в своём клоне',
+        'reason_module': 'переопределение у модуля в orch.yaml',
+        'reason_implement': 'модель реализатора по умолчанию (orch.yaml models.implement)',
+        'reason_none': 'модель владельца по умолчанию (в orch.yaml нет models)',
         'prep_cloud_branch': 'В клоне облачной сессии создай ветку пакета: `git fetch origin && git switch -c {branch} origin/{base}`.',
         'prep_cloud_setup': 'Подготовь клон, если setup-скрипт окружения ещё не сделал этого:',
         'delivery_cloud': ('- Запушь `{branch}` и открой PR в `{base}`; тело PR начинается с `{wp}` и содержит отчёт '
@@ -133,6 +142,50 @@ TEXT = {
 
 class StreamError(Exception):
     pass
+
+
+# Implementer models: aliases of the latest model of a family, or a full model id.
+MODEL_ALIASES = ('sonnet', 'opus', 'fable', 'haiku', 'opusplan')
+EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
+MODEL_ID = re.compile(r'^claude-[a-z0-9][a-z0-9.-]*(\[1m\])?$')
+PREFILL_URL_LIMIT = 2000  # longer prefill links are cut to repositories + environment; the prompt goes apart
+
+
+def valid_model(value):
+    return value in MODEL_ALIASES or bool(MODEL_ID.match(value or ''))
+
+
+def valid_effort(value):
+    return value in EFFORTS
+
+
+def model_errors(where, model, effort):
+    errors = []
+    if model is not None and not valid_model(str(model)):
+        errors.append(f'{where}: model {model!r} is not one of {", ".join(MODEL_ALIASES)} or a claude-... id')
+    if effort is not None and not valid_effort(str(effort)):
+        errors.append(f'{where}: effort {effort!r} is not one of {", ".join(EFFORTS)}')
+    return errors
+
+
+def choose_model(models, module):
+    """(model, effort, reason) for a new package: module override, then program models.implement."""
+    models = models if isinstance(models, dict) else {}
+    if module.model:
+        return module.model, module.effort, 'module'
+    if models.get('implement'):
+        return str(models['implement']), module.effort or models.get('implement_effort'), 'implement'
+    return None, None, 'none'
+
+
+def apply_model_flags(command, model, effort):
+    """Put --model/--effort into a `claude ...` start command, right before --name (idempotent)."""
+    command = re.sub(r' --model \S+', '', command)
+    command = re.sub(r' --effort \S+', '', command)
+    flags = (f' --model {model}' if model else '') + (f' --effort {effort}' if model and effort else '')
+    if not flags or ' --name ' not in command:
+        return command
+    return command.replace(' --name ', flags + ' --name ', 1)
 
 
 # Work package ids: module ids may contain hyphens (WP-ADMIN-UI-01).
@@ -285,7 +338,8 @@ def local_path(path, base_dir=None):
 
 
 class Repo:
-    def __init__(self, data, implicit=False, program='program', base_dir=None):
+    def __init__(self, data, implicit=False, program='program', base_dir=None, defaults=None):
+        defaults = defaults or {}
         self.base_dir = base_dir
         self.id = str(data.get('id'))
         self.path = str(data.get('path') or '')
@@ -303,7 +357,8 @@ class Repo:
         self.deploy_workflows = as_list(data.get('deploy_workflows'))
         self.base_deploys = str(data.get('base_deploys') or 'none')
         self.push_deploys = bool(data.get('push_deploys'))
-        self.sessions = str(data.get('sessions') or 'local')
+        self.sessions = str(data.get('sessions') or defaults.get('sessions') or 'local')
+        self.cloud_environment = data.get('cloud_environment') or defaults.get('cloud_environment')
         self.implicit = implicit
 
     @property
@@ -327,6 +382,9 @@ class Module:
         self.ports = data.get('ports') if isinstance(data.get('ports'), dict) else {}
         self.tests = data.get('tests')
         self.sessions = str(data.get('sessions') or repo.sessions or 'local')
+        self.model = data.get('model')
+        self.effort = data.get('effort')
+        self.cloud_environment = data.get('cloud_environment') or repo.cloud_environment
         methodology = data.get('methodology') if isinstance(data.get('methodology'), dict) else {}
         self.methodology = {'name': methodology.get('name'),
                             'allowed': as_list(methodology.get('allowed')),
@@ -346,12 +404,15 @@ class Module:
 def resolve(config, base_dir=None):
     """Return (repos, modules, errors, warnings); the 0.1.0 form maps to implicit repos."""
     program = str(config.get('program') or 'program')
+    # Program-level session kind and cloud environment, chosen by the owner at init; repositories
+    # and modules inherit them unless they set their own.
+    defaults = {'sessions': config.get('sessions'), 'cloud_environment': config.get('cloud_environment')}
     errors, warnings, repos, modules = [], [], {}, {}
     for data in config.get('repos') or []:
         if not isinstance(data, dict) or not data.get('id') or not data.get('path'):
             errors.append(f'orch.yaml: repo needs id and path: {data}')
             continue
-        repo = Repo(data, program=program, base_dir=base_dir)
+        repo = Repo(data, program=program, base_dir=base_dir, defaults=defaults)
         if repo.id in repos:
             errors.append(f'orch.yaml: duplicate repo id {repo.id}')
         if repo.merge_policy not in MERGE_POLICIES:
@@ -374,7 +435,7 @@ def resolve(config, base_dir=None):
             key = (str(local_path(ref, base_dir)), str(data.get('base') or 'main'))
             if key not in implicit:
                 implicit[key] = Repo({'id': str(data['id']), 'path': ref, 'base': data.get('base')},
-                                     implicit=True, program=program, base_dir=base_dir)
+                                     implicit=True, program=program, base_dir=base_dir, defaults=defaults)
             repo = implicit[key]
         module = Module(data, repo, program)
         if module.kind not in KINDS:
@@ -389,6 +450,10 @@ def resolve(config, base_dir=None):
                 errors.append(f'orch.yaml: module {module.id}: {error}')
         if module.sessions not in ('local', 'cloud'):
             errors.append(f'orch.yaml: module {module.id}: sessions must be local or cloud')
+        errors.extend(model_errors(f'orch.yaml: module {module.id}', module.model, module.effort))
+        if module.cloud and not module.cloud_environment:
+            warnings.append(f'orch.yaml: module {module.id} runs cloud sessions but has no cloud_environment '
+                            '(name of the owner\'s cloud environment)')
         modules[module.id] = module
     by_key = {}
     for module in modules.values():
@@ -418,6 +483,17 @@ def resolve(config, base_dir=None):
                 for pa, pb in pairs:
                     errors.append(f'orch.yaml: modules {a.id} and {b.id} overlap outside shared_paths: '
                                   f'{pa} ~ {pb}')
+    if config.get('sessions') not in (None, 'local', 'cloud'):
+        errors.append('orch.yaml: sessions must be local or cloud')
+    models = config.get('models')
+    if models is not None and not isinstance(models, dict):
+        errors.append('orch.yaml: models must be a mapping (implement, implement_effort, escalate, escalate_effort)')
+    elif models:
+        unknown = set(models) - {'implement', 'implement_effort', 'escalate', 'escalate_effort'}
+        if unknown:
+            errors.append(f'orch.yaml: models has unknown keys: {", ".join(sorted(unknown))}')
+        errors.extend(model_errors('orch.yaml: models.implement', models.get('implement'), models.get('implement_effort')))
+        errors.extend(model_errors('orch.yaml: models.escalate', models.get('escalate'), models.get('escalate_effort')))
     return repos, modules, errors, warnings
 
 
@@ -453,8 +529,13 @@ def wp_meta(path, module):
     paths = ticks(field('paths')) or (module.paths if module else ['**'])
     branch = (ticks(field('branch')) or [None])[0]
     depends = re.findall(WP_ID, field('depends') or '')
+
+    def plain(key):
+        value = (ticks(field(key)) or [(field(key) or '').strip()])[0]
+        return value if value and value not in ('—', '-', 'none', 'нет') else None
+
     return {'paths': paths, 'shared': ticks(field('shared')), 'resources': ticks(field('resources')),
-            'depends': depends, 'branch': branch}
+            'depends': depends, 'branch': branch, 'model': plain('model'), 'effort': plain('effort')}
 
 
 # ---------------------------------------------------------------- git helpers
@@ -849,9 +930,79 @@ def dir_is_safe(rel, candidates, any_dir=False):
     return any(rel == r or rel.startswith(r + '/') for r in roots)
 
 
+CLOUD_BLOCK = {
+    'en': {
+        'title': 'New cloud session for {wp}:',
+        'env': '- Environment: {env}',
+        'env_missing': '- Environment: not set in orch.yaml (cloud_environment); choose the project environment in the form',
+        'repo': '- Repository: {repo}, starting branch: {base} (choose the branch in the form if it is not the default)',
+        'model': ('- Model: {model}, effort: {effort} - choose them in the lists next to the send button; in a browser '
+                  'without the lists send `/model {model}` and `/effort {effort}` as the first messages'),
+        'model_only': ('- Model: {model} - choose it in the list next to the send button; in a browser without the '
+                       'list send `/model {model}` as the first message'),
+        'model_none': '- Model: the owner default (no model in the package)',
+        'link': '- Prefilled form: {url}',
+        'link_short': '- Prefilled form (without the prompt, it is too long for a link; paste the prompt below): {url}',
+        'no_link': '- No prefill link: the repository is not a hosted remote',
+        'prompt': 'Prompt:',
+    },
+    'ru': {
+        'title': 'Новая облачная сессия для {wp}:',
+        'env': '- Окружение: {env}',
+        'env_missing': '- Окружение: в orch.yaml не задано (cloud_environment); выберите окружение проекта в форме',
+        'repo': '- Репозиторий: {repo}, стартовая ветка: {base} (выберите ветку в форме, если она не по умолчанию)',
+        'model': ('- Модель: {model}, усилие: {effort} — выберите в списках рядом с кнопкой отправки; в браузере без '
+                  'списков первыми сообщениями отправьте `/model {model}` и `/effort {effort}`'),
+        'model_only': ('- Модель: {model} — выберите в списке рядом с кнопкой отправки; в браузере без списка первым '
+                       'сообщением отправьте `/model {model}`'),
+        'model_none': '- Модель: по умолчанию владельца (в пакете модель не задана)',
+        'link': '- Предзаполненная форма: {url}',
+        'link_short': '- Предзаполненная форма (без промпта: для ссылки он слишком длинный; вставьте промпт ниже): {url}',
+        'no_link': '- Ссылки предзаполнения нет: репозиторий не на хостинге',
+        'prompt': 'Промпт:',
+    },
+}
+
+
+def prefill_url(repo_name, environment, prompt):
+    """claude.ai/code link that prefills repositories, environment and prompt (no model or branch)."""
+    from urllib.parse import quote
+    params = [('repositories', quote(repo_name, safe='/'))]
+    if environment:
+        params.append(('environment', quote(str(environment), safe='')))
+    base = 'https://claude.ai/code?' + '&'.join(f'{k}={v}' for k, v in params)
+    full = base + '&prompt=' + quote(prompt, safe='')
+    return (full, True) if len(full) <= PREFILL_URL_LIMIT else (base, False)
+
+
+def cloud_block(lang, wp, module, prompt, model, effort):
+    """What the owner needs to start a cloud session for a package: environment, repository and base,
+    model and effort, a prefill link, then the prompt."""
+    t = CLOUD_BLOCK[lang]
+    repo = module.repo
+    lines = [t['title'].format(wp=wp)]
+    env = module.cloud_environment
+    lines.append(t['env'].format(env=env) if env else t['env_missing'])
+    name = origin_name(repo)
+    lines.append(t['repo'].format(repo=name or repo.path, base=repo.base))
+    if model and effort:
+        lines.append(t['model'].format(model=model, effort=effort))
+    elif model:
+        lines.append(t['model_only'].format(model=model))
+    else:
+        lines.append(t['model_none'])
+    if name:
+        url, with_prompt = prefill_url(name, env, prompt)
+        lines.append((t['link'] if with_prompt else t['link_short']).format(url=url))
+    else:
+        lines.append(t['no_link'])
+    lines += ['', t['prompt'], prompt]
+    return '\n'.join(lines)
+
+
 # ---------------------------------------------------------------- work package fields
 
-def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None):
+def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None, models=None):
     """Placeholder values for the 0.2.0 work package template.
 
     workspace: {'mode', 'branch', 'wp_rel'} for an in-repo workspace (cloud sessions read the
@@ -867,6 +1018,7 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None):
     finish = (t['finish_pr'] if remote else t['finish_local']).format(**fmt)
     ref = (t['ref_pr'] if remote else t['ref_local']).format(**fmt)
     ports = ', '.join(f'{k}={v}' for k, v in module.ports.items()) or t['none']
+    where = repo.path if repo.path.startswith(('/', '~')) else str(repo.local)  # `path: .` -> absolute
     if module.cloud:
         steps = [t['prep_cloud_branch'].format(**fmt)]
         if repo.worktree_setup:
@@ -899,13 +1051,16 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None):
         steps.append(t['prep_paths'])
         prep = '\n'.join(f'{i}. {s}' for i, s in enumerate(steps, 1))
         prompt = t['prompt_worktree'].format(finish=finish, ref=ref, **fmt)
-        command = f'cd {repo.path} && claude -w {name} --name {module.session} "{prompt}"'
+        command = f'cd {where} && claude -w {name} --name {module.session} "{prompt}"'
         worktree = t['kind_worktree'].format(root=repo.worktree_root, name=name)
     else:
         prep = t['prep_repo'].format(**fmt)
         prompt = t['prompt_repo'].format(finish=finish, ref=ref, **fmt)
-        command = f'cd {repo.path} && claude --name {module.session} "{prompt}"'
+        command = f'cd {where} && claude --name {module.session} "{prompt}"'
         worktree = t['kind_repo_worktree']
+    model, effort, reason = choose_model(models, module)
+    if not module.cloud:
+        command = apply_model_flags(command, model, effort)
     method = module.methodology
     allowed = ', '.join(f'`{c}`' for c in method['allowed']) or t['methodology_any']
     forbidden = ', '.join(f'`{c}`' for c in method['forbidden']) or t['none']
@@ -931,4 +1086,6 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None):
         'REPO_HINTS': '\n'.join(hints) or '—',
         'WORKTREE_SETUP': prep, 'DELIVERY': delivery,
         'START_PROMPT': prompt, 'START_COMMAND': command,
+        'MODEL': f'`{model}`' if model else '—', 'EFFORT': f'`{effort}`' if effort else '—',
+        'MODEL_REASON': t['reason_' + reason],
     }

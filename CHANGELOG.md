@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.5.0 (preview)
+
+Implementer model and effort per package in start commands, the owner's explicit session-kind
+choice at init, cloud environment and prefill links for cloud sessions, escalation after repeated
+REVISE rounds. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.4.0 (preview)
 
 Program completion: goal and completion condition in the plan, `close` by facts with a closeout

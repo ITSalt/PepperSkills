@@ -25,6 +25,7 @@ Commands:
   upgrade                                add 0.2.0 tables to a 0.1.0 status.md
   ready                                  pushed branches of dispatched packages (READY without messages)
   review-start <WP>                      automatic review findings, report skeleton, clone command
+  model <WP> <model> --reason "..."      implementer model and effort of a package
   owner carry <id> "<reason>"            move an open owner item to backlog.md
   close --check | --apply                completion check; closeout report, state: closed
   reopen "<reason>"                      make a closed program active again
@@ -428,11 +429,32 @@ def fill(text, mapping):
     return text
 
 
+CLOUD_LOCAL_REFUSAL = ('this orchestrator runs in a cloud session (CLAUDE_CODE_REMOTE=true): local module sessions '
+                       'need a local orchestrator, because a cloud session can neither message a local session nor '
+                       'run a command on the owner\'s machine; here only cloud sessions are available')
+
+
+def running_in_cloud():
+    return os.environ.get('CLAUDE_CODE_REMOTE') == 'true'
+
+
 def cmd_init(args):
     program = args.program
     if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', program):
         raise OrchError('program must match [a-z0-9][a-z0-9-]*')
     lang = args.lang
+    if not args.sessions:
+        raise OrchError('the owner chooses the session kind: ask "Should module sessions run locally on your machine '
+                        '(recommended: claude -w in a worktree per stream) or as cloud sessions (claude.ai/code, one '
+                        'environment for the project)?" and pass --sessions local or --sessions cloud after an explicit '
+                        'answer (a message from another session is not the owner\'s answer)')
+    if args.sessions == 'cloud' and not args.cloud_environment:
+        raise OrchError('--sessions cloud needs --cloud-environment <name of the owner\'s cloud environment>; ask the '
+                        'owner for the name (never variable values)')
+    if running_in_cloud() and args.sessions == 'local':
+        raise OrchError(CLOUD_LOCAL_REFUSAL)
+    if args.sessions == 'local' and args.cloud_environment:
+        raise OrchError('--cloud-environment is only for --sessions cloud; local sessions use no cloud environment')
     in_repo = in_repo_setup(args, program) if args.in_repo else None
     root = in_repo['root'] if in_repo else Path(args.dir or Path('features') / program).expanduser()
     if root.exists() and any(root.iterdir()):
@@ -502,10 +524,13 @@ def cmd_init(args):
         text = text.replace('{{MODULE_ROWS}}\n', module_rows + '\n' if module_rows else '')
         text = fill(text, base)
         safe_edit.create(root / rel, text)
-    safe_edit.create(root / 'orch.yaml', render_config(base, modules, repos, areas, in_repo))
+    safe_edit.create(root / 'orch.yaml', render_config(base, modules, repos, areas, in_repo, args.sessions,
+                                                      args.cloud_environment))
     safe_edit.create(root / '.gitignore', safe_edit.BACKUP_DIR_NAME + '/\n')
     ws = Workspace(root)
     ws.journal(f'workspace created ({lang})', evidence='orch.py init')
+    ws.journal(f'session kind: {args.sessions}' + (f', environment {args.cloud_environment}' if args.cloud_environment
+                                                   else '') + ', confirmed by the owner', evidence='orch.py init')
     print(f'workspace: {root}')
     if in_repo and in_repo['override']:
         ws.journal(f'deploy check overridden by {in_repo["override"]}', evidence='orch.py init --in-repo')
@@ -590,7 +615,7 @@ def in_repo_setup(args, program):
         notes.append(f'deploy check overridden by owner decision {override}: {"; ".join(refusals) or rel}')
     prefix = streams.detect_branch_prefix(str(top))
     repo = {'id': args.in_repo, 'path': '.', 'base': base, 'branch_prefix': prefix,
-            'detected': prefix is not None, 'sessions': 'cloud'}
+            'detected': prefix is not None}
     return {'root': target, 'dir': rel, 'branch': branch, 'repo': repo, 'notes': notes,
             'override': override if (refusals or args.dir and not streams.dir_is_safe(rel, candidates, any_dir)) else None}
 
@@ -599,10 +624,13 @@ def yaml_list(values):
     return '[' + ', '.join(json.dumps(v, ensure_ascii=False) for v in values) + ']'
 
 
-def render_config(base, modules, repos=(), areas=(), in_repo=None):
+def render_config(base, modules, repos=(), areas=(), in_repo=None, sessions=None, cloud_environment=None):
     title = json.dumps(base['PROGRAM_TITLE'], ensure_ascii=False)
     text = fill((TEMPLATES / 'orch.yaml').read_text(encoding='utf-8'),
                 {**base, 'PROGRAM_TITLE_YAML': title})
+    if sessions:
+        env = f'cloud_environment: {json.dumps(cloud_environment, ensure_ascii=False)}\n' if cloud_environment else ''
+        text = text.replace('sessions: local\n', f'sessions: {sessions}\n{env}', 1)
     if in_repo:
         text = text.replace('workspace_mode: separate\n',
                             'workspace_mode: in-repo\n'
@@ -624,7 +652,7 @@ def render_config(base, modules, repos=(), areas=(), in_repo=None):
                 '    shared_paths: []',
                 '    resources: []',
                 '    checks: []',
-            ] + ([f'    sessions: {r["sessions"]}'] if r.get('sessions') else [])))
+            ]))
         text = text.replace('repos: []\n', 'repos:\n' + '\n'.join(blocks) + '\n')
     blocks = []
     if modules:
@@ -679,7 +707,7 @@ def cmd_new_wp(args):
     workspace = {'mode': 'in-repo' if ws.in_repo else 'separate', 'branch': ws.workspace_branch,
                  'wp_rel': os.path.relpath(path.resolve(), ws.git_top) if ws.in_repo else None}
     mapping.update(streams.wp_fields(ws.lang, sm, wp, args.slug, str(path.resolve()), ws.tag,
-                                     ws.coordinator, workspace))
+                                     ws.coordinator, workspace, ws.config.get('models')))
     template = ws.wp_dir / '_TEMPLATE.md'
     safe_edit.create(path, fill(template.read_text(encoding='utf-8'), mapping))
     link = f'[{wp}](work-packages/{path.name})'
@@ -733,6 +761,68 @@ def _has_wp(ws, wp):
     return True
 
 
+def cmd_model(args):
+    """Set the implementer model, effort and reason of a package (header rows and start command)."""
+    ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('model')
+    model, effort = args.model, args.effort
+    errors = streams.model_errors('model', model, effort)
+    if errors:
+        raise OrchError('; '.join(errors))
+    r, module, _ = wp_context(ws, args.wp)
+    path = ws.wp_path(r['wp'])
+    text = path.read_text(encoding='utf-8')
+    header = streams.wp_header(text)
+    labels = {key: next((l for l in streams.WP_LABELS[key] if l in header), None)
+              for key in ('model', 'effort', 'model_reason')}
+    if not all(labels.values()):
+        raise OrchError(f'{args.wp}: the package has no Model/Effort/Model reason rows (created before 0.5.0); '
+                        'add them by point edit first')
+    values = {'model': f'`{model}`', 'effort': f'`{effort}`' if effort else '—', 'model_reason': cell(args.reason)}
+    pairs = []
+    for key, label in labels.items():
+        line = next(l for l in text.split('\n') if l.startswith(f'| {label} |'))
+        pairs.append((line, f'| {label} | {values[key]} |'))
+    commands = [b for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)
+                if b.strip().startswith('cd ') and ' claude ' in b]
+    if commands and not module.cloud:
+        pairs.append((commands[-1], streams.apply_model_flags(commands[-1], model, effort)))
+    safe_edit.replace_many(path, [(o, n) for o, n in pairs if o != n])
+    ws.journal(f'{args.wp}: model {model}' + (f', effort {effort}' if effort else '') + f' ({args.reason})',
+               wp=args.wp, evidence='orch.py model')
+    print(f'{args.wp}: model {model}' + (f', effort {effort}' if effort else ''))
+    return 0
+
+
+def cmd_cloud_env(args):
+    """Record the owner's cloud environment name (program level, or one module)."""
+    ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('cloud-env')
+    config = ws.root / 'orch.yaml'
+    text = config.read_text(encoding='utf-8')
+    value = json.dumps(args.name, ensure_ascii=False)
+    if args.module:
+        match = re.search(r'(?m)^  - id: ' + re.escape(args.module) + r'\n((?:    .*\n)*)', text)
+        if not match:
+            raise OrchError(f'module {args.module} not found in orch.yaml')
+        block = match.group(0)
+        current = re.search(r'(?m)^    cloud_environment: .*\n', block)
+        new_block = (block.replace(current.group(0), f'    cloud_environment: {value}\n') if current
+                     else block + f'    cloud_environment: {value}\n')
+        safe_edit.replace_once(config, block, new_block)
+    else:
+        current = re.search(r'(?m)^cloud_environment: .*$', text)
+        if current:
+            safe_edit.replace_once(config, current.group(0) + '\n', f'cloud_environment: {value}\n')
+        else:
+            line = re.search(r'(?m)^sessions: .*$', text) or re.search(r'(?m)^program: .*$', text)
+            safe_edit.replace_once(config, line.group(0) + '\n', f'{line.group(0)}\ncloud_environment: {value}\n')
+    ws.journal(f'cloud environment {args.name}' + (f' for module {args.module}' if args.module else ''),
+               evidence='owner answer; orch.py cloud-env')
+    print(f'cloud environment: {args.name}')
+    return 0
+
+
 def cmd_journal(args):
     ws = Workspace(find_workspace(args.workspace))
     ws.journal(args.event, wp=args.wp or '—', evidence=args.evidence or '—')
@@ -759,7 +849,8 @@ def cmd_owner(args):
         line = '| ' + ' | '.join(cells) + ' |'
         ws.rewrite_table(ws.status, 'owner', lambda body: body + [line])
         ws.journal(f'{new} opened for owner', evidence=args.where or '—')
-        print(new)
+        if not getattr(args, 'quiet', False):
+            print(new)
         return 0
     target = args.target.upper()
     matches = [r for r in rows if plain_id(r['id']) == target]
@@ -882,6 +973,10 @@ def lint(ws):
         if link and not (ws.root / link.group(1)).is_file():
             errors.append(f'status.md: {plain_id(r["wp"])} links to missing {link.group(1)}')
     files = sorted(p for p in ws.wp_dir.glob('WP-*.md')) if ws.wp_dir.is_dir() else []
+    for path in files:
+        meta = streams.wp_meta(path, None)
+        errors.extend(f'work-packages/{path.name}: {e}'
+                      for e in streams.model_errors('header', meta.get('model'), meta.get('effort')))
     for path in files:
         wp = re.match(r'^(WP-[A-Z0-9-]+?-\d+)', path.name)
         if not wp or wp.group(1) not in wp_ids:
@@ -1007,6 +1102,11 @@ def lint_warnings(ws):
     if problem:
         warnings.append(f'in-repo workspace: {problem}; commit refuses until the owner decides '
                         '(deploy_check_override: D-n)')
+    if ws.wp_dir.is_dir():
+        for path in sorted(ws.wp_dir.glob('WP-*.md')):
+            meta = streams.wp_meta(path, None)
+            if meta.get('effort') and not meta.get('model'):
+                warnings.append(f'work-packages/{path.name}: Effort without Model has no effect on the start command')
     local = [m for m in modules.values() if not m.cloud]
     warning = streams.main_checkout_warning(ws.root, local)
     if warning:
@@ -1393,6 +1493,17 @@ def dispatch_problems(ws, wp):
             for lock in lock_conflicts(ws, module.repo, 'staging', wp):
                 busy[lock['lock']] = lock
                 problems.append(f'lock {lock["lock"]} (stand slot) is held by {lock["holder"]}')
+    wp_path = ws.wp_path(r['wp'])
+    if wp_path and wp_path.is_file():
+        header_meta = streams.wp_meta(wp_path, module)
+        for error in streams.model_errors(f'{wp} header', header_meta.get('model'), header_meta.get('effort')):
+            problems.append(f'{error}; fix it with orch.py model {wp} <model> --reason "..."')
+    if module.cloud and not module.cloud_environment:
+        problems.append(f'module {module.id} runs cloud sessions but no cloud environment is set: ask the owner for '
+                        'its name and record it with: orch.py cloud-env "<name>"' +
+                        (f' --module {module.id}' if module.raw.get('sessions') == 'cloud' else ''))
+    if not module.cloud and running_in_cloud():
+        problems.append(CLOUD_LOCAL_REFUSAL)
     if module.cloud and ws.in_repo:
         path = ws.wp_path(r['wp'])
         rel = os.path.relpath(path.resolve(), ws.git_top) if path else None
@@ -1427,37 +1538,37 @@ def cmd_dispatch(args):
         return 1
     path = ws.wp_path(r['wp'])
     text = path.read_text(encoding='utf-8') if path else ''
-    if args.dry_run:  # never writes anything, for any kind of module
-        print(f'dispatch {wp}: ok (dry run); locks to take: {", ".join(wanted) or "none"}')
-        return 0
+    meta = streams.wp_meta(path, module) if path and path.is_file() else {}
+    model, effort = meta.get('model'), meta.get('effort')
     if module.cloud:
         prompt = re.search(r'## 5\.[^\n]*\n+```text\n(.*?)\n```', text, re.S)
-        for name in wanted:
-            if acquire(ws, module.repo, name, wp, 'dispatch'):
-                raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
-        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='DISPATCHING',
-                                   quiet=True, evidence='cloud session prompt handed to the owner'))
-        print(prompt.group(1).strip() if prompt else f'{wp}: no start prompt in section 5')
+        prompt = prompt.group(1).strip() if prompt else f'{wp}: no start prompt in section 5'
         if args.inline or not ws.in_repo:
-            print('\n---\n' + text.strip())
+            prompt = prompt + '\n\n---\n' + text.strip()
+        handover = streams.cloud_block(ws.lang, wp, module, prompt, model, effort)
+    else:
+        blocks = [b.strip() for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)]
+        commands = [b for b in blocks if b.startswith('cd ') and ' claude ' in b]
+        command = streams.apply_model_flags(commands[-1], model, effort) if commands else None
+        if args.live:
+            rel = path.relative_to(ws.root) if path else wp
+            handover = f'[{ws.tag}] TASK {wp} :: {r["title"]} :: ref={ws.root / rel}'
+        else:
+            handover = command or f'{wp}: no start command in the work package; use its Start prompt section'
+    model_note = f'model {model or "owner default"}' + (f', effort {effort}' if effort else '')
+    if args.dry_run:  # never writes anything, for any kind of module
+        print(f'dispatch {wp}: ok (dry run); locks to take: {", ".join(wanted) or "none"}; {model_note}')
+        print(handover)
         return 0
-    blocks = [b.strip() for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)]
-    commands = [b for b in blocks if b.startswith('cd ') and ' claude ' in b]
-    command = commands[-1] if commands else None
     for name in wanted:
         if acquire(ws, module.repo, name, wp, 'dispatch'):
             raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
     wanted = [lock_key(module.repo, n) for n in wanted]
-    evidence = 'TASK message to live session' if args.live else 'start command handed to the owner'
+    evidence = ('cloud session prompt handed to the owner' if module.cloud else
+                'TASK message to live session' if args.live else 'start command handed to the owner')
     cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='DISPATCHING', quiet=True,
-                               evidence=evidence + (f'; locks {", ".join(wanted)}' if wanted else '')))
-    if args.live:
-        rel = path.relative_to(ws.root) if path else wp
-        print(f'[{ws.tag}] TASK {wp} :: {r["title"]} :: ref={ws.root / rel}')
-    elif command:
-        print(command)
-    else:
-        print(f'{wp}: no start command in the work package; use its Start prompt section')
+                               evidence=evidence + f'; {model_note}' + (f'; locks {", ".join(wanted)}' if wanted else '')))
+    print(handover)
     return 0
 
 
@@ -1645,7 +1756,24 @@ def cmd_review_start(args):
     name = f'{wp.lower()}-review-{date}' + (f'-r{args.round}' if args.round else '') + '.md'
     path = reports / name
     template = (TEMPLATES / ws.lang / 'review-report.md').read_text(encoding='utf-8')
+    escalation = None
+    if (args.round or 1) >= 3:
+        models = ws.config.get('models') if isinstance(ws.config.get('models'), dict) else {}
+        target = str(models.get('escalate') or 'opus')
+        target_effort = models.get('escalate_effort')
+        flags = f'--model {target}' + (f' --effort {target_effort}' if target_effort else '')
+        if module.cloud:
+            how = (f'in the same cloud session choose {target} in the model list (or send `/model {target}`'
+                   + (f' and `/effort {target_effort}`' if target_effort else '') + ')')
+        else:
+            where = module.repo.path if module.repo.path.startswith(('/', '~')) else str(module.repo.local)
+            how = f'cd {where} && claude --resume {module.session} {flags}'
+        escalation = (f'round {args.round}: the same REVISE items are still open - restart the module session on '
+                      f'{target}: {how}')
+        warnings.append(escalation)
     base_label = f'{module.repo.base} @ {base_sha[:10]}'
+    if escalation:
+        auto += f'\n- **escalation**: {escalation}'
     body = fill(template, {'WP': wp, 'PR': args.pr or r['pr'], 'SHA': sha[:10], 'BASE': base_label, 'DATE': today(),
                            'ROUND': str(args.round or 1), 'FILES': str(len(files)), 'STAT': stat or '—',
                            'AUTO': auto, 'REVISION': revision or '—'})
@@ -1653,6 +1781,12 @@ def cmd_review_start(args):
     if args.pr:
         cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='pr', text=args.pr, quiet=True,
                                    evidence=None))
+    already = any(item['text'].startswith(f'{wp}: round ') and 'restart the module session' in item['text']
+                  for item in open_owner_items(ws))
+    if escalation and not already:
+        cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where=f'reports/{name}',
+                                     quiet=True, text=f'{wp}: {escalation} ; expected: the session continues on the stronger '
+                                          'model with its context'))
     if r['status'] in ('DISPATCHING', 'IN_PROGRESS', 'REVISE'):
         cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='REVIEW', quiet=True,
                                    evidence=f'{sha[:10]}; report reports/{name}'))
@@ -1677,6 +1811,8 @@ def cmd_review_start(args):
         return 0
     for warning in warnings:
         print(f'warning: {warning}')
+    if escalation:
+        print(f'escalation: {escalation}')
     print(f'review {wp} at {sha[:10]} against {base_label}: {stat or "no changes"}')
     print(f'report: {path}')
     for k, t in findings:
@@ -2134,8 +2270,12 @@ def build_parser():
                    help='module that is a domain of a --repo')
     p.add_argument('--in-repo', metavar='REPO_ID',
                    help='workspace inside this repository on branch orch/<program>, in a deploy-ignored '
-                        'directory; modules run as cloud sessions')
+                        'directory (session kind still comes from --sessions)')
     p.add_argument('--base', help='base branch of the --in-repo repository (default: origin HEAD)')
+    p.add_argument('--sessions', choices=('local', 'cloud'),
+                   help='required, the owner\'s explicit choice: module sessions run locally (recommended) or in the cloud')
+    p.add_argument('--cloud-environment', '--cloud-env', dest='cloud_environment', metavar='NAME',
+                   help='name of the owner\'s cloud environment, required with --sessions cloud (no variable values)')
     p.add_argument('--deploy-override', metavar='D-n',
                    help='owner decision that accepts an unverifiable deploy check or an unsafe --dir')
     p.set_defaults(func=cmd_init)
@@ -2152,6 +2292,18 @@ def build_parser():
     p.add_argument('text')
     p.add_argument('--evidence', help='journal evidence for a status change')
     p.set_defaults(func=cmd_set)
+
+    p = sub.add_parser('model', parents=[common], help='set the implementer model, effort and reason of a package')
+    p.add_argument('wp')
+    p.add_argument('model', help='sonnet | opus | fable | haiku | opusplan | claude-...')
+    p.add_argument('--effort', help='low | medium | high | xhigh | max')
+    p.add_argument('--reason', required=True, help='one line: why this model')
+    p.set_defaults(func=cmd_model)
+
+    p = sub.add_parser('cloud-env', parents=[common], help='record the owner\'s cloud environment name')
+    p.add_argument('name')
+    p.add_argument('--module', help='only for this module')
+    p.set_defaults(func=cmd_cloud_env)
 
     p = sub.add_parser('journal', parents=[common], help='add a journal line on top')
     p.add_argument('event')

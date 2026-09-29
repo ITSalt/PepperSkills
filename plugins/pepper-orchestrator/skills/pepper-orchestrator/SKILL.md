@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, resume, owner, decide, close, reopen. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.4.0
+  version: 0.5.0
 ---
 
 # Pepper Orchestrator
@@ -73,6 +73,13 @@ the skill as `/pepper-orchestrator <mode> <arguments>` or by a phrase.
 
 Without a clear mode: if a workspace exists, run `resume`; otherwise propose `init`.
 
+**Session kind and models.** The owner chooses at init whether module sessions run locally
+(recommended) or in the cloud (with a named cloud environment); a cloud orchestrator works only
+with cloud sessions. Every package carries a recommended implementer model and effort (default
+`sonnet`; `opus` + `high` for risky packages; `review` suggests a restart on the escalation model
+from round 3). Locally never suggest `/model <name>` with an argument: it becomes the owner's
+default for all new sessions.
+
 **One program, one goal.** `PLAN.md` states the goal and its completion condition. When the
 condition holds, close the program (`close`); the next goal is a new program (`init`), not more
 packages in a finished one. A closed program refuses `plan`, `dispatch`, `new-wp`, `set`,
@@ -97,7 +104,7 @@ python3 SKILL_DIR/scripts/orch.py --help
 
 | Command | Use |
 |---------|-----|
-| `init <program> --lang en\|ru [--module id=REPO[@BASE]] [--repo id=PATH[@BASE] --area\|--domain id=REPO_ID:GLOB,...]` | workspace from `templates/` |
+| `init <program> --lang en\|ru --sessions local\|cloud [--cloud-environment NAME] [--module id=REPO[@BASE]] [--repo id=PATH[@BASE] --area\|--domain id=REPO_ID:GLOB,...]` | workspace from `templates/` |
 | `new-wp <module> <slug> --title "..."` | next work package file + `DRAFT` row |
 | `set <WP> status <STATUS> --evidence "..."` | status change + journal line |
 | `set <WP> pr\|session\|title "..."` | edit one cell |
@@ -115,6 +122,8 @@ python3 SKILL_DIR/scripts/orch.py --help
 | `worktrees` | worktrees of every repository: branch, dirty, ahead/behind, package (read-only) |
 | `upgrade` | add the locks and merge queue tables to a 0.1.0 `status.md` |
 | `ready [--json]` | dispatched packages whose branch is on origin (READY without messages) |
+| `model <WP> <model> [--effort E] --reason "..."` | implementer model and effort in the package header and its start command |
+| `cloud-env "<name>" [--module id]` | record the owner's cloud environment name (journaled) |
 | `owner carry <id> "<reason>"` | move an open owner item to `backlog.md` |
 | `close --check \| --apply [--summary "..."] [--prs-verified "<concrete evidence>"] [--goal-confirmed "..."]` | completion check by facts; closeout report, `state: closed`, archive (a second `--apply` finishes an unfinished close) |
 | `reopen "<reason>"` | `state: active` again, journal line |
@@ -171,9 +180,11 @@ The core (roles, files, protocol, templates, `scripts/`) works on any agent stac
 files and run Python. Client-specific capabilities are adapters:
 
 - **Subagents** for fact finding and review: the plugin ships `orchestrator-scout` (read-only
-  facts across repositories and databases) and `orchestrator-reviewer` (read-only PR review with a
-  disposable clone and mutations). Where the client has no plugin agents, give the same brief to a
-  general subagent, or do the work yourself, read-only, and keep only conclusions in context.
+  facts across repositories; `model: opus`) and `orchestrator-reviewer` (read-only PR review with a
+  disposable clone and mutations; no `model` field, it runs on the orchestrator's model). Where the
+  client has no plugin agents (cloud sessions, a skill installed alone), give the same brief to a
+  general subagent, passing `model: opus` for the scout brief, or do the work yourself, read-only,
+  and keep only conclusions in context.
 - **Cross-session messaging** (Claude Code `SendMessage` / `ListAgents`): where it is missing, the
   owner relays the one-line pointers and `resume` learns READY from `gh pr list`.
 - **Session start commands** (`claude --name ...`, `claude -w <name>` for a stream worktree):
@@ -185,14 +196,16 @@ files and run Python. Client-specific capabilities are adapters:
 For programs run in cloud sessions (claude.ai/code): every session is its own clone, sees only its
 own repository, and its messages do not reach other sessions.
 
-- **Workspace in the repository:** `orch.py init <program> --in-repo <repo-id> ...` switches the
+- **Workspace in the repository:** `orch.py init <program> --in-repo <repo-id> --sessions cloud
+  --cloud-environment "<name>" ...` switches the
   checkout to `orch/<program>` (never the base), puts the workspace in a non-hidden directory every
   push workflow ignores (judged from the workflows of the pushed ref, `docs/` first), and commits
   and pushes state only to that branch. A workflow form the check does not understand, or an
   unsafe `--dir`, is refused; only an owner decision passed as `--deploy-override D-n` overrides
   it. Start the orchestrator cloud session on `orch/<program>`.
-- **Modules as cloud sessions** (`sessions: cloud` on the repo or module): `dispatch` prints a
-  prompt for a new cloud session instead of a terminal command. The session reads the package with
+- **Modules as cloud sessions** (the program's `sessions: cloud`, or a module's own after an owner
+  decision): `dispatch` prints a block for a new cloud session (environment, repository and
+  branch, model and effort, a prefill link) and the prompt instead of a terminal command. The session reads the package with
   `git fetch origin orch/<program> && git show origin/orch/<program>:<path>` (or gets the text
   inline with a separate workspace or `--inline`), branches from the base and delivers a PR whose
   body starts with the package id. No message back. Commit and push the package before

@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.4.0).** Modes `init`, `plan`, `dispatch`, `review`, `resume`, `owner`, `decide`,
+> **Preview (0.5.0).** Modes `init`, `plan`, `dispatch`, `review`, `resume`, `owner`, `decide`,
 > `close`, `reopen`;
 > streams in one repository with worktrees and locks; cloud sessions.
 > Formats and commands may change before 1.0.0.
@@ -34,7 +34,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:close [result]` | goal reached: completion check, closeout report, archive |
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 
-Version 0.4.0 is a preview (stages 2a-2d). Modules can be whole repositories or areas and
+Version 0.5.0 is a preview (stages 2a-2e). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
@@ -46,7 +46,7 @@ until then the skill follows the concept for those steps by instructions.
 Locally use the short commands (`/pepper-orchestrator:plan ...`); in a cloud session, where plugin
 commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phrase.
 
-1. **New program, separate home repository.** `init <program>` -> `plan <task>` -> answer the
+1. **New program, separate home repository.** `init <program>` (answer the session-kind question) -> `plan <task>` -> answer the
    owner questions with `decide` -> `dispatch <WP>` -> the owner starts the module session with the
    printed command or prompt -> the session opens a PR -> `resume` finds it -> `review <WP>` ->
    the owner merges -> "R-n done" to `owner` -> the orchestrator verifies the fact and closes it.
@@ -78,6 +78,24 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
     `PLAN.md` holds, run `close` (it checks packages, PRs, locks and owner items by facts; carry
     leftovers with `orch.py owner carry <id> "<reason>"`), then start the next goal as a new
     program with `init`. In-repo, the owner runs the printed tag and branch-deletion commands.
+
+## Models and environment
+
+- **Session kind.** `init` asks you whether module sessions run locally (recommended) or in the
+  cloud; cloud needs the name of your cloud environment. An orchestrator running in the cloud
+  works only with cloud sessions.
+- **Implementer model.** Each work package has Model, Effort and Model reason, filled from
+  `orch.yaml` (`models.implement`, module `model`/`effort`); the orchestrator recommends `opus` +
+  `high` for risky packages (`orch.py model <WP> opus --effort high --reason "..."`). Local start
+  commands carry `--model`/`--effort`; cloud packages come with a block naming the environment,
+  model and effort and a claude.ai/code prefill link. From review round 3 the orchestrator
+  suggests a restart on `models.escalate`.
+- **Do not** type `/model <name>` with an argument in a local session to switch a module: it
+  becomes your default for every new session. Use the start flags or the `/model` picker with `s`.
+  Do not set `ANTHROPIC_MODEL` in a cloud environment shared with the orchestrator, and keep
+  secrets out of environment variables.
+- Agents: `orchestrator-scout` runs on Opus; `orchestrator-reviewer` runs on the orchestrator's
+  model.
 
 ## Cloud sessions
 

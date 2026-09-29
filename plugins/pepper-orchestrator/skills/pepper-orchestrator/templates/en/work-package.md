@@ -10,6 +10,9 @@
 | Worktree | {{WORKTREE}} |
 | PR title | `[{{TAG}}] {{WP}}: {{WP_TITLE}}` |
 | Session | `{{SESSION}}` |
+| Model | {{MODEL}} |
+| Effort | {{EFFORT}} |
+| Model reason | {{MODEL_REASON}} |
 | Mode | <methodology the session follows in its repository> |
 | Methodology commands allowed | {{METHOD_ALLOWED}} |
 | Methodology commands forbidden | {{METHOD_FORBIDDEN}} |

@@ -25,8 +25,8 @@ GIT_ENV = {
 }
 
 
-def run(cwd, *args, ok=True):
-    env = {**os.environ, **GIT_ENV, 'PYTHONDONTWRITEBYTECODE': '1'}
+def run(cwd, *args, ok=True, extra_env=None):
+    env = {**os.environ, **GIT_ENV, 'PYTHONDONTWRITEBYTECODE': '1', **(extra_env or {})}
     env.pop('ORCH_WORKSPACE', None)
     result = subprocess.run([*ORCH, *args], cwd=cwd, env=env, text=True, capture_output=True)
     if ok and result.returncode:
@@ -98,9 +98,9 @@ def test_safe_edit(tmp):
 
 
 SAMPLE_YAML = '''\
-program: corp-clients            # prefix
-title: "Corporate clients: B2B"
-tag: CORP
+program: example-program         # prefix
+title: "Example program: part B"
+tag: EXAMPLE
 owner_language: ru
 push_after_milestone: true
 modules:
@@ -130,7 +130,7 @@ def test_yaml():
     assert parsed['modules'][1]['web_urls']['prod'] == 'https://example.com'
     assert parsed['modules'][0]['tests'] == ['./scripts/test.sh']
     assert parsed['push_after_milestone'] is True and parsed['nothing'] is None
-    assert parsed['title'] == 'Corporate clients: B2B'
+    assert parsed['title'] == 'Example program: part B'
     assert parsed['note'] == "it's # not a comment"
     try:
         import yaml
@@ -153,13 +153,13 @@ def test_workflow(tmp, lang):
     repo = tmp / f'home-{lang}'
     repo.mkdir()
     git(repo, 'init', '-q')
-    run(repo, 'init', 'demo', '--lang', lang, '--title', 'Demo: "quoted" | program',
+    run(repo, 'init', 'demo', '--lang', lang, '--sessions', 'local', '--title', 'Demo: "quoted" | program',
         '--module', 'db=~/projects/demo-db', '--module', 'web=~/projects/demo-web@develop')
     ws = repo / 'features/demo'
     config = orch.parse_yaml((ws / 'orch.yaml').read_text(encoding='utf-8'))
     assert config['title'] == 'Demo: "quoted" | program' and config['tag'] == 'DEMO'
     assert [m['base'] for m in config['modules']] == ['main', 'develop']
-    run(repo, 'init', 'demo', '--lang', lang, ok=False)  # never over an existing workspace
+    run(repo, 'init', 'demo', '--lang', lang, '--sessions', 'local', ok=False)  # never over an existing workspace
     assert run(repo, 'lint').returncode == 0
     run(repo, 'new-wp', 'db', 'orders-table', '--title', 'Orders table')
     run(repo, 'new-wp', 'web', 'orders-page')
@@ -281,9 +281,9 @@ def test_lint_failures(repo, ws):
 def test_discovery(tmp):
     repo = tmp / 'multi'
     repo.mkdir()
-    run(repo, 'init', 'one', '--lang', 'en')
+    run(repo, 'init', 'one', '--lang', 'en', '--sessions', 'local')
     assert run(repo, 'queue').returncode == 0  # single features/*/orch.yaml is found
-    run(repo, 'init', 'two', '--lang', 'en')
+    run(repo, 'init', 'two', '--lang', 'en', '--sessions', 'local')
     assert 'several workspaces' in run(repo, 'queue', ok=False).stderr
     assert run(repo, '--workspace', 'features/two', 'queue').returncode == 0
     assert run(repo, 'queue', '--workspace', 'features/two').returncode == 0
@@ -422,9 +422,9 @@ def test_monorepo(tmp):
     home = tmp / 'mono-home'
     home.mkdir()
     git(home, 'init', '-q')
-    refused = run(mono, 'init', 'inside', '--lang', 'en', '--repo', f'mono={mono}', ok=False)
+    refused = run(mono, 'init', 'inside', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', ok=False)
     assert 'module repository' in refused.stderr, 'P4: workspace in a module checkout must be refused'
-    run(home, 'init', 'shop', '--lang', 'en', '--repo', f'mono={mono}',
+    run(home, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
         '--area', 'admin=mono:apps/admin/**', '--area', 'app=mono:apps/app/**',
         '--domain', 'billing=mono:backend/src/billing/**')
     ws = home / 'features/shop'
@@ -533,15 +533,15 @@ def test_p4_identity(tmp):
     mono = make_monorepo(tmp / 'p4')
     wt_ok = tmp / 'p4/wt-orch'
     git(mono, 'worktree', 'add', '-q', '-b', 'orch/shop', str(wt_ok), 'main')
-    assert run(wt_ok, 'init', 'shop', '--lang', 'en', '--repo', f'mono={mono}').returncode == 0
+    assert run(wt_ok, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}').returncode == 0
     wt_base = tmp / 'p4/wt-base'
     git(mono, 'switch', '-q', '-c', 'side')  # free main for a linked worktree
     git(mono, 'worktree', 'add', '-q', str(wt_base), 'main')
-    refused = run(wt_base, 'init', 'shop', '--lang', 'en', '--repo', f'mono={mono}', ok=False)
+    refused = run(wt_base, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', ok=False)
     assert 'linked worktree of module repository' in refused.stderr, refused.stderr
     clone = tmp / 'p4/clone'
     git(tmp, 'clone', '-q', str(tmp / 'p4/mono.git'), str(clone))
-    refused = run(clone, 'init', 'shop', '--lang', 'en', '--repo', f'mono={mono}', ok=False)
+    refused = run(clone, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', ok=False)
     assert 'checkout or clone of module repository' in refused.stderr, refused.stderr
     # commit is refused the same way when a workspace was copied onto a base worktree.
     shutil.copytree(wt_ok / 'features/shop', wt_base / 'features/shop',
@@ -550,7 +550,7 @@ def test_p4_identity(tmp):
     # L7: orch/ in the main checkout while a whole-repository module works there: warning.
     solo = make_monorepo(tmp / 'p4solo')
     git(solo, 'switch', '-q', '-c', 'orch/solo')
-    out = run(solo, 'init', 'solo', '--lang', 'en', '--module', f'core={solo}')
+    out = run(solo, 'init', 'solo', '--lang', 'en', '--sessions', 'local', '--module', f'core={solo}')
     assert 'warning' in out.stdout and 'main checkout' in out.stdout, out.stdout
     assert 'main checkout' in run(solo, 'lint').stderr
     # git older than 2.31 echoes the unknown --path-format option and prints a relative path.
@@ -578,12 +578,12 @@ def test_streams_edges(tmp):
     home = tmp / 'edges/home'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'edge', '--lang', 'en', '--repo', f'mono={mono}',
+    run(home, 'init', 'edge', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
         '--area', 'web=mono:apps/{admin,app}/**', '--domain', 'admin-ui=mono:backend/src/billing/**')
     ws = home / 'features/edge'
     config = ws / 'orch.yaml'
     assert 'paths: ["apps/{admin,app}/**"]' in config.read_text(encoding='utf-8'), 'braces kept by init'
-    assert run(home, 'init', 'bad', '--lang', 'en', '--repo', f'mono={mono}',
+    assert run(home, 'init', 'bad', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
                '--area', 'x=mono:apps/{admin/**', ok=False).returncode == 1
     for old, new in (
         ('    merge_policy: sequential\n    shared_paths',
@@ -649,7 +649,7 @@ def test_legacy_shared_path(tmp):
     home = tmp / 'legacy2'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'two', '--lang', 'en', '--module', 'api=~/projects/example-api',
+    run(home, 'init', 'two', '--lang', 'en', '--sessions', 'local', '--module', 'api=~/projects/example-api',
         '--module', 'lts=~/projects/example-api@release/1.x')
     out = run(home, 'lint')
     assert out.returncode == 0 and 'dispatched one at a time' in out.stderr, out.stderr
@@ -699,7 +699,7 @@ def test_cloud_in_repo(tmp):
     remote = tmp / 'cloud/mono.git'
     orch_clone = tmp / 'cloud/orchestrator'
     git(tmp, 'clone', '-q', str(remote), str(orch_clone))
-    out = run(orch_clone, 'init', 'demo', '--lang', 'en', '--in-repo', 'app',
+    out = run(orch_clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--cloud-environment', 'Project env', '--in-repo', 'app', '--cloud-env', 'Project env',
               '--area', 'admin=app:apps/admin/**', '--area', 'web=app:apps/app/**').stdout
     assert 'in-repo workspace on branch orch/demo, directory docs/orchestration/demo' in out, out
     assert 'deploy.yml: runs on push to orch/demo; ignored directories: docs' in out, out
@@ -708,7 +708,10 @@ def test_cloud_in_repo(tmp):
     config = orch.parse_yaml((ws / 'orch.yaml').read_text(encoding='utf-8'))
     assert config['workspace_mode'] == 'in-repo' and config['workspace_branch'] == 'orch/demo'
     assert config['workspace_dir'] == 'docs/orchestration/demo' and config['push_after_milestone'] is True
-    assert config['repos'][0]['path'] == '.' and config['repos'][0]['sessions'] == 'cloud'
+    assert config['repos'][0]['path'] == '.' and config['sessions'] == 'cloud'
+    assert config['cloud_environment'] == 'Project env'
+    assert 'session kind: cloud, environment Project env, confirmed by the owner' in \
+        (orch_clone / 'docs/orchestration/demo/status.md').read_text(encoding='utf-8')
     lint = run(orch_clone, 'lint')  # found from the repository root (nested discovery)
     assert lint.returncode == 0 and 'warning' not in lint.stderr, lint.stderr
     run(orch_clone, 'new-wp', 'admin', 'orders')
@@ -727,7 +730,9 @@ def test_cloud_in_repo(tmp):
     git(module_clone, 'fetch', '-q', 'origin', 'orch/demo')
     assert '# WP-ADMIN-01' in git(module_clone, 'show', f'origin/orch/demo:{rel}')
     run(orch_clone, 'set', 'WP-ADMIN-01', 'status', 'READY')
-    prompt = run(orch_clone, 'dispatch', 'WP-ADMIN-01').stdout
+    handover = run(orch_clone, 'dispatch', 'WP-ADMIN-01').stdout
+    assert handover.startswith('New cloud session for WP-ADMIN-01:') and '- Environment: Project env' in handover
+    prompt = handover.split('Prompt:\n', 1)[1]
     assert prompt.startswith(f'Cloud session for work package WP-ADMIN-01 in repository {remote.resolve()},'), prompt
     assert f'{rel} . Do section 0' in prompt, prompt
     assert '---' not in prompt, 'in-repo workspace: the prompt points to the branch, no inline text'
@@ -753,14 +758,18 @@ def test_cloud_in_repo(tmp):
     home = tmp / 'cloud/home'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'sep', '--lang', 'en', '--repo', f'app={mono}', '--area', 'admin=app:apps/admin/**')
+    run(home, 'init', 'sep', '--lang', 'en', '--sessions', 'local', '--repo', f'app={mono}', '--area', 'admin=app:apps/admin/**')
     sep_config = home / 'features/sep/orch.yaml'
     safe_edit.replace_once(sep_config, '    checks: []\n', '    checks: []\n    sessions: cloud\n')
     run(home, 'new-wp', 'admin', 'list')
     sep_text = (home / 'features/sep/work-packages/WP-ADMIN-01-list.md').read_text(encoding='utf-8')
     assert 'The package text follows this prompt.' in sep_text
     run(home, 'set', 'WP-ADMIN-01', 'status', 'READY')
-    inline = run(home, 'dispatch', 'WP-ADMIN-01').stdout
+    refusal = run(home, 'dispatch', 'WP-ADMIN-01', '--dry-run', ok=False).stderr
+    assert 'no cloud environment is set' in refusal and 'orch.py cloud-env' in refusal, refusal
+    run(home, 'cloud-env', 'Project env')
+    assert 'cloud environment Project env' in (home / 'features/sep/status.md').read_text(encoding='utf-8')
+    inline = run(home, 'dispatch', 'WP-ADMIN-01').stdout.split('Prompt:\n', 1)[1]
     assert inline.startswith('Cloud session for work package WP-ADMIN-01') and '\n---\n# WP-ADMIN-01' in inline
     print('PASS cloud in-repo: init on orch/ under paths-ignore, cloud prompt, push to orch/, READY by branch, base refused')
 
@@ -772,12 +781,12 @@ def test_cloud_deploy_scan(tmp):
     with_workflow(mono, 'name: Deploy\non:\n  push:\njobs: {}\n')
     clone = tmp / 'scan/clone'
     git(tmp, 'clone', '-q', str(tmp / 'scan/mono.git'), str(clone))
-    refused = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', ok=False).stderr
     assert 'no non-hidden directory is ignored by every push workflow' in refused, refused
     assert git(clone, 'rev-parse', '--abbrev-ref', 'HEAD').strip() == 'main', 'refusal must not switch branches'
     # H2: the working tree is not what gets pushed; deleting workflows locally changes nothing.
     shutil.rmtree(clone / '.github')
-    refused = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', ok=False).stderr
     assert 'ignored by every push workflow' in refused, 'judged from origin/main, not the working tree'
     git(clone, 'checkout', '-q', '--', '.github')
 
@@ -820,11 +829,11 @@ def test_cloud_deploy_scan(tmp):
         safe, _, refusals, _ = verdict(text)
         assert refusals and not safe, (label, refusals)
     git(clone, 'push', '-q', 'origin', 'HEAD:main')  # origin/main now has the negation-free "no on key" form
-    refused = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    refused = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', ok=False).stderr
     assert 'cannot tell' in refused and '--deploy-override D-n' in refused, refused
-    assert run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', '--deploy-override', 'owner',
+    assert run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', '--deploy-override', 'owner',
                ok=False).returncode == 1
-    out = run(clone, 'init', 'x', '--lang', 'en', '--in-repo', 'app', '--dir', 'notes/orch-x',
+    out = run(clone, 'init', 'x', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', '--dir', 'notes/orch-x',
               '--deploy-override', 'D-1').stdout
     assert 'overridden by owner decision D-1' in out, out
     ws = clone / 'notes/orch-x'
@@ -835,11 +844,11 @@ def test_cloud_deploy_scan(tmp):
     with_workflow(mono2, "on:\n  push:\n    paths-ignore: ['notes/**']\njobs: {}\n")
     clone2 = tmp / 'scan2/clone'
     git(tmp, 'clone', '-q', str(tmp / 'scan2/mono.git'), str(clone2))
-    refused = run(clone2, 'init', 'y', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    refused = run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', ok=False).stderr
     assert 'no docs/ directory is ignored' in refused and 'notes/orchestration/y' in refused, refused
-    refused = run(clone2, 'init', 'y', '--lang', 'en', '--in-repo', 'app', '--dir', 'src/orch', ok=False).stderr
+    refused = run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', '--dir', 'src/orch', ok=False).stderr
     assert 'not a non-hidden directory that every push workflow ignores' in refused, refused
-    assert run(clone2, 'init', 'y', '--lang', 'en', '--in-repo', 'app', '--dir', 'notes/orchestration/y').returncode == 0
+    assert run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--in-repo', 'app', '--dir', 'notes/orchestration/y').returncode == 0
     tracking = subprocess.run(['git', 'config', '--get', 'branch.orch/y.merge'], cwd=clone2,
                               capture_output=True, text=True)
     assert tracking.returncode != 0, 'orch/ must not track the base'
@@ -861,7 +870,7 @@ def test_cloud_dispatch_safety(tmp):
     remote = tmp / 'safety/mono.git'
     orch_clone = tmp / 'safety/orch'
     git(tmp, 'clone', '-q', str(remote), str(orch_clone))
-    run(orch_clone, 'init', 'demo', '--lang', 'en', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
+    run(orch_clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--cloud-environment', 'Project env', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
     ws = orch_clone / 'docs/orchestration/demo'
     config = ws / 'orch.yaml'
     safe_edit.replace_once(config, '    resources: []', '    resources: [staging]\n    push_deploys: true')
@@ -887,7 +896,7 @@ def test_cloud_dispatch_safety(tmp):
     second = tmp / 'safety/second'
     git(tmp, 'clone', '-q', str(remote), str(second))
     run(orch_clone, 'commit', 'demo: dispatched')
-    refused = run(second, 'init', 'demo', '--lang', 'en', '--in-repo', 'app', ok=False).stderr
+    refused = run(second, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--cloud-environment', 'Project env', '--in-repo', 'app', ok=False).stderr
     assert 'already exists' in refused and 'resume' in refused, refused
     # L4: detached HEAD is refused before anything is committed.
     head = git(orch_clone, 'rev-parse', 'HEAD').strip()
@@ -904,7 +913,7 @@ def test_review(tmp):
     home = tmp / 'review/home'
     home.mkdir()
     git(home, 'init', '-q')
-    run(home, 'init', 'rv', '--lang', 'en', '--repo', f'mono={mono}',
+    run(home, 'init', 'rv', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
         '--area', 'admin=mono:apps/admin/**', '--area', 'app=mono:apps/app/**')
     ws = home / 'features/rv'
     config = ws / 'orch.yaml'
@@ -982,6 +991,13 @@ def test_review(tmp):
     git(wt, 'push', '-q', '-f', 'origin', 'feature/wp-app-01-checkout')
     third = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', second['sha'], '--round', '3',
                            '--json').stdout)
+    esc = [w for w in third['warnings'] if w.startswith('round 3:')]
+    assert esc and f'cd {mono} && claude --resume rv-app --model opus' in esc[0], third['warnings']
+    assert 'restart the module session on opus' in (home / 'features/rv/status.md').read_text(encoding='utf-8')
+    again = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', third['sha'], '--round', '4', '--json').stdout)
+    assert any(w.startswith('round 4:') for w in again['warnings']), 'the hint is printed every round'
+    open_escalations = [q for q in json.loads(run(home, 'queue', '--json').stdout) if 'restart the module session' in q['text']]
+    assert len(open_escalations) == 1, open_escalations
     command = third['revision_diff']
     assert f'range-diff origin/main..{second["sha"]} origin/main..{third["sha"]}' in command, command
     rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, text=True)
@@ -1023,7 +1039,7 @@ def test_close(tmp):
     git(home, 'init', '-q')
     git(tmp, 'init', '-q', '--bare', str(tmp / 'close/home.git'))
     git(home, 'remote', 'add', 'origin', str(tmp / 'close/home.git'))
-    run(home, 'init', 'goal', '--lang', 'en', '--title', 'One goal', '--module', f'core={mono}')
+    run(home, 'init', 'goal', '--lang', 'en', '--sessions', 'local', '--title', 'One goal', '--module', f'core={mono}')
     ws = home / 'features/goal'
     safe_edit.replace_once(ws / 'orch.yaml', 'push_after_milestone: false', 'push_after_milestone: true')
     plan = ws / 'PLAN.md'
@@ -1097,7 +1113,7 @@ def test_close(tmp):
     closed_lint = subprocess.run([*ORCH, '--workspace', str(archived), 'lint'], capture_output=True, text=True)
     assert 'program is closed but WP-CORE-01 is MERGED' in closed_lint.stderr, closed_lint.stderr
     status_file.write_text(original, encoding='utf-8')
-    run(home, 'init', 'next', '--lang', 'en', '--module', f'core={mono}')
+    run(home, 'init', 'next', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}')
     found = subprocess.run([*ORCH, 'queue'], cwd=home, capture_output=True, text=True, env={**os.environ, **GIT_ENV})
     assert found.returncode == 0, 'only the active workspace is picked automatically'
     reopened = run(home, *wsarg, 'reopen', 'import is needed after all').stdout
@@ -1107,7 +1123,7 @@ def test_close(tmp):
     assert run(home, *wsarg, 'new-wp', 'core', 'import-again').returncode == 0
     # L2: a workspace that is the root of its own repository is closed but not moved.
     solo = tmp / 'close/solo'
-    run(tmp / 'close', 'init', 'solo', '--lang', 'en', '--dir', 'solo', '--module', f'core={mono}')
+    run(tmp / 'close', 'init', 'solo', '--lang', 'en', '--sessions', 'local', '--dir', 'solo', '--module', f'core={mono}')
     git(solo, 'init', '-q')
     text = (solo / 'PLAN.md').read_text(encoding='utf-8')
     block = text[text.index('<The one goal'):text.index('## Scope')].rstrip()
@@ -1124,7 +1140,7 @@ def test_close_in_repo(tmp):
     remote = tmp / 'closecloud/mono.git'
     clone = tmp / 'closecloud/orch'
     git(tmp, 'clone', '-q', str(remote), str(clone))
-    run(clone, 'init', 'demo', '--lang', 'en', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
+    run(clone, 'init', 'demo', '--lang', 'en', '--sessions', 'cloud', '--cloud-environment', 'Project env', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
     run(clone, 'new-wp', 'admin', 'orders')
     run(clone, 'set', 'WP-ADMIN-01', 'status', 'DONE', '--evidence', 'verified')
     run(clone, 'commit', 'demo: done')
@@ -1159,6 +1175,216 @@ def test_close_in_repo(tmp):
     assert not git(remote, 'branch', '--list', 'orch/demo').strip(), 'the archived branch must not come back'
     print('PASS close in-repo: archive commands tied to the closeout commit, printed not run; no re-push')
 
+
+def test_models(tmp):
+    """2e: implementer model and effort per package, start-command flags, lint, cloud prefill."""
+    import streams
+    from urllib.parse import urlparse, parse_qs
+    mono = make_monorepo(tmp / 'models')
+    home = tmp / 'models/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'mdl', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}',
+        '--area', 'app=mono:apps/app/**', '--area', 'admin=mono:apps/admin/**')
+    ws = home / 'features/mdl'
+    config = ws / 'orch.yaml'
+    safe_edit.replace_once(config, 'repos:\n', 'models:\n  implement: sonnet\n  escalate: opus\n'
+                                               '  escalate_effort: high\nrepos:\n')
+    safe_edit.replace_once(config, '    paths: ["apps/admin/**"]\n    session: mdl-admin\n',
+                           '    paths: ["apps/admin/**"]\n    session: mdl-admin\n    model: opus\n    effort: high\n')
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    run(home, 'new-wp', 'app', 'list')
+    run(home, 'new-wp', 'admin', 'roles')
+    app = (ws / 'work-packages/WP-APP-01-list.md').read_text(encoding='utf-8')
+    admin = (ws / 'work-packages/WP-ADMIN-01-roles.md').read_text(encoding='utf-8')
+    assert '| Model | `sonnet` |' in app and '| Effort | — |' in app and 'models.implement' in app
+    assert f'cd {mono} && claude -w wp-app-01-list --model sonnet --name mdl-app "' in app, app
+    assert '| Model | `opus` |' in admin and '| Effort | `high` |' in admin and 'module override' in admin
+    assert '--model opus --effort high --name mdl-admin' in admin
+    for wp in ('WP-APP-01', 'WP-ADMIN-01'):
+        run(home, 'set', wp, 'status', 'READY')
+    before = (ws / 'status.md').read_text(encoding='utf-8')
+    dry = run(home, 'dispatch', 'WP-APP-01', '--dry-run').stdout
+    assert 'model sonnet' in dry and f'claude -w wp-app-01-list --model sonnet --name mdl-app' in dry, dry
+    assert (ws / 'status.md').read_text(encoding='utf-8') == before, 'dry-run writes nothing'
+    assert '--model opus --effort high' in run(home, 'dispatch', 'WP-ADMIN-01', '--dry-run').stdout
+    # orch.py model: header rows, the start command and the journal change together.
+    run(home, 'model', 'WP-APP-01', 'gpt-4', '--reason', 'x', ok=False)
+    run(home, 'model', 'WP-APP-01', 'opus', '--effort', 'extreme', '--reason', 'x', ok=False)
+    run(home, 'model', 'WP-APP-01', 'opus', '--effort', 'high', '--reason', 'cross-module contract change')
+    app = (ws / 'work-packages/WP-APP-01-list.md').read_text(encoding='utf-8')
+    assert '| Model | `opus` |' in app and '| Model reason | cross-module contract change |' in app
+    assert '--model opus --effort high --name mdl-app' in app and '--model sonnet' not in app
+    out = run(home, 'dispatch', 'WP-APP-01').stdout
+    assert '--model opus --effort high' in out
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'model opus, effort high' in status and 'WP-APP-01: model opus, effort high (cross-module' in status
+    # L2: model and effort in a package header are checked too.
+    app_path = ws / 'work-packages/WP-APP-01-list.md'
+    app_original = app_path.read_text(encoding='utf-8')
+    app_path.write_text(app_original.replace('| Model | `opus` |', '| Model | `gpt-4` |', 1), encoding='utf-8')
+    assert "header: model 'gpt-4' is not one of" in lint_errors(home)
+    run(home, 'set', 'WP-ADMIN-01', 'status', 'READY')
+    admin_path = ws / 'work-packages/WP-ADMIN-01-roles.md'
+    admin_original = admin_path.read_text(encoding='utf-8')
+    admin_path.write_text(admin_original.replace('| Model | `opus` |', '| Model | `gpt-4` |', 1), encoding='utf-8')
+    refusal = run(home, 'dispatch', 'WP-ADMIN-01', '--dry-run', ok=False).stderr
+    assert "WP-ADMIN-01 header: model 'gpt-4'" in refusal, refusal
+    admin_path.write_text(admin_original.replace('| Model | `opus` |', '| Model | — |', 1), encoding='utf-8')
+    app_path.write_text(app_original, encoding='utf-8')
+    assert 'Effort without Model' in run(home, 'lint').stderr
+    admin_path.write_text(admin_original, encoding='utf-8')
+    # lint: invalid aliases and efforts are errors.
+    original = config.read_text(encoding='utf-8')
+    for bad, expected in (('models:\n  implement: sonnet', 'models:\n  implement: sonet'),
+                          ('mdl-admin\n    model: opus\n    effort: high', 'mdl-admin\n    model: opus\n    effort: extreme'),
+                          ('mdl-admin\n    model: opus', 'mdl-admin\n    model: gpt-4')):
+        config.write_text(original.replace(bad, expected, 1), encoding='utf-8')
+        assert 'is not one of' in lint_errors(home), expected
+    config.write_text(original, encoding='utf-8')
+    # Without models: no flags (the 0.4.0 behaviour is also pinned by the legacy fixture test).
+    assert streams.apply_model_flags('cd x && claude -w s --name n "p"', None, None) == 'cd x && claude -w s --name n "p"'
+    assert streams.apply_model_flags('cd x && claude --model a --effort b --name n "p"', 'opus', None) == \
+        'cd x && claude --model opus --name n "p"'
+    # Cloud block and prefill link (a hosted-looking origin; nothing is fetched).
+    hosted = tmp / 'models/hosted'
+    git(tmp, 'clone', '-q', str(tmp / 'models/mono.git'), str(hosted))
+    git(hosted, 'remote', 'set-url', 'origin', 'https://github.com/Owner/Repo.git')
+    repo = streams.Repo({'id': 'r', 'path': str(hosted), 'base': 'main', 'sessions': 'cloud',
+                         'cloud_environment': 'Project env'})
+    module = streams.Module({'id': 'web', 'repo': 'r', 'kind': 'area', 'paths': ['apps/**']}, repo, 'mdl')
+    prompt = 'Cloud session for work package WP-WEB-01: read the package & deliver a PR = done?'
+    block = streams.cloud_block('en', 'WP-WEB-01', module, prompt, 'opus', 'high')
+    assert '- Environment: Project env' in block and '- Repository: owner/repo, starting branch: main' in block
+    assert '`/model opus` and `/effort high`' in block and block.endswith('Prompt:\n' + prompt)
+    url = next(l for l in block.split('\n') if 'claude.ai/code?' in l).split(': ', 1)[1]
+    query = parse_qs(urlparse(url).query)
+    assert query == {'repositories': ['owner/repo'], 'environment': ['Project env'], 'prompt': [prompt]}, query
+    long_prompt = 'x' * (streams.PREFILL_URL_LIMIT + 10)
+    long_block = streams.cloud_block('ru', 'WP-WEB-01', module, long_prompt, None, None)
+    long_url = next(l for l in long_block.split('\n') if 'claude.ai/code?' in l).split(': ', 1)[1]
+    assert 'prompt=' not in long_url and 'без промпта' in long_block and long_block.endswith(long_prompt)
+    assert 'по умолчанию владельца' in long_block
+    # lint warns about a cloud module without an environment.
+    safe_edit.replace_once(config, '    checks: []\n', '    checks: []\n    sessions: cloud\n')
+    warned = run(home, 'lint')
+    assert 'runs cloud sessions but has no cloud_environment' in warned.stderr, warned.stderr
+    print('PASS models: per-package model and effort, flags, orch.py model, lint, cloud block and prefill link')
+
+
+def test_local_cloud_matrix(tmp):
+    """2e bis: five fixtures, each with and without models; local output never has cloud parts and
+    cloud output never has terminal commands or model flags."""
+    local_bad = ('/model ', 'environment=', 'claude.ai/code')
+    cloud_bad = ('claude -w', '&& claude', '--model')
+    for with_models in (False, True):
+        tag = 'm' if with_models else 'n'
+        base = tmp / f'matrix-{tag}'
+        mono = make_monorepo(base)
+        with_workflow(mono, DEPLOY_WORKFLOW)
+        remote = base / 'mono.git'
+        cases = []
+        # A: separate workspace, local module that is a whole repository.
+        home_a = base / 'a'
+        home_a.mkdir()
+        git(home_a, 'init', '-q')
+        run(home_a, 'init', 'pa', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}')
+        cases.append(('A', home_a, home_a / 'features/pa', 'core', 'local'))
+        # B: separate workspace, local stream.
+        home_b = base / 'b'
+        home_b.mkdir()
+        git(home_b, 'init', '-q')
+        run(home_b, 'init', 'pb', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
+        cases.append(('B', home_b, home_b / 'features/pb', 'app', 'local'))
+        # C: in-repo workspace, local stream.
+        clone_c = base / 'c'
+        git(base, 'clone', '-q', str(remote), str(clone_c))
+        run(clone_c, 'init', 'pc', '--lang', 'en', '--in-repo', 'app', '--sessions', 'local',
+            '--area', 'web=app:apps/app/**')
+        cases.append(('C', clone_c, clone_c / 'docs/orchestration/pc', 'web', 'local'))
+        # D: in-repo workspace, cloud module.
+        clone_d = base / 'd'
+        git(base, 'clone', '-q', str(remote), str(clone_d))
+        run(clone_d, 'init', 'pd', '--lang', 'en', '--in-repo', 'app', '--sessions', 'cloud',
+            '--cloud-env', 'Project env', '--area', 'web=app:apps/app/**')
+        cases.append(('D', clone_d, clone_d / 'docs/orchestration/pd', 'web', 'cloud'))
+        # E: separate workspace, cloud module (the package travels as text).
+        home_e = base / 'e'
+        home_e.mkdir()
+        git(home_e, 'init', '-q')
+        run(home_e, 'init', 'pe', '--lang', 'en', '--sessions', 'local', '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
+        safe_edit.replace_once(home_e / 'features/pe/orch.yaml', '    checks: []\n',
+                               '    checks: []\n    sessions: cloud\n    cloud_environment: "Project env"\n')
+        cases.append(('E', home_e, home_e / 'features/pe', 'app', 'cloud'))
+        for label, cwd, ws, module, kind in cases:
+            config = ws / 'orch.yaml'
+            if with_models:
+                text = config.read_text(encoding='utf-8')
+                anchor = '\nrepos:' if '\nrepos:' in text else '\nmodules:'
+                safe_edit.replace_once(config, anchor, '\nmodels:\n  implement: sonnet' + anchor)
+            run(cwd, 'new-wp', module, 'task')
+            wp = f'WP-{module.upper()}-01'
+            run(cwd, 'set', wp, 'status', 'READY')
+            if label in ('C', 'D'):
+                run(cwd, 'commit', f'{label}: package')
+            out = run(cwd, 'dispatch', wp, '--dry-run').stdout
+            wp_text = next((ws / 'work-packages').glob(f'{wp}-*.md')).read_text(encoding='utf-8')
+            lint = run(cwd, 'lint')
+            if kind == 'local':
+                for bad in local_bad:
+                    assert bad not in out, (label, tag, bad, out)
+                assert ('--model sonnet' in out) == with_models, (label, tag, out)
+                assert 'environment' not in lint.stderr, (label, tag, lint.stderr)
+                if label in ('B', 'C'):
+                    assert 'claude -w wp-' in out, (label, out)
+                if label == 'C':
+                    assert f'cd {clone_c.resolve()} && claude -w' in out or f'cd {clone_c} && claude -w' in out, out
+            else:
+                prompt_part = out.split('Prompt:\n', 1)[1]
+                for bad in cloud_bad:
+                    assert bad not in out, (label, tag, bad, out)
+                assert 'New cloud session for' in out and '- Environment: Project env' in out, (label, out)
+                assert ('- Model: sonnet' in out) == with_models, (label, tag, out)
+                assert ('owner default' in out) == (not with_models), (label, tag, out)
+                assert ('\n---\n# WP-' in prompt_part) == (label == 'E'), (label, prompt_part[:200])
+            assert ('| Model | `sonnet` |' in wp_text) == with_models, (label, tag)
+        # In-repo with local sessions: a whole-repository module shares the main checkout on orch/<p>.
+        if not with_models:
+            clone_f = base / 'f'
+            git(base, 'clone', '-q', str(remote), str(clone_f))
+            out = run(clone_f, 'init', 'pf', '--lang', 'en', '--in-repo', 'app', '--sessions', 'local').stdout
+            config = clone_f / 'docs/orchestration/pf/orch.yaml'
+            safe_edit.replace_once(config, 'modules: []\n', 'modules:\n  - id: core\n    repo: app\n')
+            warned = run(clone_f, 'lint').stderr
+            assert 'main checkout' in warned and 'orch/pf' in warned, warned
+            hint = run(base / 'd', '--workspace', str(base / 'd/docs/orchestration/pd'), 'lint').stderr
+            assert 'environment' not in hint
+        if not with_models:
+            # The owner chooses the session kind at init; cloud needs an environment; a cloud
+            # orchestrator works only with cloud sessions.
+            fresh = base / 'fresh'
+            fresh.mkdir()
+            git(fresh, 'init', '-q')
+            asked = run(fresh, 'init', 'q', '--lang', 'en', '--module', f'core={mono}', ok=False).stderr
+            assert 'the owner chooses the session kind' in asked and 'locally' in asked and 'recommended' in asked
+            assert 'needs --cloud-environment' in run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'cloud',
+                                                      '--module', f'core={mono}', ok=False).stderr
+            assert 'only for --sessions cloud' in run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local',
+                                                      '--cloud-environment', 'X', '--module', f'core={mono}',
+                                                      ok=False).stderr
+            remote_env = {'CLAUDE_CODE_REMOTE': 'true'}
+            refused = run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}',
+                          ok=False, extra_env=remote_env).stderr
+            assert 'local module sessions need a local orchestrator' in refused, refused
+            assert run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}').returncode == 0
+            journal = (fresh / 'features/q/status.md').read_text(encoding='utf-8')
+            assert 'session kind: local, confirmed by the owner' in journal
+            run(fresh, 'new-wp', 'core', 'x')
+            run(fresh, 'set', 'WP-CORE-01', 'status', 'READY')
+            refused = run(fresh, 'dispatch', 'WP-CORE-01', '--dry-run', ok=False, extra_env=remote_env).stderr
+            assert 'local module sessions need a local orchestrator' in refused, refused
+    print('PASS local/cloud matrix: 5 fixtures x with/without models, outputs separated')
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -1181,6 +1407,8 @@ def main():
         test_review(tmp)
         test_close(tmp)
         test_close_in_repo(tmp)
+        test_models(tmp)
+        test_local_cloud_matrix(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 
