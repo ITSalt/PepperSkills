@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.3.0 (preview)
+
+PR review: `review` mode with a read-only reviewer agent and a disposable clone, automatic findings
+from the stream rules and a stale merge-base, a scout agent, and "Typical workflows" in the plugin
+README. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.2.1 (preview)
 
 Cloud sessions over one repository: in-repo workspace on `orch/<program>` in a deploy-ignored

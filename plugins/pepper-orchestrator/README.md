@@ -1,7 +1,7 @@
 # Pepper Orchestrator
 
-> **Preview (0.2.1).** Modes `init`, `plan`, `dispatch`, `resume`, `owner`, `decide`; streams in one
-> repository with worktrees and locks.
+> **Preview (0.3.0).** Modes `init`, `plan`, `dispatch`, `review`, `resume`, `owner`, `decide`;
+> streams in one repository with worktrees and locks; cloud sessions.
 > Formats and commands may change before 1.0.0.
 
 Portable Agent Plugin for the single-orchestrator (hub-and-spoke) method: one orchestrator
@@ -26,15 +26,49 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:init <program>` | workspace `features/<program>/` and `orch.yaml` |
 | `/pepper-orchestrator:plan <task>` | facts -> plan -> work packages -> owner questions |
 | `/pepper-orchestrator:dispatch <WP>` | checks overlaps and locks, prints the start command |
+| `/pepper-orchestrator:review <WP> [PR]` | automatic findings, reviewer agent, verdict, report |
 | `/pepper-orchestrator:resume` | read state, reconcile with reality, next step |
 | `/pepper-orchestrator:owner` | owner queue as commands; on "done" verify and close |
 | `/pepper-orchestrator:decide <text>` | record D-n / A-n / Q-n or open an owner question P-n |
 
-Version 0.2.1 is a preview (stages 2a and 2c). Modules can be whole repositories or areas and domains of
-one repository: each stream runs in its own worktree (`claude -w`), shared paths and resources are
-held by locks, merges into one repository go through a queue. Review, verify, release and retro
-modes, reviewer and scout subagents and PreToolUse guards come in later versions; until then the
-skill follows the concept for those steps by instructions.
+Version 0.3.0 is a preview (stages 2a, 2b and 2c). Modules can be whole repositories or areas and
+domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
+resources are held by locks, merges into one repository go through a queue. `review` runs a
+read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
+on resubmissions. Verify, release and retro modes and PreToolUse guards come in later versions;
+until then the skill follows the concept for those steps by instructions.
+
+## Typical workflows
+
+Locally use the short commands (`/pepper-orchestrator:plan ...`); in a cloud session, where plugin
+commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phrase.
+
+1. **New program, separate home repository.** `init <program>` -> `plan <task>` -> answer the
+   owner questions with `decide` -> `dispatch <WP>` -> the owner starts the module session with the
+   printed command or prompt -> the session opens a PR -> `resume` finds it -> `review <WP>` ->
+   the owner merges -> "R-n done" to `owner` -> the orchestrator verifies the fact and closes it.
+2. **New program in the cloud, one repository.** Start a cloud session on the base branch and run
+   `/pepper-orchestrator init <program> --in-repo <repo-id>`: it creates and pushes branch
+   `orch/<program>`. From then on **every** orchestrator cloud session starts on
+   `orch/<program>` (choose the branch when starting the session).
+3. **Every next session.** Run `resume`: locally in the home repository, in the cloud on
+   `orch/<program>`. `init` is not needed again; on an existing workspace the skill switches to
+   `resume` by itself. The first message for a new session is in
+   `orchestration/bootstrap-prompt.md`.
+4. **A plan already exists.** Give its text or path to `plan`: it turns it into work packages. Running
+   `plan` again is a re-plan: IDs are kept, packages are added or cancelled.
+5. **New work in an existing program.** `plan <task>`, not `init`.
+6. **Module sessions.** `dispatch` prints a terminal command (`claude -w <slug>` for a stream of a
+   shared repository) or a prompt for a new cloud session on the base branch. The module delivers a
+   PR with the package id in its body. The orchestrator learns readiness from a READY message
+   where messaging works, otherwise from the PR and the pushed branch (`resume`, `orch.py ready`).
+7. **Owner queue.** `owner` shows actions and questions as commands; "R-3 done" makes the
+   orchestrator verify and close; `decide <text>` records the owner's answers.
+8. **Parallel streams in one repository.** Modules can be areas or domains of one repository with
+   their own paths; shared paths and resources are taken by locks, merges go through a queue
+   (concept, sections 7 and 12).
+9. **Update.** Locally `/plugin update pepper-orchestrator@pepperskills`; in the cloud change the
+   comment line of the setup-script fragment below, so the environment rebuilds.
 
 ## Cloud sessions
 
@@ -82,6 +116,7 @@ boundaries: [concept](skills/pepper-orchestrator/references/concept.md).
 | Workspace CLI | `skills/pepper-orchestrator/scripts/orch.py`, `safe_edit.py` | standard library + git |
 | Templates (en, ru) | `skills/pepper-orchestrator/templates/` | portable |
 | Short commands | `commands/` | Claude Code adapter |
+| Agents `orchestrator-reviewer`, `orchestrator-scout` | `agents/` | Claude Code adapter; elsewhere the same brief goes to any subagent |
 | Plugin manifest | `plugin.json` | canonical; client manifests are generated |
 
 Clients without cross-session messaging work too: the owner relays the one-line pointers, and
