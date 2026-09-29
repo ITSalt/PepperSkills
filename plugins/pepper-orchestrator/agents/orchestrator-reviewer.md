@@ -53,3 +53,8 @@ and its output, a test run.
 5. **Deviations** from the PR body: accepted or not, and why.
 6. **CI, size, tests, mutations:** CI state, diff size, commands run with results, mutation outcomes.
 7. **Cleanup:** the clone directory removed.
+
+## Model
+
+This agent has no `model` field on purpose: it runs on the orchestrator's model, so the review is
+at least as strong as the orchestrator itself.
