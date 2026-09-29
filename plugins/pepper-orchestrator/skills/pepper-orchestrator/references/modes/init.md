@@ -36,9 +36,14 @@ a title and modules.
 6. **Cloud program in one repository?** Use `--in-repo <repo-id>` from the repository checkout of
    the orchestrator's cloud session: it switches to `orch/<program>`, finds a directory every push
    workflow ignores (`paths-ignore`, branch filters) and puts the workspace there, marks module
-   sessions as `cloud` and turns on `push_after_milestone`. When no such directory exists it
-   refuses: ask the owner where the workspace may live (or whether the deploy should ignore a
-   directory), then pass `--dir`. Streams are added with `--area`/`--domain <id>=<repo-id>:<glob>`.
+   sessions as `cloud` and turns on `push_after_milestone`. The check reads the workflows of the
+   ref that will be pushed (`origin/orch/<program>` if it exists, else `origin/<base>`), never
+   the working tree; hidden directories are never candidates and `docs/` comes first. It refuses
+   when a workflow uses a form it does not understand, when no safe directory exists, when the
+   only candidates are outside `docs/`, or when `--dir` points outside the safe directories: ask
+   the owner (P-n), record the answer (D-n), then pass `--dir` or `--deploy-override D-n`. The
+   override is written to `orch.yaml` (`deploy_check_override`) and the journal; `commit` refuses
+   while the check fails without it. Streams are added with `--area`/`--domain <id>=<repo-id>:<glob>`.
 7. **Create.**
 
    ```bash

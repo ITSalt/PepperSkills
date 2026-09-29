@@ -26,9 +26,11 @@ step. No argument, or the program name when several workspaces exist.
    | deployed versions | version string in the served bundle, not the browser badge |
 
    **Without `gh`** (some cloud sessions): run `orch.py ready` (pushed branches of dispatched
-   packages via `git ls-remote`), then find each PR with the session's GitHub tools (list or search
-   pull requests by head branch and by package id; read workflow runs for the stand), or ask the
-   owner for the PR links. Never use a merge tool. Cloud module sessions send no READY: readiness
+   packages via `git ls-remote`), then find each **open** PR with the session's GitHub tools (by
+   head branch, and check that its body contains the package id; read workflow runs for the
+   stand), or ask the owner for the PR links. With `gh`, `ready` already does this. With a
+   separate workspace and no local clone of the module repository, `ready` says so: ask the owner
+   for the PR link. Never use a merge tool. Cloud module sessions send no READY: readiness
    is always found this way.
 
    A PR that exists for an `IN_PROGRESS` package means READY was lost: treat it as READY. Search

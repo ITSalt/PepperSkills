@@ -23,6 +23,20 @@ Preview of stage 2c: cloud sessions over one repository.
   `~/.claude/skills` for cloud environment setup scripts; README section "Cloud sessions".
 - Skill: hard rule "no merge tools", cloud section, `/pepper-orchestrator <mode>` calls without
   plugin commands. Concept 1.2 (EN and RU), section 20 "Cloud sessions".
+- Deploy check is strict: workflows are read from the pushed ref (`git ls-tree`/`git show`), a
+  missing ref or any workflow form outside the documented list is a refusal, hidden directories
+  are never candidates and `docs/` comes first; an unsafe `--dir` is refused; the only override is
+  an owner decision (`--deploy-override D-n`, stored as `deploy_check_override`). `commit` of an
+  in-repo workspace refuses while the check fails.
+- `dispatch --dry-run` writes nothing for any module; a cloud package must be on
+  `origin/orch/<program>` (same content) before its prompt is printed; with `push_deploys` a cloud
+  package holds the `staging` lock and its prompt says to push once.
+- `init --in-repo` fetches first and reuses an existing `origin/orch/<program>` (refusing a second
+  workspace); `commit` refuses a detached HEAD before committing, pushes to the branch's own remote
+  and keeps an existing upstream; repository names are read from GitHub and cloud proxy URLs;
+  `ready` reports only open PRs with the package id in their body.
+- README setup fragment never fails the environment's setup script; `install-skill.sh` removes its
+  temporary directory on failure.
 
 ## 0.2.0 — preview, unreleased
 

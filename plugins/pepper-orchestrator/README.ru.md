@@ -30,7 +30,7 @@ PROD и запись в БД остаются за владельцем — в �
 | `/pepper-orchestrator:owner` | очередь владельца с командами; «готово» → сверка и закрытие |
 | `/pepper-orchestrator:decide <текст>` | решение D-n / допущение A-n / вопрос Q-n или вопрос владельцу P-n |
 
-Версия 0.2.0 — preview (этап 2a). Модуль — весь репозиторий либо раздел или домен одного
+Версия 0.2.1 — preview (этапы 2a и 2c). Модуль — весь репозиторий либо раздел или домен одного
 репозитория: каждый поток работает в своём worktree (`claude -w`), общие пути и ресурсы держатся
 замками, слияния в один репозиторий идут очередью. Режимы review, verify, release, retro,
 субагенты-рецензенты и PreToolUse-хуки появятся в следующих версиях; до тех пор скилл ведёт эти шаги
@@ -43,16 +43,22 @@ PROD и запись в БД остаются за владельцем — в �
 Claude, записанные им файлы остаются в окружении:
 
 ```bash
-# pepper-orchestrator skill (PepperSkills); change this comment to refresh the cached environment
-pepper_dir="$HOME/.cache/pepperskills"
-if [ -d "$pepper_dir/.git" ]; then
-  git -C "$pepper_dir" pull --ff-only -q
-else
-  git clone -q --depth 1 https://github.com/ITSalt/PepperSkills "$pepper_dir"
-fi
-bash "$pepper_dir/scripts/install-skill.sh" pepper-orchestrator
+# pepper-orchestrator skill (PepperSkills); change this comment to refresh the cached environment.
+# A failure here must not block the environment: the subshell reports it and setup continues.
+(
+  set -e
+  pepper_dir="$HOME/.cache/pepperskills"
+  if [ -d "$pepper_dir/.git" ]; then
+    git -C "$pepper_dir" pull --ff-only -q
+  else
+    git clone -q --depth 1 https://github.com/ITSalt/PepperSkills "$pepper_dir"
+  fi
+  bash "$pepper_dir/scripts/install-skill.sh" pepper-orchestrator
+) || echo "pepper-orchestrator: skill not installed; setup continues" >&2
 ```
 
+Ненулевой код setup-скрипта не даёт стартовать ни одной сессии окружения, поэтому фрагмент не падает:
+ошибка клона или установки печатается, и setup продолжается без скилла.
 `install-skill.sh` идемпотентен: копирует `plugins/<name>/skills/<name>` в
 `~/.claude/skills/<name>` (или в `--dest`) и печатает версию. После первого запуска окружение
 кэшируется, поэтому скилл обновится при изменении setup-скрипта или истечении кэша.

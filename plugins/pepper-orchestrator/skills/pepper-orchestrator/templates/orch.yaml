@@ -14,6 +14,7 @@ push_after_milestone: false
 # Where the workspace lives: separate (its own home repository) | in-repo (branch orch/<program>
 # of a module repository, in a directory every push workflow ignores; init --in-repo sets
 # workspace_branch and workspace_dir). State commits go only to workspace_branch.
+# deploy_check_override: D-n is written only when the owner accepted an unverifiable deploy check.
 workspace_mode: separate
 
 # Repositories shared by several modules (streams). One writing session per worktree and branch.

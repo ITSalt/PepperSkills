@@ -167,15 +167,17 @@ For programs run in cloud sessions (claude.ai/code): every session is its own cl
 own repository, and its messages do not reach other sessions.
 
 - **Workspace in the repository:** `orch.py init <program> --in-repo <repo-id> ...` switches the
-  checkout to `orch/<program>` (never the base), puts the workspace in a directory every push
-  workflow ignores (read from `on.push` `paths-ignore` and branch filters in
-  `.github/workflows/*`), and commits and pushes state only to that branch. Start the orchestrator
-  cloud session on `orch/<program>`.
+  checkout to `orch/<program>` (never the base), puts the workspace in a non-hidden directory every
+  push workflow ignores (judged from the workflows of the pushed ref, `docs/` first), and commits
+  and pushes state only to that branch. A workflow form the check does not understand, or an
+  unsafe `--dir`, is refused; only an owner decision passed as `--deploy-override D-n` overrides
+  it. Start the orchestrator cloud session on `orch/<program>`.
 - **Modules as cloud sessions** (`sessions: cloud` on the repo or module): `dispatch` prints a
   prompt for a new cloud session instead of a terminal command. The session reads the package with
   `git fetch origin orch/<program> && git show origin/orch/<program>:<path>` (or gets the text
   inline with a separate workspace or `--inline`), branches from the base and delivers a PR whose
-  body starts with the package id. No message back.
+  body starts with the package id. No message back. Commit and push the package before
+  `dispatch`; it refuses otherwise. With `push_deploys`, the package holds the `staging` lock.
 - **Readiness:** `orch.py ready` lists dispatched packages whose branch is on origin; find the PR by
   head branch and by package id with `gh` when present, otherwise with the session's GitHub tools
   (list or search pull requests, read workflow runs). Never merge with them (hard rule 12).
