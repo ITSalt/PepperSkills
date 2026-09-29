@@ -692,6 +692,7 @@ def cmd_new_wp(args):
 
 def cmd_set(args):
     ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('set')
     column = args.column.lower()
     if column not in SETTABLE:
         raise OrchError(f'column must be one of: {", ".join(SETTABLE)}')
@@ -748,6 +749,8 @@ def cmd_owner(args):
     ws = Workspace(find_workspace(args.workspace))
     _, _, rows = ws.table(ws.status, 'owner')
     if args.action == 'add':
+        if not getattr(args, 'allow_closed', False):
+            ws.require_open('owner add')
         kind = args.target.upper()
         if kind not in ('R', 'P'):
             raise OrchError('owner add takes R (action) or P (question)')
@@ -819,6 +822,7 @@ def cmd_queue(args):
 
 def cmd_decide(args):
     ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('decide')
     kind = args.kind.upper()
     if kind not in ('D', 'A', 'Q'):
         raise OrchError('decide takes D (decision), A (assumption) or Q (question)')
@@ -935,6 +939,13 @@ def lint(ws):
             errors.append(f'status.md: merge queue position must be a number: {r["n"]}')
     if config.get('state', 'active') not in ('active', 'closed'):
         errors.append('orch.yaml: state must be active or closed')
+    if config.get('state') == 'closed' and (ws.status).is_file():
+        try:
+            for r in ws.table(ws.status, 'wp')[2]:
+                if not is_terminal(r['status']):
+                    errors.append(f'status.md: program is closed but {plain_id(r["wp"])} is {r["status"]}')
+        except OrchError:
+            pass
     if config.get('workspace_mode', 'separate') not in ('separate', 'in-repo'):
         errors.append('orch.yaml: workspace_mode must be separate or in-repo')
     if ws.in_repo:
@@ -1020,13 +1031,8 @@ def git(root, *args, check=True):
                           capture_output=True)
 
 
-def cmd_commit(args):
-    ws = Workspace(find_workspace(args.workspace))
-    errors = lint(ws)
-    if errors:
-        for error in errors:
-            print(f'lint: {error}', file=sys.stderr)
-        raise OrchError('lint failed; nothing committed')
+def commit_preconditions(ws):
+    """Everything that must hold before a workspace commit; raises OrchError. Returns the branch."""
     if git(ws.root, 'rev-parse', '--is-inside-work-tree', check=False).returncode:
         raise OrchError(f'{ws.root} is not inside a git repository')
     branch = streams.current_branch(ws.root)
@@ -1042,10 +1048,44 @@ def cmd_commit(args):
         if problem:
             raise OrchError(f'in-repo workspace: {problem}; nothing committed. After an owner decision set '
                             'deploy_check_override: D-n in orch.yaml')
-        branch = streams.current_branch(ws.root)
         if branch != ws.workspace_branch:
             raise OrchError(f'in-repo workspace: commits go only to {ws.workspace_branch}, the checkout is on '
                             f'{branch}; nothing committed')
+    return branch
+
+
+def push_branch(ws, root, branch):
+    """Push the current branch to the same-named branch of its remote (never via an upstream that
+    points elsewhere). A closed in-repo program whose branch is gone from origin (archived by the
+    owner) is not pushed again. Returns False when the push failed."""
+    remote = git(root, 'config', f'branch.{branch}.remote', check=False).stdout.strip() or 'origin'
+    if ws.closed and ws.in_repo:
+        heads = git(root, 'ls-remote', '--heads', remote, branch, check=False)
+        if heads.returncode == 0 and not heads.stdout.strip():
+            print(f'note: {branch} is no longer on {remote} (archived): committed locally, not pushed')
+            return True
+    upstream = git(root, 'rev-parse', '--abbrev-ref', '@{u}', check=False)
+    push = ['push', remote, f'HEAD:refs/heads/{branch}']
+    if upstream.returncode:
+        push.insert(1, '-u')
+    elif upstream.stdout.strip() != f'{remote}/{branch}':
+        print(f'note: upstream {upstream.stdout.strip()} left as is; pushed to {remote}/{branch}', file=sys.stderr)
+    result = git(root, *push, check=False)
+    if result.returncode:
+        print(f'push failed: {result.stderr.strip()}', file=sys.stderr)
+        return False
+    print('push: ok')
+    return True
+
+
+def cmd_commit(args):
+    ws = Workspace(find_workspace(args.workspace))
+    errors = lint(ws)
+    if errors:
+        for error in errors:
+            print(f'lint: {error}', file=sys.stderr)
+        raise OrchError('lint failed; nothing committed')
+    branch = commit_preconditions(ws)
     for warning in lint_warnings(ws):
         print(f'lint: warning: {warning}', file=sys.stderr)
     git(ws.root, 'add', '-A', '--', '.')
@@ -1056,21 +1096,7 @@ def cmd_commit(args):
     sha = git(ws.root, 'rev-parse', '--short', 'HEAD').stdout.strip()
     print(f'commit: {sha}')
     if ws.config.get('push_after_milestone') and not args.no_push:
-        # Always push the current branch to the same-named branch of its remote: an upstream that
-        # points elsewhere (for example a branch created from origin/main) is never used.
-        remote = git(ws.root, 'config', f'branch.{branch}.remote', check=False).stdout.strip() or 'origin'
-        upstream = git(ws.root, 'rev-parse', '--abbrev-ref', '@{u}', check=False)
-        push = ['push', remote, f'HEAD:refs/heads/{branch}']
-        if upstream.returncode:
-            push.insert(1, '-u')
-        elif upstream.stdout.strip() != f'{remote}/{branch}':
-            print(f'note: upstream {upstream.stdout.strip()} left as is; pushed to {remote}/{branch}',
-                  file=sys.stderr)
-        result = git(ws.root, *push, check=False)
-        if result.returncode:
-            print(f'push failed: {result.stderr.strip()}', file=sys.stderr)
-            return 1
-        print('push: ok')
+        return 0 if push_branch(ws, ws.root, branch) else 1
     return 0
 
 
@@ -1577,6 +1603,7 @@ REPORT_TEXT = {
 def cmd_review_start(args):
     """Start a review round: automatic findings, report skeleton, clone command, status REVIEW."""
     ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('review-start')
     wp = args.wp
     r, module, meta = wp_context(ws, wp)
     if not module.repo.local.is_dir():
@@ -1819,11 +1846,15 @@ def cmd_ready(args):
 
 
 def shutil_which(name):
+    """Find a CLI; ORCH_NO_GH=1 hides gh (offline checks, deterministic tests)."""
     import shutil
+    if name == 'gh' and os.environ.get('ORCH_NO_GH') == '1':
+        return None
     return shutil.which(name)
 
 
 TERMINAL = ('DONE',)
+PR_EVIDENCE = re.compile(r'/pull/\d+|list_pull_requests|search_pull_requests|gh pr (list|view)', re.I)
 
 
 def is_terminal(status):
@@ -1839,37 +1870,64 @@ def section(text, headings):
     return ''
 
 
+def completion_condition(ws):
+    """(goal section, condition text or None when missing or still a template placeholder)."""
+    plan = (ws.root / 'PLAN.md').read_text(encoding='utf-8') if (ws.root / 'PLAN.md').is_file() else ''
+    goal = section(plan, ('Goal and completion condition', 'Цель и условие завершения', 'Goal', 'Цель'))
+    match = re.search(r'(?:Completion condition|Условие завершения):\s*(.+)', goal)
+    condition = match.group(1).strip() if match else None
+    if condition and condition.startswith('<'):
+        condition = None
+    return goal, condition
+
+
 def close_blockers(ws, prs_verified=None):
-    """(blockers, notes, sessions) for closing the program, checked by facts."""
-    blockers, notes = [], []
+    """(blockers, verified, sessions): blockers by fact; verified lists what only --prs-verified clears."""
+    blockers, unverified = [], []
     rows = ws.wp_rows()
     for wp, r in rows.items():
         if not is_terminal(r['status']):
             blockers.append(f'{wp} is {r["status"]}: finish it (DONE after verification) or cancel it with a reason')
+    gh = shutil_which('gh')
     for wp, r in rows.items():
         try:
             _, module, meta = wp_context(ws, wp)
-        except OrchError:
+        except OrchError as error:
+            unverified.append(f'{wp}: {error}')
             continue
         branch = meta['branch']
-        if not branch or not module.repo.local.is_dir():
+        url = r['pr'] if re.match(r'https?://', r['pr'] or '') else None
+        if url and gh:
+            state = subprocess.run(['gh', 'pr', 'view', url, '--json', 'state', '-q', '.state'], text=True,
+                                   capture_output=True)
+            if state.returncode:
+                unverified.append(f'{wp}: cannot read {url} with gh')
+            elif state.stdout.strip() == 'OPEN':
+                blockers.append(f'{wp}: PR {url} is open')
+        elif url:
+            unverified.append(f'{wp}: recorded PR {url} cannot be checked here (no gh)')
+        if not branch:
+            continue
+        if not module.repo.local.is_dir():
+            unverified.append(f'{wp}: repository {module.repo.path} is not available here to check {branch}')
             continue
         name = streams.origin_name(module.repo)
-        if name and shutil_which('gh'):
+        if name and gh:
             prs = subprocess.run(['gh', 'pr', 'list', '--repo', name, '--head', branch, '--state', 'open',
                                   '--json', 'url', '-q', '.[].url'], text=True, capture_output=True)
             if prs.returncode:
-                blockers.append(f'{wp}: cannot list PRs of {branch} with gh: {prs.stderr.strip()[:120]}')
+                unverified.append(f'{wp}: cannot list PRs of {branch} with gh')
             elif prs.stdout.strip():
                 blockers.append(f'{wp}: open PR {prs.stdout.split()[0]} for {branch}')
             continue
         heads = streams.git(module.repo.local, 'ls-remote', '--heads', 'origin', branch)
-        if heads.returncode == 0 and heads.stdout.strip():
-            if prs_verified:
-                notes.append(f'{wp}: branch {branch} still on origin; PRs verified closed: {prs_verified}')
-            else:
-                blockers.append(f'{wp}: branch {branch} is still on origin and PRs cannot be listed here; check its '
-                                'PRs with the session GitHub tools or ask the owner, then pass --prs-verified "<evidence>"')
+        if heads.returncode:
+            unverified.append(f'{wp}: git ls-remote failed for {branch}')
+        elif heads.stdout.strip():
+            unverified.append(f'{wp}: branch {branch} is still on origin and its PRs cannot be listed here')
+    if unverified and not prs_verified:
+        blockers.extend(f'{u}; verify with the session GitHub tools (list_pull_requests head=<branch> state=open) '
+                        'or a PR URL from the owner, then pass --prs-verified "<evidence>"' for u in unverified)
     for lock in locks(ws):
         blockers.append(f'lock {lock["lock"]} is still in the lock table (holder {lock["holder"]}, waiting '
                         f'{lock["waiting"]}): release it or clear its queue')
@@ -1883,17 +1941,33 @@ def close_blockers(ws, prs_verified=None):
     _, modules, _ = ws.streams()
     sessions = sorted({r['session'] for r in rows.values() if r['session'] not in ('', '—')} |
                       {m.session for m in modules.values()})
-    return blockers, notes, sessions
+    return blockers, (unverified if prs_verified else []), sessions
+
+
+def workspace_dirty(ws):
+    return bool(git(ws.root, 'status', '--porcelain', '--', '.', check=False).stdout.strip())
 
 
 def cmd_close(args):
     ws = Workspace(find_workspace(args.workspace))
+    in_git = streams.git_toplevel(ws.root) is not None
     if ws.closed:
+        if args.apply and in_git and workspace_dirty(ws):
+            print('program is closed but not committed yet: finishing the commit and the archive')
+            finish_close(ws, args)
+            return 0
         print(f'program {ws.config.get("program")} is already closed')
         return 0
-    blockers, notes, sessions = close_blockers(ws, args.prs_verified)
-    for note in notes:
-        print(f'note: {note}')
+    if args.prs_verified and not PR_EVIDENCE.search(args.prs_verified):
+        raise OrchError('--prs-verified needs concrete evidence: a PR URL with its state (closed/merged), or the '
+                        'output of list_pull_requests / gh pr list for the branch with state=open')
+    goal, condition = completion_condition(ws)
+    if not condition and not args.goal_confirmed:
+        raise OrchError('PLAN.md has no filled completion condition ("Completion condition: ..." in "Goal and '
+                        'completion condition"); fill it, or pass --goal-confirmed "<evidence the goal is reached>"')
+    blockers, verified, sessions = close_blockers(ws, args.prs_verified)
+    for item in verified:
+        print(f'note: {item}; verified: {args.prs_verified}')
     if blockers:
         for blocker in blockers:
             print(f'close blocked: {blocker}', file=sys.stderr)
@@ -1902,66 +1976,105 @@ def cmd_close(args):
     print('module sessions to close: ' + (', '.join(sessions) or 'none'))
     if args.check:
         return 0
+    # Everything the commit and the archive need is checked before anything changes.
+    if in_git and not args.no_commit:
+        errors = lint(ws)
+        if errors:
+            raise OrchError('lint failed; nothing changed: ' + '; '.join(errors))
+        commit_preconditions(ws)
     rows = ws.wp_rows()
     date = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
     plan = (ws.root / 'PLAN.md').read_text(encoding='utf-8') if (ws.root / 'PLAN.md').is_file() else ''
-    goal = section(plan, ('Goal and completion condition', 'Цель и условие завершения', 'Goal', 'Цель')) or '—'
     risks = section(plan, ('Risks', 'Риски')) or '—'
-    packages = '\n'.join(row([wp, r['module'], r['title'], r['status'], r['pr']]) for wp, r in sorted(rows.items()))
+    packages = '\n'.join(row([wp, r['module'], r['title'], r['status'], r['pr'], '<release or merge commit>'])
+                         for wp, r in sorted(rows.items()))
     decisions = '\n'.join(f'- {r["id"]} ({r["date"]}): {r["text"]}' for r in ws.table(ws.decisions, 'decisions')[2]
                           if r['id'].startswith('D-')) or '—'
     backlog_path = ws.root / 'backlog.md'
     backlog = ('\n'.join(f'- {r["id"]}: {r["item"]} (from {r["origin"]}; {r["reason"]})'
                          for r in ws.table(backlog_path, 'backlog')[2]) if backlog_path.is_file() else '') or '—'
+    checks = []
+    if verified:
+        checks.append(f'PRs without gh: {"; ".join(verified)} - evidence: {args.prs_verified}')
+    if not condition:
+        checks.append(f'completion condition not written in PLAN.md; goal confirmed by: {args.goal_confirmed}')
     name = f'closeout-{date}.md'
     report = ws.root / 'reports' / name
     template = (TEMPLATES / ws.lang / 'closeout.md').read_text(encoding='utf-8')
     safe_edit.create(report, fill(template, {
         'PROGRAM_TITLE': ws.config.get('title') or ws.config.get('program'), 'PROGRAM': ws.config.get('program'),
-        'DATE': today(), 'GOAL': goal, 'SUMMARY': args.summary or '<result against the completion condition>',
-        'PACKAGES': packages or '| — | — | — | — | — |', 'DECISIONS': decisions, 'BACKLOG': backlog,
-        'RISKS': risks, 'SESSIONS': ', '.join(sessions) or '—'}))
+        'DATE': today(), 'GOAL': goal or '—', 'SUMMARY': args.summary or '<result against the completion condition>',
+        'PACKAGES': packages or '| — | — | — | — | — | — |', 'DECISIONS': decisions, 'BACKLOG': backlog,
+        'RISKS': risks, 'SESSIONS': ', '.join(sessions) or '—', 'CHECKS': '\n'.join(f'- {c}' for c in checks) or '—'}))
     set_state(ws, 'closed')
     status_text = ws.status.read_text(encoding='utf-8')
     first = status_text.split('\n', 1)[0]
     banner = {'en': f'> **Closed {today()}.** Closeout: [reports/{name}](reports/{name}). A new goal is a new program.',
               'ru': f'> **Закрыта {today()}.** Итог: [reports/{name}](reports/{name}). Новая цель — новая программа.'}
     safe_edit.replace_once(ws.status, first + '\n', first + '\n\n' + banner[ws.lang] + '\n')
+    if verified:
+        ws.journal('PRs verified without gh: ' + '; '.join(verified), evidence=args.prs_verified)
+    if not condition:
+        ws.journal('completion condition confirmed without PLAN.md text', evidence=args.goal_confirmed)
     ws.journal('program closed', evidence=f'reports/{name}')
-    archive_items(ws, date)
-    if streams.git_toplevel(ws.root) is not None and not args.no_commit:
-        cmd_commit(argparse.Namespace(workspace=str(ws.root), message=f'{ws.config.get("program")}: close program',
-                                      no_push=False))
-        if not ws.in_repo and ws.root.parent.name != '_archive':
-            target = ws.root.parent / '_archive' / ws.root.name
-            if target.exists():
-                print(f'note: {target} exists; the workspace stays at {ws.root}')
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                moved = streams.git(ws.root.parent, 'mv', str(ws.root), str(target))
-                if moved.returncode:
-                    raise OrchError(f'git mv to the archive failed: {moved.stderr.strip()}')
-                streams.git(target, 'commit', '-q', '-m', f'{ws.config.get("program")}: archive workspace', '--',
-                            str(ws.root), str(target))
-                print(f'archived: {target}')
-                report = target / 'reports' / name
     print(f'closeout: {report}')
+    if in_git and not args.no_commit:
+        finish_close(ws, args)
     return 0
 
 
-def archive_items(ws, date):
-    """In-repo archive steps for the owner: tag and branch deletion are never run by the plugin."""
-    if not ws.in_repo:
+def finish_close(ws, args):
+    """Commit the closeout, then the in-repo archive items (tied to that commit) or the archive move."""
+    ws = Workspace(ws.root)
+    program = ws.config.get('program')
+    branch = commit_preconditions(ws)
+    push = ws.config.get('push_after_milestone')
+    git(ws.root, 'add', '-A', '--', '.')
+    git(ws.root, 'commit', '-q', '-m', f'{program}: close program', '--', '.')
+    sha = git(ws.root, 'rev-parse', 'HEAD').stdout.strip()
+    print(f'commit: {sha[:10]}')
+    if push and not push_branch(ws, ws.root, branch):
+        raise OrchError('push failed after closing; fix the remote and run close --apply again')
+    if ws.in_repo:
+        archive_items(ws, sha)
+        git(ws.root, 'add', '-A', '--', '.')
+        git(ws.root, 'commit', '-q', '-m', f'{program}: archive steps for the owner', '--', '.')
+        if push:
+            push_branch(ws, ws.root, branch)
         return
-    program, branch, top = ws.config.get('program'), ws.workspace_branch, ws.git_top
-    tag = f'orch-{program}-closed-{date}'
-    command = (f'git -C {top} fetch origin {branch} && git -C {top} tag {tag} origin/{branch} && '
-               f'git -C {top} push origin {tag} && git -C {top} push origin --delete {branch}')
+    top = streams.git_toplevel(ws.root)
+    if top == ws.root.resolve():
+        print(f'note: the workspace is the root of its repository; archive it yourself (it stays at {ws.root})')
+        return
+    if ws.root.parent.name == '_archive':
+        return
+    target = ws.root.parent / '_archive' / ws.root.name
+    if target.exists():
+        print(f'note: {target} exists; the workspace stays at {ws.root}')
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    moved = streams.git(ws.root.parent, 'mv', str(ws.root), str(target))
+    if moved.returncode:
+        raise OrchError(f'git mv to the archive failed: {moved.stderr.strip()}')
+    streams.git(target, 'commit', '-q', '-m', f'{program}: archive workspace', '--', str(ws.root), str(target))
+    print(f'archived: {target}')
+    print(f'closeout now: {target / "reports"}')
+    if push:
+        push_branch(ws, target, branch)
+
+
+def archive_items(ws, sha):
+    """In-repo archive steps for the owner, tied to the closeout commit; the plugin never runs them."""
+    program, branch = ws.config.get('program'), ws.workspace_branch
+    tag = f'orch-{program}-closed-{today().replace("-", "")}'
+    command = f'git push origin {sha}:refs/tags/{tag} && git push origin --delete {branch}'
     cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where='reports/closeout',
-                                 text=f'Archive the workspace branch: {command} ; expected: tag {tag} on origin, '
-                                      f'branch {branch} deleted'))
+                                 allow_closed=True,
+                                 text=f'Archive the workspace branch (from any clone of the repository): {command} ; '
+                                      f'expected: tag {tag} on origin at {sha[:10]}, branch {branch} deleted'))
     cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='P', where='reports/closeout',
-                                 text=f'Keep the workspace as history in docs/ of the base branch through a PR? '
+                                 allow_closed=True,
+                                 text='Keep the workspace as history in docs/ of the base branch through a PR? '
                                       '(a) yes, one PR copying the workspace (b) no, the tag is enough ; '
                                       'recommendation: (b)'))
 
@@ -2131,6 +2244,8 @@ def build_parser():
     p.add_argument('--prs-verified', metavar='EVIDENCE',
                    help='PRs of branches still on origin were verified closed without gh (how)')
     p.add_argument('--no-commit', action='store_true', help='do not commit or archive')
+    p.add_argument('--goal-confirmed', metavar='EVIDENCE',
+                   help='close although PLAN.md has no written completion condition (how the goal was verified)')
     p.set_defaults(func=cmd_close)
 
     p = sub.add_parser('reopen', parents=[common], help='make a closed program active again')

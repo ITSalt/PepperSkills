@@ -12,9 +12,16 @@ Program `{{PROGRAM}}`, closed {{DATE}}. One program, one goal: a new goal is a n
 
 ## Work packages
 
-| WP | Module | Title | Status | PR |
-|----|--------|-------|--------|----|
+Version: fill in the release or merge commit of each package after checking it (the plugin does
+not read releases).
+
+| WP | Module | Title | Status | PR | Version |
+|----|--------|-------|--------|----|---------|
 {{PACKAGES}}
+
+## Checks without full evidence
+
+{{CHECKS}}
 
 ## Decisions
 
