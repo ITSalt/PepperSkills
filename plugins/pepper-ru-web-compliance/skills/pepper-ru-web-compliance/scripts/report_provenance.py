@@ -35,10 +35,38 @@ def provenance_issues(data):
 
 def provenance_line(data):
     producer = data.get('producer') or {}
+    collection = data.get('collection') or {}
+    collector = collection.get('collector') or {}
+    network = collection.get('network') or {}
+    egress = network.get('egress') or {}
     return ('Скилл / детектор: ' + producer.get('skill_version', 'не указан') +
             ' / ' + producer.get('detector_version', 'не указан') +
             '; правила SHA-256: ' + producer.get('rules_sha256', 'не указан') +
-            '; генератор: ' + current_producer()['skill_version'] + '.')
+            '; генератор: ' + current_producer()['skill_version'] +
+            '; сборщик: ' + collector.get('version', 'не установлен') +
+            '; формат наблюдений: ' + str(collector.get('observation_version', 'не установлен')) +
+            '; транспорт: ' + str(network.get('mode', 'не установлен')) +
+            '; выход: ' + str(egress.get('ip', 'не установлен')) +
+            '; полный сбор: ' + str(network.get('complete', 'не установлен')) + '.')
+
+
+def collection_issues(data):
+    collection = data.get('collection') or {}
+    collector = collection.get('collector') or {}
+    network = collection.get('network') or {}
+    missing_origin = (collector.get('name') != 'pepper-ru-web-compliance' or
+            collector.get('observation_version') != 2 or
+            not collection.get('started_at') or not collection.get('finished_at') or
+            not network.get('mode') or network.get('complete') is not True or
+            not (network.get('egress') or {}).get('ip'))
+    legacy = any((e.get('context') or {}).get('observation_version') != 2
+                 for row in data.get('findings', [])
+                 for e in row.get('evidence', []) + row.get('basis_evidence', [])
+                 if e.get('kind') == 'request')
+    if missing_origin or legacy:
+        label = 'старый журнал сетевых наблюдений; ' if legacy else ''
+        return [label + 'происхождение или полнота сетевого сбора не подтверждены; выводы по сайту предварительные.']
+    return []
 
 
 def consistency_issues(data):

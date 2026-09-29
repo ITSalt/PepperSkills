@@ -108,6 +108,8 @@ class PageArtifact:
 @dataclass
 class RunManifest:
     schema_version: int = SCHEMA_VERSION
+    collector: dict[str, Any] = field(default_factory=lambda: {
+        'name': 'pepper-ru-web-compliance', 'version': '2.4.0', 'observation_version': 2})
     # Сайт может отдавать 403 на всё подряд (антибот). Это принципиально иной
     # исход, чем «нарушений не найдено», и детекторы обязаны его различать.
     network: dict[str, Any] = field(default_factory=dict)

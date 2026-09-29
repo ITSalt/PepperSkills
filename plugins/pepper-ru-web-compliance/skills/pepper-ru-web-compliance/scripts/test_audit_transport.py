@@ -51,6 +51,19 @@ class PolicyTests(unittest.TestCase):
                 client.create('https://example.com')
             self.assertEqual(call.call_count, 1)
 
+    def test_tunnel_retry_keeps_offset_and_body(self):
+        client = net.GatewayClient('https://gateway.example')
+        tid = 'a' * 48
+        with patch.object(client, 'request', side_effect=[net.NetworkError('gateway_unreachable'), {'offset':3}]) as call:
+            self.assertEqual(client.write_tunnel(tid, 0, b'abc'), 3)
+            self.assertEqual(call.call_args_list[0].args, call.call_args_list[1].args)
+        with patch.object(client, 'raw', side_effect=[net.NetworkError('gateway_unreachable'), (200,b'abc',{})]) as call:
+            self.assertEqual(client.read_tunnel(tid, 0), (b'abc', False))
+            self.assertEqual(call.call_args_list[0].args, call.call_args_list[1].args)
+        with patch.object(client, 'request', side_effect=net.NetworkError('daily_quota')) as call:
+            with self.assertRaises(net.NetworkError): client.write_tunnel(tid, 0, b'abc')
+            self.assertEqual(call.call_count, 1)
+
     def test_registry_variable_does_not_change_site(self):
         with patch.dict('os.environ', {'PEPPER_RU_REGISTRY_PROXY':'http://registry.example:80'}, clear=True):
             s = net.NetworkSession('https://example.com')
@@ -64,7 +77,8 @@ class PolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(net.NetworkError, 'gateway_unreachable'):
                 with net.NetworkSession('https://example.com'):
                     self.fail('entered')
-            client.assert_called_once_with('https://lts.itsalt.ru:8443')
+            client.assert_called_once_with('https://lts.itsalt.ru/ru-audit')
+            client.return_value.capabilities.assert_called_once_with()
             client.return_value.create.assert_called_once_with('https://example.com')
             direct.assert_not_called()
         with patch.dict('os.environ', {'PEPPER_RU_GATEWAY_URL': 'https://override.example'}, clear=True):

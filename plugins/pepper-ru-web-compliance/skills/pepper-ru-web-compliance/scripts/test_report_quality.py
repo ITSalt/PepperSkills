@@ -10,6 +10,7 @@ import unittest
 
 import detect
 import render
+import report_evidence
 from report_provenance import consistency_issues, current_producer, provenance_issues
 from selftest import artifacts_fixture
 
@@ -29,7 +30,10 @@ class ReportQuality(unittest.TestCase):
 
     def data(self, *rows):
         return {'target': 'https://example.ru', 'generated_at': '2026-09-28',
-                'pages_analysed': 1, 'producer': current_producer(), 'findings': list(rows)}
+                'pages_analysed': 1, 'producer': current_producer(), 'findings': list(rows),
+                'collection': {'collector': {'name': 'pepper-ru-web-compliance', 'version': '2.4.0', 'observation_version': 2},
+                               'schema_version': 1, 'started_at': '2026-09-28', 'finished_at': '2026-09-28',
+                               'network': {'mode': 'managed', 'complete': True, 'egress': {'ip': '203.0.113.1', 'country': 'RU'}}}}
 
     def test_no_total_or_repeat_offence_in_summary(self):
         rows = [self.finding(r, status='FAIL',
@@ -60,7 +64,56 @@ class ReportQuality(unittest.TestCase):
             self.assertIn('PDN-009', plan)
         for report in (render.report_md(data), render.report_html(data)):
             self.assertNotIn('PRIVATE_TEST_ID', report)
-            self.assertIn('Доказательство: см.', report)
+            self.assertIn('evidence.html', report)
+
+    def test_large_network_evidence_stays_out_of_main_report(self):
+        for size in (400, 2000):
+            rows = [{'kind': 'request', 'detail': 'POST: назначение не установлено',
+                     'url': 'https://receiver.example/collect?secret=private',
+                     'context': {'method': 'POST', 'page': f'https://example.ru/p{i}',
+                                 'phase': 'before_consent', 'category': 'unknown'}}
+                    for i in range(size)]
+            data = self.data(self.finding('PDN-011', evidence=rows),
+                             self.finding('INF-003', evidence=rows))
+            registry = report_evidence.index(data)
+            self.assertEqual(len(registry['evidence']), size)
+            self.assertNotIn('private', json.dumps(registry))
+            for output in (render.report_md(data), render.report_html(data),
+                           render.plan_md(data), render.plan_html(data)):
+                self.assertLess(output.count('receiver.example'), 12)
+                self.assertLess(output.count('Доказательство: см.'), 2)
+            self.assertLessEqual(render.plan_md(data).count('receiver.example'), 1)
+            self.assertIn('Общий набор сетевых доказательств', render.plan_md(data))
+
+    def test_identical_repeated_requests_remain_distinct_in_registry(self):
+        request = {'kind': 'request', 'detail': 'GET: назначение не установлено',
+                   'url': 'https://receiver.example/collect?secret=private',
+                   'context': {'phase': 'before_consent', 'page': 'https://example.ru/'}}
+        data = self.data(self.finding('PDN-011', evidence=[request] * 3),
+                         self.finding('INF-003', evidence=[request] * 3))
+        registry = report_evidence.index(data)
+        self.assertEqual(len(registry['evidence']), 3)
+        self.assertEqual(registry['groups'][0]['count'], 3)
+        page = report_evidence.html_page(registry, data['target'])
+        self.assertIn('../artifacts/network/before_consent.jsonl', page)
+        self.assertNotIn('private', page)
+
+    def test_grouping_preserves_consent_phase_and_context_conflicts(self):
+        rows = [{'kind': 'request', 'detail': 'POST: candidate', 'url': 'https://receiver.example/collect',
+                 'context': {'method': 'POST', 'category': 'unknown', 'phase': phase,
+                             'metadata_complete': complete, 'observation_version': 2}}
+                for phase, complete in [('before_consent', True), ('after_consent', True),
+                                        ('after_reject', True), ('after_reject', False)]]
+        registry = report_evidence.index(self.data(self.finding('PDN-011', evidence=rows)))
+        self.assertEqual(len(registry['groups']), 4)
+        self.assertEqual(len(registry['evidence']), 4)
+
+    def test_missing_collection_provenance_downgrades_report(self):
+        data = self.data(self.finding('PDN-011', status='PASS'))
+        data.pop('collection')
+        for output in (render.report_md(data), render.report_html(data)):
+            self.assertIn('Ограниченный снимок', output)
+            self.assertIn('НЕ УДАЛОСЬ ПРОВЕРИТЬ', output)
 
     def test_every_task_has_action_even_without_fix_hint(self):
         data = self.data(self.finding('PDN-013', fix_hint=None, manual_check='Уточнить цель заявки.'))

@@ -35,7 +35,12 @@ class NetworkEvidence(unittest.TestCase):
 
     def data(self, *rows):
         return {'target': self.ctx.target, 'generated_at': '2026-09-28', 'pages_analysed': 1,
-                'producer': current_producer(), 'findings': [asdict(x) for x in rows]}
+                'producer': current_producer(), 'findings': [asdict(x) for x in rows],
+                'collection': {'collector': {'name': 'pepper-ru-web-compliance', 'version': '2.4.0',
+                                              'observation_version': 2},
+                               'started_at': '2026-09-28', 'finished_at': '2026-09-28',
+                               'network': {'mode': 'managed', 'complete': True,
+                                           'egress': {'ip': '203.0.113.1', 'country': 'RU'}}}}
 
     def test_six_report_urls_and_csp_alone_never_prescribe_database_move(self):
         for urls in (SYNTHETIC_URLS, [SYNTHETIC_URLS[4]]):

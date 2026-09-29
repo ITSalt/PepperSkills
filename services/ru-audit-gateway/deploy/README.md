@@ -1,11 +1,38 @@
 # Экземпляр на РФ-VPS
 
-Хост: `77.247.243.9` (SSH `localadmin`), адрес `https://lts.itsalt.ru:8443`.
-Порт 443 остаётся у существующего nginx. TLS завершается в самом Go-сервисе.
+Хост: `77.247.243.9` (SSH `localadmin`), новый клиентский адрес `https://lts.itsalt.ru/ru-audit`.
+Существующий nginx на 443 передаёт только `/ru-audit/` на внутренний порт
+`127.0.0.1:18443`; конфигурация location находится в `nginx-ru-audit.conf`.
+Старый прямой TLS-вход `https://lts.itsalt.ru:8443` остаётся для v1.
+
+## Переход 2.3.0 → 2.4.0
+
+На VPS перед переключением сохранить копии `gateway.env`, активного
+`/etc/nginx/sites-available/stands/looktwinstudio.conf`, каталога `secrets/`
+и SQLite из volume `pepper-ru-audit-gateway_gateway-data`. Архив SQLite
+снимать при остановленном контейнере шлюза либо через SQLite backup API;
+простое копирование работающей базы не гарантирует согласованность. Проверить
+ответы `/healthz` соседнего LookTwinStudio и остальных сайтов до работ.
+
+Сначала собрать и запустить образ 2.4.0 только в Compose project шлюза:
+старый вход 8443 остаётся опубликованным, новый HTTP-вход опубликован только
+на `127.0.0.1:18443`. Проверить v1 `/healthz` и v2 `/v2/capabilities` через
+локальный порт. Затем включить оба `location` из `nginx-ru-audit.conf` в
+существующий TLS `server` для `lts.itsalt.ru` в файле LookTwinStudio,
+выполнить `nginx -t` и reload. Не менять общий `location /`, другие `server`
+и Certbot. Проверить публичные `/ru-audit/v2/capabilities` и
+`/ru-audit/v2/diagnostic`, старый `:8443/healthz`, сайт `/healthz`, `/` и
+соседние домены. Для диагностики v2 должен ответить `relay: trusted`.
+
+При сбое вернуть сохранённый nginx-файл, проверить `nginx -t`, reload и
+перезапустить Compose из `releases/2.3.0`. Не выполнять `down -v`: SQLite,
+HMAC и скользящие квоты должны пережить откат. После серверной проверки
+установленный клиент 2.4.0 отдельно принимается в Claude cloud/Cowork,
+Codex local и Codex cloud; до этого публичный выпуск пакета не делать.
 
 Каталог сервера `/srv/pepper-ru-audit-gateway`:
 
-- `releases/2.3.0`, ссылка `current` — исходники и файлы поставки;
+- `releases/2.4.0`, ссылка `current` — исходники и файлы поставки;
 - `gateway.env` — адреса и пути без токенов;
 - `secrets/` — постоянный HMAC, ключ/цепочка TLS и официальный CA Минюста;
 - Docker project `pepper-ru-audit-gateway`, отдельный persistent volume

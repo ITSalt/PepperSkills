@@ -2,7 +2,7 @@
 # The only changed application limits are per-IP admission for a single generator.
 services:
   gateway:
-    image: pepper-ru-audit-gateway:2.3.0
+    image: pepper-ru-audit-gateway:2.4.0
     cpus: 1
     mem_limit: 512m
     pids_limit: 128
@@ -21,7 +21,7 @@ services:
     networks:
       bench: {ipv4_address: 10.240.82.2}
   fixture:
-    image: pepper-ru-audit-gateway:2.3.0
+    image: pepper-ru-audit-gateway:2.4.0
     entrypoint: [/loadtool, fixture]
     user: "10002:10002"
     cap_drop: [ALL]
@@ -34,7 +34,7 @@ services:
     networks:
       bench: {ipv4_address: 10.240.82.3}
   client:
-    image: pepper-ru-audit-gateway:2.3.0
+    image: pepper-ru-audit-gateway:2.4.0
     profiles: [run]
     entrypoint: [/loadtool]
     user: "10002:10002"

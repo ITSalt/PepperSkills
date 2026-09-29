@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.0 — 2026-09-29
+
+- HTTPS relay v2 on port 443 carries browser and Python traffic through the environment proxy; client capability check runs before quota issuance.
+- Session retries survive changing cloud proxy IPs; bounded, offset-based tunnel blocks prevent duplicate upstream writes.
+- Reports group network observations, keep a full evidence.html/evidence.json index, and mark unproven collection snapshots as limited.
+
 ## 2.3.0 — 2026-09-28
 
 - Локальный аудит через РФ-шлюз: единая сессия, TLS-адаптер, custom-прокси и проверка выхода.

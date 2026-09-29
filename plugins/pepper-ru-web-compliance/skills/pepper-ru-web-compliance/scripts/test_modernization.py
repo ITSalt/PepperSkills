@@ -13,6 +13,13 @@ from selftest import artifacts_fixture
 from processing_basis import classify_activities
 
 
+VERIFIED_COLLECTION = {
+    'collector': {'name': 'pepper-ru-web-compliance', 'version': '2.4.0', 'observation_version': 2},
+    'started_at': '2026-09-21', 'finished_at': '2026-09-21',
+    'network': {'mode': 'managed', 'complete': True, 'egress': {'ip': '203.0.113.1', 'country': 'RU'}},
+}
+
+
 class AuditRegression(unittest.TestCase):
     def classify(self, text, observed=None):
         return classify_activities([('https://example.ru/privacy', text)], observed or [
@@ -63,7 +70,8 @@ class AuditRegression(unittest.TestCase):
             ctx.net['before_consent'] = [{'url': 'https://mc.yandex.ru/watch/1'}]
             f = asdict(detect.detect_legitimate_interest(ctx)[0])
             f['basis_evidence'][0]['snippet'] += ' BASIS_PROOF_913'
-            data = {'target': ctx.target, 'generated_at': '2026-09-21', 'findings': [f], 'pages_analysed': 1}
+            data = {'target': ctx.target, 'generated_at': '2026-09-21', 'findings': [f], 'pages_analysed': 1,
+                    'collection': VERIFIED_COLLECTION}
             for report in (render.report_md(data), render.report_html(data), render.plan_md(data), render.plan_html(data)):
                 self.assertIn('https://example.ru/privacy', report)
             for report in (render.report_md(data), render.report_html(data)):
@@ -114,7 +122,7 @@ class AuditRegression(unittest.TestCase):
                     detect.attach_semantic_reviews(ctx, [f])
                     row = asdict(f)
                     data = {'target': ctx.target, 'generated_at': '2026-09-26',
-                            'pages_analysed': 1, 'findings': [row]}
+                            'pages_analysed': 1, 'findings': [row], 'collection': VERIFIED_COLLECTION}
                     unchanged = copy.deepcopy(data)
                     summary = render.summarise(data)
                     bucket = {'PASS': 'passes', 'FAIL': 'fails', 'UNKNOWN': 'unknowns', 'NA': 'nas'}[status]
@@ -169,7 +177,7 @@ class AuditRegression(unittest.TestCase):
                 [detect.Evidence(kind='text', detail='Цитата с условием', snippet=quote,
                                  url='https://example.ru/privacy')]))
             data = {'target': ctx.target, 'generated_at': '2026-09-26',
-                    'findings': [f], 'pages_analysed': 1}
+                    'findings': [f], 'pages_analysed': 1, 'collection': VERIFIED_COLLECTION}
             for report in (render.report_md(data), render.report_html(data)):
                 self.assertIn(quote, report)
 

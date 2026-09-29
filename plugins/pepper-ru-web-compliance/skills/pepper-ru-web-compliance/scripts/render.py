@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import re
 import copy
 import sys
@@ -45,8 +46,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from report_provenance import consistency_issues, provenance_issues, provenance_line
+from report_provenance import collection_issues, consistency_issues, provenance_issues, provenance_line
 from network_evidence import safe_url
+import report_evidence
 from review_contract import valid_action_review
 
 SCHEMA_VERSION = 1
@@ -91,6 +93,11 @@ def report_summary(f):
 
 def public_data(data):
     data = copy.deepcopy(data)
+    if collection_issues(data):
+        for f in data.get('findings', []):
+            f['status'] = 'UNKNOWN'
+            f['semantic_review'] = None
+            f['summary'] = 'Сбор не подтверждён: ' + f.get('summary', '')
     for f in data.get("findings", []):
         for e in f.get("evidence", []) + f.get("basis_evidence", []):
             if e.get("kind") == "request":
@@ -409,6 +416,8 @@ def report_md(data: dict[str, Any]) -> str:
     add(provenance_line(data))
     for issue in provenance_issues(data):
         add("> **Несовместимые входные данные.** " + issue)
+    for issue in collection_issues(data):
+        add("> **Ограниченный снимок.** " + issue)
     for issue in consistency_issues(data):
         add("> **Противоречивые выводы.** " + issue)
     add("> " + DISCLAIMER)
@@ -520,11 +529,18 @@ def report_md(data: dict[str, Any]) -> str:
             if f.get("evidence"):
                 add("**Доказательства.**")
                 add("")
-                for e in f["evidence"]:
+                request_ids = frozenset(g['id'] for g in report_evidence.request_groups(f))
+                if request_ids:
+                    if request_ids in evidence_owner:
+                        owner = evidence_owner[request_ids]
+                        add(f"- Общий набор сетевых доказательств: см. [{owner}](#{anchor(owner)}); evidence.html / evidence.json.")
+                    else:
+                        evidence_owner[request_ids] = f['rule_id']
+                        add("- " + "\n- ".join(evidence_refs_md(line) for line in report_evidence.summary_lines(f)))
+                nonrequests = [e for e in f['evidence'] if e.get('kind') != 'request']
+                for e in nonrequests[:8]:
                     key = json.dumps(e, sort_keys=True, ensure_ascii=False)
                     if key in evidence_owner:
-                        owner = evidence_owner[key]
-                        add(f"- Доказательство: см. [{owner}](#{anchor(owner)}).")
                         continue
                     evidence_owner[key] = f['rule_id']
                     line = f"- {e['detail']}"
@@ -535,6 +551,8 @@ def report_md(data: dict[str, Any]) -> str:
                     add(line)
                     if e.get("snippet"):
                         add(f"  > {e['snippet']}")
+                if len(nonrequests) > 8:
+                    add(f"- Ещё {len(nonrequests) - 8} записей: evidence.html / evidence.json.")
                 add("")
             if f.get("source_note"):
                 add(f"**Источник данных.** {f['source_note']}")
@@ -628,12 +646,32 @@ def describe_locations(finding):
     return (action or {}).get('locations', [])
 
 
-def describe_observations(finding):
+def describe_observations(finding, shared_requests=None, task_id=None):
     labels = {'unknown': 'назначение не установлено', 'form_submission': 'отправка формы подтверждена',
               'analytics_candidate': 'предположительно аналитика', 'security_report': 'отчёт безопасности CSP',
               'security_report_candidate': 'предположительно отчёт безопасности CSP'}
-    out = []
+    members = finding.get('members', [finding])
+    requests = []
+    request_sets = set()
+    for member in members:
+        subset = [e for e in member.get('evidence', []) + member.get('basis_evidence', [])
+                  if e.get('kind') == 'request']
+        signature = json.dumps(subset, sort_keys=True, ensure_ascii=False)
+        if signature not in request_sets:
+            requests.extend(subset)
+            request_sets.add(signature)
+    request_finding = {'evidence': requests}
+    group_ids = frozenset(g['id'] for g in report_evidence.request_groups(request_finding))
+    owner = shared_requests.get(group_ids) if shared_requests is not None and group_ids else None
+    if owner:
+        out = [f'Общий набор сетевых доказательств: см. {owner}; evidence.html / evidence.json.']
+    else:
+        out = report_evidence.summary_lines(request_finding, limit=2)
+        if group_ids and shared_requests is not None:
+            shared_requests[group_ids] = task_id
     for e in finding.get('basis_evidence', []) + finding.get('evidence', []):
+        if e.get('kind') == 'request':
+            continue
         parts = []
         if e.get('url'):
             parts.append(safe_url(e['url']) if e.get('kind') == 'request' else e['url'])
@@ -645,7 +683,7 @@ def describe_observations(finding):
                 parts.append(label + ': ' + str(labels.get(context[key], context[key]) if key == 'category' else context[key]))
         if parts:
             out.append('; '.join(parts))
-    return list(dict.fromkeys(out))
+    return list(dict.fromkeys(out))[:12]
 
 
 def plan_md(data: dict[str, Any]) -> str:
@@ -655,6 +693,7 @@ def plan_md(data: dict[str, Any]) -> str:
            f"**Задач:** {sum(len(rows) for _, _, rows in sections)}", "",
            "P0–P3 — приоритет подтверждённых исправлений. V — открытые вопросы; "
            "потенциальная критичность нормы не означает установленного нарушения.", ""]
+    shared_requests = {}
     for code, title, rows in sections:
         out += [f"## {code}. {title}", ""]
         for i, f in enumerate(rows, 1):
@@ -662,9 +701,9 @@ def plan_md(data: dict[str, Any]) -> str:
                     f"**Что обнаружено.** {f['summary']}", ""]
             if any(m['rule_id'] in NEEDS_LEGAL_INPUT for m in f['members']):
                 out += ["**Ответственный за решение:** владелец/юрист.", ""]
-            observations = describe_observations(f)
+            observations = describe_observations(f, shared_requests, f'{code}-{i:02d}')
             if observations:
-                out += ["**Где наблюдалось.**", ""] + ['- ' + x for x in observations] + [""]
+                out += ["**Где наблюдалось.**", ""] + ['- ' + evidence_refs_md(x) for x in observations] + [""]
             locations = describe_locations(f)
             if locations:
                 out += ["**Где менять.**", ""] + ['- ' + x for x in locations] + [""]
@@ -901,6 +940,27 @@ def esc(text: Any) -> str:
     return "" if text is None else html.escape(str(text))
 
 
+def evidence_refs_md(line: str) -> str:
+    parts = re.split(r'(G-[0-9a-f]{12}|evidence\.html|evidence\.json)', line)
+    return ''.join(f'[{part}](evidence.html#{part})' if re.fullmatch(r'G-[0-9a-f]{12}', part)
+                   else f'[{part}]({part})' if part in ('evidence.html', 'evidence.json')
+                   else part for part in parts)
+
+
+def evidence_refs_html(line: str) -> str:
+    """Keep the printed group ID and make its register entry reachable in HTML."""
+    parts = re.split(r'(G-[0-9a-f]{12}|evidence\.html|evidence\.json)', line)
+    out = []
+    for part in parts:
+        if re.fullmatch(r'G-[0-9a-f]{12}', part):
+            out.append(f'<a href="evidence.html#{part}">{part}</a>')
+        elif part in ('evidence.html', 'evidence.json'):
+            out.append(f'<a href="{part}">{part}</a>')
+        else:
+            out.append(esc(part))
+    return ''.join(out)
+
+
 URL_RE = re.compile(r"https?://[^\s<>()\[\]«»\"']+")
 
 
@@ -1003,6 +1063,8 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
     add(f"<p class=meta>{esc(provenance_line(data))}</p>")
     for issue in provenance_issues(data):
         add(f"<div class=alert>Несовместимые входные данные. {esc(issue)}</div>")
+    for issue in collection_issues(data):
+        add(f"<div class=alert>Ограниченный снимок. {esc(issue)}</div>")
     for issue in consistency_issues(data):
         add(f"<div class=alert>Противоречивые выводы. {esc(issue)}</div>")
     add(f"<div class=disclaimer>{esc(DISCLAIMER)}</div>")
@@ -1065,11 +1127,19 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
             if f.get("liability"):
                 add(f"<p><b>Ответственность.</b> {esc(f['liability'])}</p>")
             add(f"<p><b>Обнаружено.</b> {esc(report_summary(f))}</p>")
-            for e in f.get("evidence", []):
+            request_ids = frozenset(g['id'] for g in report_evidence.request_groups(f))
+            if request_ids:
+                if request_ids in evidence_owner:
+                    owner = evidence_owner[request_ids]
+                    add(f"<p class=hint>Общий набор сетевых доказательств: см. <a href='#{anchor(owner)}'>{esc(owner)}</a>; {evidence_refs_html('evidence.html / evidence.json')}.</p>")
+                else:
+                    evidence_owner[request_ids] = f['rule_id']
+                    for line in report_evidence.summary_lines(f):
+                        add(f"<div class=ev>{evidence_refs_html(line)}</div>")
+            nonrequests = [e for e in f.get("evidence", []) if e.get('kind') != 'request']
+            for e in nonrequests[:8]:
                 key = json.dumps(e, sort_keys=True, ensure_ascii=False)
                 if key in evidence_owner:
-                    owner = evidence_owner[key]
-                    add(f"<p class=hint>Доказательство: см. <a href='#{anchor(owner)}'>{esc(owner)}</a>.</p>")
                     continue
                 evidence_owner[key] = f['rule_id']
                 bits = esc(e["detail"])
@@ -1079,6 +1149,8 @@ def report_html(data: dict[str, Any], layout: str = "stacked") -> str:
                     bits += f" (страница {esc(e['selector'])})"
                 snippet = f"<q>{esc(e['snippet'])}</q>" if e.get("snippet") else ""
                 add(f"<div class=ev>{bits}{snippet}</div>")
+            if len(nonrequests) > 8:
+                add(f"<p class=hint>Ещё {len(nonrequests) - 8} записей: {evidence_refs_html('evidence.html / evidence.json')}.</p>")
             if f.get("source_note"):
                 add(f"<p><b>Источник данных.</b> {esc(f['source_note'])}</p>")
             add("</div>")
@@ -1122,6 +1194,7 @@ def plan_html(data: dict[str, Any]) -> str:
            f"<div class=meta>Задач: {sum(len(rows) for _, _, rows in sections)} · основание — часть I</div>",
            "<p>P0–P3 — приоритет подтверждённых исправлений. V — открытые вопросы; "
            "потенциальная критичность нормы не означает установленного нарушения.</p>"]
+    shared_requests = {}
     for code, title, rows in sections:
         out.append(f"<h2>{esc(code)}. {esc(title)}</h2>")
         for i, f in enumerate(rows, 1):
@@ -1131,10 +1204,10 @@ def plan_html(data: dict[str, Any]) -> str:
                     f"<p><b>Что обнаружено.</b> {esc(report_summary(f))}</p>"]
             if any(m['rule_id'] in NEEDS_LEGAL_INPUT for m in f['members']):
                 out.append("<p class=hint>Ответственный за решение: владелец/юрист.</p>")
-            for label, values in [('Где наблюдалось', describe_observations(f)),
+            for label, values in [('Где наблюдалось', describe_observations(f, shared_requests, f'{code}-{i:02d}')),
                                   ('Где менять', describe_locations(f))]:
                 if values:
-                    out.append(f"<p><b>{label}.</b></p><ul>" + ''.join(f"<li>{esc(x)}</li>" for x in values) + '</ul>')
+                    out.append(f"<p><b>{label}.</b></p><ul>" + ''.join(f"<li>{evidence_refs_html(x) if label == 'Где наблюдалось' else esc(x)}</li>" for x in values) + '</ul>')
             if action_kind(f) == 'fix' and not describe_locations(f):
                 out.append("<p><b>Место изменения:</b> не установлено; требуется определить компонент по доказательствам.</p>")
             out += [f"<p><b>Что сделать.</b> {esc(f['fix_hint'])}</p>",
@@ -1200,6 +1273,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Сборка записки и плана из findings.json")
     ap.add_argument("--findings", default="findings.json")
     ap.add_argument("--out-dir", default="report")
+    ap.add_argument("--artifacts", default="artifacts", help="исходные артефакты для ссылок реестра")
     ap.add_argument("--format", default="md,html",
                     help="список через запятую: md, html, pdf")
     ap.add_argument("--allow-legacy", action="store_true",
@@ -1219,6 +1293,13 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     formats = {f.strip() for f in args.format.split(",") if f.strip()}
     written: list[Path] = []
+
+    registry = report_evidence.index(data)
+    p = out / "evidence.json"
+    p.write_text(json.dumps(registry, ensure_ascii=False, indent=2), encoding="utf-8"); written.append(p)
+    p = out / "evidence.html"
+    artifact_href = os.path.relpath(Path(args.artifacts).resolve(), out.resolve())
+    p.write_text(report_evidence.html_page(registry, data['target'], artifact_href), encoding="utf-8"); written.append(p)
 
     if formats:
         p = out / "compliance-report.md"
