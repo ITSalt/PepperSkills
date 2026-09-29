@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 — preview, unreleased
+
+Preview of stage 2d: program completion. One program, one goal: reached, closed; the next goal is
+a new program.
+
+- `PLAN.md` template: "Goal and completion condition"; `plan` fills it and does not run on a
+  closed program.
+- Mode `close` and `orch.py close --check | --apply`: blockers by fact (non-terminal packages,
+  open PRs of package branches via `gh`, or branches still on origin until `--prs-verified`, locks,
+  queued merges, open owner items), module sessions to close; `--apply` writes
+  `reports/closeout-<date>.md` from the template (EN/RU), sets `state: closed`, puts a banner on
+  `status.md`, journals and commits; a separate home repository archives the workspace to
+  `features/_archive/<program>` with `git mv`; an in-repo workspace gets an owner item with the tag
+  and branch-deletion commands (never run by the plugin) and an optional question about keeping the
+  workspace in `docs/` of the base branch.
+- `orch.py owner carry <id> "<reason>"` moves an open owner item to `backlog.md`.
+- After closing: `dispatch`, `new-wp`, `lock` and `merge` changes are refused with a hint; `lint`
+  reads only; among several workspaces a closed one is never picked automatically; `resume` on a
+  closed program reports the result, and on a finished one proposes `close`.
+- Mode `reopen` and `orch.py reopen "<reason>"`.
+- Concept 1.3 (EN and RU), section 21 "Program completion"; README scenario 10.
+
 ## 0.3.0 — preview, unreleased
 
 Preview of stage 2b: review of module deliveries.

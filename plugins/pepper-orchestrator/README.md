@@ -1,6 +1,7 @@
 # Pepper Orchestrator
 
-> **Preview (0.3.0).** Modes `init`, `plan`, `dispatch`, `review`, `resume`, `owner`, `decide`;
+> **Preview (0.4.0).** Modes `init`, `plan`, `dispatch`, `review`, `resume`, `owner`, `decide`,
+> `close`, `reopen`;
 > streams in one repository with worktrees and locks; cloud sessions.
 > Formats and commands may change before 1.0.0.
 
@@ -30,8 +31,10 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:resume` | read state, reconcile with reality, next step |
 | `/pepper-orchestrator:owner` | owner queue as commands; on "done" verify and close |
 | `/pepper-orchestrator:decide <text>` | record D-n / A-n / Q-n or open an owner question P-n |
+| `/pepper-orchestrator:close [result]` | goal reached: completion check, closeout report, archive |
+| `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 
-Version 0.3.0 is a preview (stages 2a, 2b and 2c). Modules can be whole repositories or areas and
+Version 0.4.0 is a preview (stages 2a-2d). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
@@ -71,6 +74,10 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
    session `/plugin` -> Installed -> the plugin -> Update now; auto-update is off by default for
    third-party marketplaces such as this one. In the cloud change the comment line of the
    setup-script fragment below, so the environment rebuilds.
+10. **Goal reached -> `close`.** One program, one goal: when the completion condition in
+    `PLAN.md` holds, run `close` (it checks packages, PRs, locks and owner items by facts; carry
+    leftovers with `orch.py owner carry <id> "<reason>"`), then start the next goal as a new
+    program with `init`. In-repo, the owner runs the printed tag and branch-deletion commands.
 
 ## Cloud sessions
 

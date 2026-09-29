@@ -1,7 +1,7 @@
 {
   "name": "pepper-orchestrator",
-  "version": "0.3.0",
-  "description": "Preview: one orchestrator session runs work across several repositories or parallel streams of one repository - plan, work packages, dispatch with worktrees and locks, PR review with a read-only reviewer agent, owner queue, state in files. Start with /pepper-orchestrator:init <program>, then /pepper-orchestrator:plan <task>.",
+  "version": "0.4.0",
+  "description": "Preview: one orchestrator session runs work across several repositories or parallel streams of one repository - plan, work packages, dispatch with worktrees and locks, PR review with a read-only reviewer agent, owner queue, closing a program when its goal is reached, state in files. Start with /pepper-orchestrator:init <program>, then /pepper-orchestrator:plan <task>.",
   "author": {
     "name": "ITSalt",
     "email": "info@itsalt.ru",

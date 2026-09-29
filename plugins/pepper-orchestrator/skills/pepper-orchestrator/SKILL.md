@@ -1,8 +1,8 @@
 ---
 name: pepper-orchestrator
-description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, resume, owner, decide. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
+description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, resume, owner, decide, close, reopen. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.3.0
+  version: 0.4.0
 ---
 
 # Pepper Orchestrator
@@ -68,8 +68,15 @@ the skill as `/pepper-orchestrator <mode> <arguments>` or by a phrase.
 | `resume` | restore from files, reconcile with reality, next step | [references/modes/resume.md](references/modes/resume.md) |
 | `owner [id]` | owner queue as commands; on "done" verify and close | [references/modes/owner.md](references/modes/owner.md) |
 | `decide <text>` | record D-n / A-n / Q-n or open P-n | [references/modes/decide.md](references/modes/decide.md) |
+| `close [result]` | goal reached: completion check by facts, closeout report, archive | [references/modes/close.md](references/modes/close.md) |
+| `reopen <reason>` | make a closed program active again | [references/modes/reopen.md](references/modes/reopen.md) |
 
 Without a clear mode: if a workspace exists, run `resume`; otherwise propose `init`.
+
+**One program, one goal.** `PLAN.md` states the goal and its completion condition. When the
+condition holds, close the program (`close`); the next goal is a new program (`init`), not more
+packages in a finished one. A closed program refuses `plan`, `dispatch`, `new-wp`, `lock` and
+`merge` changes; `reopen` is only for its own unfinished goal.
 
 Planned modes, not automated in this version: `verify`, `release`, `retro`. When the program
 needs them, follow the concept directly: verify per section 9, release per section 15. Record every result through `scripts/orch.py` as usual.
@@ -107,6 +114,9 @@ python3 SKILL_DIR/scripts/orch.py --help
 | `worktrees` | worktrees of every repository: branch, dirty, ahead/behind, package (read-only) |
 | `upgrade` | add the locks and merge queue tables to a 0.1.0 `status.md` |
 | `ready [--json]` | dispatched packages whose branch is on origin (READY without messages) |
+| `owner carry <id> "<reason>"` | move an open owner item to `backlog.md` |
+| `close --check \| --apply [--summary "..."] [--prs-verified "..."]` | completion check; closeout report, `state: closed`, archive |
+| `reopen "<reason>"` | `state: active` again, journal line |
 | `review-start <WP> --pr URL --ref <PR head sha> [--since OLD --round N] [--no-fetch]` | automatic review findings, report skeleton, clone command; status `REVIEW` |
 
 `scripts/review_clone.sh --repo <url|path> --sha <sha> [--setup CMD]... [--test CMD]... [--keep]`

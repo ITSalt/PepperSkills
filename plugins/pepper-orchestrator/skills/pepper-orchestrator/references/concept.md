@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.2 · 2026-09-29 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20) · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.3 · 2026-09-29 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -410,3 +410,22 @@ The concept holds because it rests on files and reconciliation, not on messages:
 - **Configuration is delivered from outside the session.** A cloud session does not install
   plugins from project settings and must not edit `.claude/`; the skill reaches it through the
   environment's setup script (or as a project skill committed by the owner).
+
+## 21. Program completion
+
+One program has one goal. `PLAN.md` states the goal and its completion condition as verifiable
+facts. When the condition holds, the program is closed; the next goal is a new program, not more
+packages in a finished one.
+
+- **Close by facts:** every package is `DONE` or `CANCELLED (reason)`; no open pull request of a
+  package branch; no lock and no queued merge left; every owner item is resolved or explicitly
+  carried to the program's backlog; the owner gets the list of module sessions to close.
+- **Closeout report:** goal and condition, result, packages with their pull requests, decisions,
+  carried backlog, risks after closing, optionally lessons. The program state becomes "closed".
+- **Archive:** a separate home repository moves the workspace to an archive directory. An in-repo
+  workspace stays on its branch until the owner tags it and deletes the branch; the orchestrator
+  only prints those commands. Keeping the workspace as history in the base branch is an owner
+  decision, made through a pull request.
+- **After closing:** a closed program is not planned or dispatched; resuming it shows only the
+  result. It is reopened only when its own goal turns out not to be reached, with the reason
+  recorded.
