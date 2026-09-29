@@ -3,6 +3,7 @@
 import filecmp
 import json
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -49,7 +50,31 @@ def main():
         env = {'HOME': raw, 'PATH': '/usr/bin:/bin'}
         run(name, env=env)
         assert (Path(raw) / '.claude/skills' / name / 'SKILL.md').is_file(), 'default ~/.claude/skills'
-    print('PASS install-skill.sh: copy, idempotent refresh, default destination, refusals')
+        # A failing copy leaves no temporary directory behind (L5).
+        broken = Path(raw) / 'broken'
+        broken.mkdir()
+        fake_bin = Path(raw) / 'bin'
+        fake_bin.mkdir()
+        (fake_bin / 'tar').write_text('#!/bin/sh\nexit 1\n', encoding='utf-8')
+        (fake_bin / 'tar').chmod(0o755)
+        failing = {'HOME': raw, 'PATH': f'{fake_bin}:/usr/bin:/bin'}
+        run('--dest', str(broken), name, env=failing, ok=False)
+        assert list(broken.iterdir()) == [], 'temporary directory left after a failure'
+        # README fragment (EN and RU identical): a failing clone never fails the setup script (M6).
+        blocks = []
+        for readme in ('README.md', 'README.ru.md'):
+            text = (ROOT / 'plugins' / name / readme).read_text(encoding='utf-8')
+            blocks.append(re.search(r'```bash\n(# pepper-orchestrator skill.*?)```', text, re.S).group(1))
+        assert blocks[0] == blocks[1], 'setup fragments differ between README languages'
+        (fake_bin / 'git').write_text('#!/bin/sh\necho "git: network down" >&2\nexit 128\n', encoding='utf-8')
+        (fake_bin / 'git').chmod(0o755)
+        script = Path(raw) / 'setup.sh'
+        script.write_text('set -e\n' + blocks[0] + 'echo setup-finished\n', encoding='utf-8')
+        result = subprocess.run(['bash', str(script)], text=True, capture_output=True,
+                                env={'HOME': raw, 'PATH': f'{fake_bin}:/usr/bin:/bin'})
+        assert result.returncode == 0 and 'setup-finished' in result.stdout, (result.stdout, result.stderr)
+        assert 'skill not installed; setup continues' in result.stderr
+    print('PASS install-skill.sh: copy, idempotent refresh, default destination, refusals, cleanup, safe fragment')
 
 
 if __name__ == '__main__':

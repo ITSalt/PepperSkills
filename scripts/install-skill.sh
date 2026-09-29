@@ -28,6 +28,10 @@ if [[ $pull -eq 1 ]]; then
   git -C "$repo" pull --ff-only -q
 fi
 mkdir -p "$dest"
+tmp=""
+old=""
+cleanup() { [[ -n "$tmp" && -d "$tmp" ]] && rm -rf "$tmp"; [[ -n "$old" && -d "$old" ]] && rm -rf "$old"; return 0; }
+trap cleanup EXIT
 for name in "${names[@]}"; do
   src="$repo/plugins/$name/skills/$name"
   if [[ ! -f "$src/SKILL.md" ]]; then
@@ -52,5 +56,7 @@ for name in "${names[@]}"; do
   else
     mv "$tmp" "$target"
   fi
+  tmp=""
+  old=""
   echo "installed $name ${version:-unknown} -> $target"
 done
