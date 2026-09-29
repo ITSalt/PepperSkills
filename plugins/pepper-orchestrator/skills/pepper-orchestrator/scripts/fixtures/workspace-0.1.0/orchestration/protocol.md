@@ -1,25 +1,23 @@
-# {{PROGRAM_TITLE}} — session protocol
+# Legacy program — session protocol
 
-Adapted from the pepper-orchestrator concept for program `{{PROGRAM}}`.
+Adapted from the pepper-orchestrator concept for program `legacy`.
 
 ## Sessions
 
 | Role | Session name | Where it runs |
 |------|--------------|---------------|
-| Orchestrator | `{{COORDINATOR}}` | home repository of this workspace |
-| Module | `{{PROGRAM}}-<module>` | the module repository (see `orch.yaml`) |
+| Orchestrator | `legacy-coord` | home repository of this workspace |
+| Module | `legacy-<module>` | the module repository (see `orch.yaml`) |
 
-One writing session per worktree and branch. Streams of one repository (modules of kind area or
-domain) run in parallel in their own worktrees when their paths do not overlap outside the shared
-paths; shared paths and resources are taken by locks. A module that is a whole repository keeps one
-writing session per repository: its second package waits for READY of the first.
+One writing session per repository. A second package for the same module waits for
+READY of the first or runs in an isolated worktree.
 
 ## Messages
 
 A message is a one-line pointer; the content lives in files:
 
 ```text
-[{{TAG}}] <TYPE> <WP> :: <one-line essence> :: ref=<path | PR URL>
+[LEGACY] <TYPE> <WP> :: <one-line essence> :: ref=<path | PR URL>
 ```
 
 - Orchestrator to module: `TASK`, `REVISE`, `ACCEPTED`, `ANSWER`, `HOLD`, `ACK`.

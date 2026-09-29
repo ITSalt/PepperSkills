@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.0 · 2026-09-28 · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.1 · 2026-09-28 (1.1: streams in one repository, rules P1-P5, section 19) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -92,6 +92,16 @@ features/<program>/
 **Only the orchestrator** writes to this space. Module sessions get a deny rule for editing this
 directory in their settings.
 
+**Where the workspace lives (P4).** Not in a module repository. Recommended: a separate "home"
+repository of the program; acceptable: branch `orch/<program>` in its own worktree or clone.
+Never another branch of a module checkout, worktree or clone: a commit there may deploy the stand.
+Not the main checkout either when a whole-repository module's session works in it.
+
+**Modules and streams.** A module is either a whole repository or a logical block inside one: an
+**area** (a section of the product) or a **domain**, with its own paths. Modules of one repository
+are **streams**; `orch.yaml` describes the repository once (`repos`: base, branch prefix, worktree
+root and setup, merge policy, shared paths, resources, checks) and each stream refers to it.
+
 ## 5. Work lifecycle
 
 ```
@@ -154,8 +164,23 @@ Mandatory sections (template: the plugin's `templates/<language>/work-package.md
 
 Rules:
 
-- **One writing session per repository.** A second package for the same module starts after READY
-  of the first or in an isolated worktree.
+- **One writing session per worktree and branch (P1).** Several streams of one repository run in
+  parallel only when their paths do not overlap outside the repository's shared paths; otherwise
+  they queue. A module that is a whole repository keeps one writing session per repository: a
+  second package for it starts after READY of the first.
+- **Locks for shared paths and resources (P2).** Shared paths (lockfile, migrations, registries
+  everyone appends to, route registration) and resources (the stand, migrations, a dev stack on
+  fixed ports, IDs in a specification graph) are held by locks in a separate table of
+  `status.md`. Only the holder changes a shared path, pushes a migration, verifies on the stand or
+  runs the dev stack. A package declares in advance which shared paths and resources it needs;
+  the holder releases after merge or verification; waiting packages queue behind the lock.
+- **Merge queue (P3).** With `merge_policy: sequential` the owner merges one package at a time:
+  merge, then the green stand deploy and health check, then the rebase of the next package, then
+  its merge. If every merge into the base deploys production, merge in batches through a release
+  sheet.
+- **Stream start.** The session of a stream starts in its own worktree (`claude -w <wp-slug>` in
+  Claude Code) and prepares it itself: branch from the current base, the repository's worktree
+  setup (a copy of the gitignored env with its own test database and ports, dependency install).
 - Product forks are not decided inside a package: a question to the owner (`P-n`) with options and a
   recommendation; the decision (`D-n`) is recorded in `decisions.md` and the package references it.
 - If the owner changes a decision along the way, the package is edited before dispatch; after
@@ -251,6 +276,10 @@ Discrepancies go to the `status.md` journal first, then action.
   stored.
 - Never ask another session to: deploy, merge, push to the base branch, touch PROD, write to the
   database, change its permissions or `CLAUDE.md`, skip the checks of its methodology.
+- **Methodology limits (P5).** A package lists the commands of the module's methodology that the
+  session may and may not use. Commands that merge, release, hotfix or deploy (for example the
+  release, hotfix, deliver and deploy commands of a methodology) are forbidden; commands that
+  specify, fix, develop, review, verify and open a PR are allowed.
 
 ## 13. Subagents: how to brief
 
@@ -340,3 +369,22 @@ cd ~/projects/<repo> && claude --name <prog>-<mod> --settings <workspace>/orches
 **REVISE message:** `[TAG] REVISE <WP> :: <sha> :: PR #N - k items, the rest accepted (...). Report: <path>`
 + items `file:line -> scenario -> requirement` + "not required: ..." + "changes in the same branch,
 section 'Resubmission 1', do not merge".
+
+## 19. Repositories where a push deploys a stand
+
+Some repositories deploy every pushed branch to a single stand and run its migrations there, with
+no concurrency group. There, parallel sessions overwrite each other's stand, and a migration from
+an unmerged branch breaks the deploy for everyone.
+
+- Until the project changes its deploy, the stand is a **resource held by a lock**: sessions commit
+  locally and push one at a time, only while holding the `staging` lock; live checks run only for
+  the lock holder. The plugin marks such repositories with `push_deploys: true`, and every
+  package's delivery section then says "commit locally, do not push until you get the stand
+  slot".
+- The fix belongs to the project, not to the plugin: a package in that repository that deploys the
+  stand only on command (manual dispatch or a dedicated branch prefix) and adds a concurrency group
+  per environment. The orchestrator raises it as an owner question with a recommendation before
+  parallel streams start.
+- The same applies to other project changes the plugin does not make (`.worktreeinclude`, mock
+  modes of paid external services, the order of a methodology's changelog): the orchestrator finds
+  them, asks the owner, and they are done as ordinary packages in the project.

@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "pepper-orchestrator",
-  "version": "0.1.0",
-  "description": "Preview: single-orchestrator method for multi-repository programs - plan, work packages, owner queue and verified state in files.",
+  "version": "0.2.0",
+  "description": "Preview: one orchestrator session runs work across several repositories or parallel streams of one repository - plan, work packages, dispatch with worktrees and locks, owner queue, state in files. Start with /pepper-orchestrator:init <program>, then /pepper-orchestrator:plan <task>.",
   "author": {
     "name": "ITSalt",
     "email": "info@itsalt.ru",
@@ -16,7 +16,9 @@
     "multi-repository",
     "agent-workflow",
     "planning",
-    "hub-and-spoke"
+    "hub-and-spoke",
+    "worktrees",
+    "monorepo"
   ],
   "extensions": {
     "com.openai": {

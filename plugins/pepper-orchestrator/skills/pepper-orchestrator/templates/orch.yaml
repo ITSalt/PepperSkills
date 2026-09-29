@@ -12,9 +12,32 @@ coordinator_session: {{COORDINATOR}}
 # true: orch.py commit also pushes (the owner reads from another device).
 push_after_milestone: false
 
-# One writing session per repository.
+# Repositories shared by several modules (streams). One writing session per worktree and branch.
+repos: []
+# Example repository:
+#  - id: mono
+#    path: ~/projects/example-monorepo
+#    base: main
+#    branch_prefix: feature/          # the repository's own convention
+#    worktree_root: .claude/worktrees # where `claude -w` puts worktrees
+#    worktree_setup: ["cp ../../../backend/.env backend/.env", "pnpm install --frozen-lockfile"]
+#    merge_policy: sequential         # sequential | free
+#    shared_paths: [pnpm-lock.yaml, "**/package.json", "backend/migrations/**"]
+#    resources: [staging, migrations, dev-stack]
+#    checks: ["./scripts/check-migration-order.sh"]   # read-only commands; see below
+#    deploy_workflows: [deploy.yml]   # read by resume to see who holds the stand
+#    base_deploys: prod               # prod | staging | none: what a merge into base deploys
+#    push_deploys: true               # a push of any branch deploys the stand: sessions push only with the stand slot
+#
+# Paths are globs: `*` (one directory), `**` (any depth), `?` (one character), `{a,b}`
+# (alternatives); `[` and `]` are literal.
+# checks: run by `orch.py overlap` through the shell in the repository's main checkout, env
+# ORCH_BASE_REF (base ref) and ORCH_BRANCHES (active package branches, space separated), timeout
+# 300 s; a non-zero exit is a finding. Checks must only read.
+
+# Modules: a whole repository (kind: repo, `repo: <path>`) or an area/domain of a repos entry.
 modules: []
-# Example module:
+# Example module that is a whole repository:
 #  - id: db
 #    repo: ~/projects/example-database
 #    base: main
@@ -24,6 +47,16 @@ modules: []
 #    deploy_prod: ./scripts/deploy.sh --target prod
 #    release_clone: ~/projects/example-database-release
 #    web_urls: {test: https://test.example.com, prod: https://example.com}
+# Example module that is an area of a shared repository:
+#  - id: admin
+#    kind: area                       # area | domain | repo
+#    repo: mono
+#    paths: ["apps/admin/**"]
+#    session: {{PROGRAM}}-admin
+#    test_db: example_test_admin
+#    ports: {app: 3120}
+#    tests: {scoped: ["pnpm --filter admin test"], full: ["pnpm -r test"]}
+#    methodology: {name: nacl, allowed: [nacl-tl-fix, nacl-tl-ship], forbidden: [nacl-tl-release, nacl-tl-deploy]}
 
 environments: {}
 guards: {}
