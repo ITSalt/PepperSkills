@@ -67,8 +67,10 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
 8. **Parallel streams in one repository.** Modules can be areas or domains of one repository with
    their own paths; shared paths and resources are taken by locks, merges go through a queue
    (concept, sections 7 and 12).
-9. **Update.** Locally `/plugin update pepper-orchestrator@pepperskills`; in the cloud change the
-   comment line of the setup-script fragment below, so the environment rebuilds.
+9. **Update.** Locally in a terminal `claude plugin update pepper-orchestrator@pepperskills`, or in a
+   session `/plugin` -> Installed -> the plugin -> Update now; auto-update is off by default for
+   third-party marketplaces such as this one. In the cloud change the comment line of the
+   setup-script fragment below, so the environment rebuilds.
 
 ## Cloud sessions
 

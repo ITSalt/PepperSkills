@@ -15,20 +15,34 @@ merge (for example `mcp__github__merge_pull_request`): never call them.
 2. **Start the round.**
 
    ```bash
-   python3 SKILL_DIR/scripts/orch.py review-start <WP> --pr <url> [--ref <sha>] [--since <old sha> --round <n>]
+   python3 SKILL_DIR/scripts/orch.py review-start <WP> --pr <url> --ref <PR head sha> [--since <old sha> --round <n>]
    ```
 
-   It sets `REVIEW`, writes the report skeleton `reports/<wp>-review-<date>[-rN].md`, and prints
+   Always pass `--ref` with the PR head SHA from step 1. Without it the default is
+   `origin/<package branch>` (never a local branch, which may hold unpushed commits of a session
+   sharing the repository); a differing local branch is reported as a warning. `review-start`
+   fetches `origin` first and so updates the module repository's remote-tracking refs; a failing
+   fetch stops it (`--no-fetch` reviews the refs as they are). It sets `REVIEW`, writes the report skeleton `reports/<wp>-review-<date>[-rN].md`, and prints
    the automatic findings (files outside the allowed paths, shared paths undeclared or without the
    lock, a stale merge-base and which of the branch's files the base changed since, the
    repository's `checks`), the diff size, the disposable clone command, and for a resubmission
-   the revision diff command (`git range-diff` after a rebase, `git diff old new` otherwise).
+   the revision diff command (`git range-diff <base>..<old> <base>..<new>` after a rebase,
+   `git diff old new` otherwise). The clone runs the repository's `review_setup` (not
+   `worktree_setup`, which is written for session worktrees) with `ORCH_MAIN_CHECKOUT` set to the
+   main checkout, and the module's `tests`.
 3. **First submission: the reviewer.** Build the brief from
    [../review-brief.md](../review-brief.md): package path, PR, SHA, base, clone command,
    automatic findings, the session's claims, and **specific risk questions** from the checklists
    that match the diff. Send it to the `orchestrator-reviewer` agent where the client has plugin
    agents; otherwise to a general subagent with the same brief, or do the review yourself in the
-   same order. Forward clarifications from the session as claims to verify.
+   same order. Forward clarifications from the session as claims to verify. Facts that need MCP
+   tools (GitHub tools without `gh`, databases, logs) are collected by you and put into the brief:
+   the plugin agents have only Read, Grep, Glob and Bash.
+   **Cloud sessions:** plugin agents are not loaded, so the reviewer is a general subagent that may
+   hold GitHub tools with write access. Its brief allows only reading GitHub tools (get, list,
+   search) and forbids `merge_pull_request`, `update_pull_request_branch`, `push_files`,
+   `create_or_update_file`, `create_branch`, creating or updating pull requests, reviews and
+   comments.
 4. **Resubmission: yourself.** Read the revision diff and CI; they are usually a few lines. Check
    each REVISE item against the new code and that nothing else changed unexpectedly. Delegate
    only when the revision is large.
@@ -39,6 +53,10 @@ merge (for example `mcp__github__merge_pull_request`): never call them.
      alive, one REVISE round beats a follow-up package.
    - `ACCEPTED` when everything in scope holds and remaining findings are low or informational;
      they go to "Accepted as is / backlog".
+   - A product question found in the review goes to the owner as P-n (section "Owner questions" of
+     the report). When the fix is small and only needs the owner's consent, make it a
+     **conditional REVISE item** ("do X unless the owner answers P-n otherwise") instead of a
+     follow-up package; a large or unclear one stays a question and, if needed, a new package.
 6. **Write the report** by point edits of the skeleton: decision line, REVISE items
    (`file:line` -> failure scenario -> requirement), "Not required", accepted and backlog, and the
    reviewer's report verbatim below the line. Do not retell the reviewer's report to the owner.

@@ -10,9 +10,15 @@ without findings.
 Review PR <url> of work package <WP> at head <sha> against <base>.
 Package: <absolute path of the WP file>. Repository: <path or URL>. Report skeleton: <report path>.
 
-Rules: read only (git show / gh or the session's GitHub tools); do not enter the module session's
-working directory; tests only in the disposable clone below; never merge, approve or comment;
-claims of the session are claims to verify.
+Rules: read only (git show, read-only gh); do not enter the module session's working directory;
+tests only in the disposable clone below; never merge, approve or comment; no database clients or
+ssh through Bash; claims of the session are claims to verify.
+[Cloud, general subagent with GitHub tools: only get, list and search tools; never
+merge_pull_request, update_pull_request_branch, push_files, create_or_update_file, create_branch,
+pull request creation or update, reviews or comments.]
+
+Facts collected by the orchestrator with MCP tools (database SELECT results, CI, logs):
+  <facts, or "none">
 
 Disposable clone and tests:
   <clone command printed by orch.py review-start>

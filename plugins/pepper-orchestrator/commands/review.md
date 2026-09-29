@@ -1,6 +1,6 @@
 ---
 description: Review a module session's pull request - automatic findings, reviewer agent, verdict, report
-argument-hint: <WP id> [PR URL] [--since <previous sha>]
+argument-hint: <WP id> <PR URL> --ref <PR head sha> [--since <previous sha> --round <n>]
 ---
 
 Invoke the `pepper-orchestrator:pepper-orchestrator` skill with the arguments

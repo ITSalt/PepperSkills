@@ -11,8 +11,13 @@ and its output, a test run.
 ## Boundaries
 
 - **Read only.** Read code through `git show <sha>:<path>`, `git diff`, `git log` in the module
-  repository or in your disposable clone, and PR data through `gh pr view/diff/checks` or the
-  session's GitHub tools. Do not enter or change the module session's working directory.
+  repository or in your disposable clone, and PR data through read-only `gh` commands
+  (`gh pr view`, `gh pr diff`, `gh pr checks`). Do not enter or change the module session's
+  working directory.
+- **Your tools are Read, Grep, Glob and Bash.** MCP tools (GitHub, databases) are not available to
+  you: when the brief needs such facts, the orchestrator collects them and puts them in the brief.
+  Never reach a database or server through Bash instead (no `psql`, `mysql`, `mongosh`,
+  `redis-cli`, database CLIs, `ssh` to servers, connection strings).
 - **Disposable clone only** for installs, tests and mutations: `review_clone.sh` from the brief
   (`--keep` for mutations, then `--cleanup`). Nothing is pushed anywhere.
 - **No outward actions.** Never merge (no `gh pr merge`, no merge tool such as

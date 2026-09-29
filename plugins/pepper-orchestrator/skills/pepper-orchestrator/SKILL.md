@@ -107,11 +107,12 @@ python3 SKILL_DIR/scripts/orch.py --help
 | `worktrees` | worktrees of every repository: branch, dirty, ahead/behind, package (read-only) |
 | `upgrade` | add the locks and merge queue tables to a 0.1.0 `status.md` |
 | `ready [--json]` | dispatched packages whose branch is on origin (READY without messages) |
-| `review-start <WP> [--pr URL] [--ref SHA] [--since OLD --round N]` | automatic review findings, report skeleton, clone command; status `REVIEW` |
+| `review-start <WP> --pr URL --ref <PR head sha> [--since OLD --round N] [--no-fetch]` | automatic review findings, report skeleton, clone command; status `REVIEW` |
 
 `scripts/review_clone.sh --repo <url|path> --sha <sha> [--setup CMD]... [--test CMD]... [--keep]`
 clones at a SHA into a new temporary directory, runs setup and tests, and deletes the clone
-(`--keep` for mutations, then `--cleanup <dir>`). It never pushes.
+(`--keep` for mutations, then `--cleanup <dir>`). It never pushes. Setup commands come from the
+repository's `review_setup` and run in the clone root with `ORCH_MAIN_CHECKOUT` set.
 
 `scripts/safe_edit.py FILE --stdin` replaces fragments of any workspace file, each exactly once,
 all or nothing, from one or more stdin blocks (no temporary files). Never put a marker line
@@ -132,8 +133,8 @@ Use it for prose sections (`PLAN.md`, work package bodies, `orch.yaml`).
 Paths in `orch.yaml` and work packages are globs: `*` (within one directory), `**` (any depth),
 `?` (one character), `{a,b}` (alternatives, may nest); `[` and `]` are literal.
 
-Repository `checks` are the owner's commands, run by `overlap` through the shell in the
-repository's main checkout, with `ORCH_BASE_REF` (base ref) and `ORCH_BRANCHES` (active package
+Repository `checks` are the owner's commands, run by `overlap` and `review-start` through the
+shell in the repository's main checkout, with `ORCH_BASE_REF` (base ref) and `ORCH_BRANCHES` (active package
 branches, space separated) in the environment and a 300-second timeout; a non-zero exit is a
 finding. They must only read (no checkout, no writes, no network side effects).
 

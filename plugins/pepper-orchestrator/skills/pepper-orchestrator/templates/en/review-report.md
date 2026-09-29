@@ -12,6 +12,11 @@ Round {{ROUND}}. Diff: {{STAT}} ({{FILES}} files).
 
 <what the session must not add or change in this round>
 
+## Owner questions
+
+<P-n raised in this review: question, options, recommendation; conditional REVISE items name
+the P-n they depend on>
+
 ## Accepted as is / backlog
 
 <low and informational findings, deviations accepted, backlog candidates>

@@ -19,6 +19,15 @@ Preview of stage 2b: review of module deliveries.
 - `references/review-brief.md`: brief template and risk checklists (state machines, migrations,
   registries and shared types, UI, permissions, integrations).
 - README: "Typical workflows" (EN/RU) with exact calls for local and cloud sessions.
+- `review-start` reviews `origin/<branch>` or the given `--ref` (never a local branch), warns when
+  the local branch differs, stops on a failing fetch (`--no-fetch` to skip), prints
+  `git range-diff <base>..<old> <base>..<new>` after a rebase, and puts `main @ <sha>` in the
+  report header. Review clones use the repository's own `review_setup` with
+  `ORCH_MAIN_CHECKOUT`, never `worktree_setup`. `review_clone.sh` checks flag values and `mktemp`.
+- Agents state honestly that MCP tools are not available to them (the orchestrator collects
+  database and GitHub-tool facts) and forbid database clients and `ssh` through Bash; the cloud
+  review brief allows only reading GitHub tools. The report template has an "Owner questions"
+  section, and small fixes that need the owner's consent become conditional REVISE items.
 
 ## 0.2.1 — preview, unreleased
 
