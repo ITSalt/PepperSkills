@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.4.0 (preview)
+
+Program completion: goal and completion condition in the plan, `close` by facts with a closeout
+report, backlog carry-over, archive steps for the owner, `reopen`. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.3.0 (preview)
 
 PR review: `review` mode with a read-only reviewer agent and a disposable clone, automatic findings

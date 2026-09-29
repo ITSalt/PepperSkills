@@ -5,6 +5,8 @@ free text. Requires a workspace; if none exists, run `init` first and say so.
 
 ## Steps
 
+0. **Closed program?** `plan` does not run on a closed program: a new goal is a new program
+   (`init`); an unfinished goal of this one needs `reopen` first.
 1. **Read state.** `status.md`, the tail of `decisions.md`, `PLAN.md`, `orch.yaml`. If the plan
    already exists, this is a re-plan: keep existing IDs, add or cancel, never renumber.
 2. **Find facts, delegated.** Anything that needs many files or long runs goes to read-only
@@ -12,7 +14,8 @@ free text. Requires a workspace; if none exists, run `init` first and say so.
    concept section 13: goal, inputs, constraints (read-only, no edits, database SELECT only),
    specific questions, answer format. Collect facts with `file:line`, SELECT results, log lines.
    A `spec_graph` other than `none` is only another read-only source of facts.
-3. **Write `PLAN.md` by point edits.** Goal, scope and not in scope, modules, facts, waves with
+3. **Write `PLAN.md` by point edits.** Goal and its **completion condition** (verifiable facts;
+   one program has one goal), scope and not in scope, modules, facts, waves with
    verifiable gates, risks. Replace the template placeholders section by section with
    `safe_edit.py --stdin`; do not rewrite the file and do not write fragments to temporary files.
    Where the plan depends on an open P-n, say so and reference the P-n; never write its
