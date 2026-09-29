@@ -25,6 +25,15 @@ VERIFIED_COLLECTION = {
 
 
 class AuditRegression(unittest.TestCase):
+    def test_sitemap_index_yields_pages_not_xml_files(self):
+        docs = {
+            'https://example.ru/sitemap.xml': '<sitemapindex><loc>https://example.ru/child.xml</loc></sitemapindex>',
+            'https://example.ru/child.xml': '<urlset><loc>https://example.ru/privacy</loc><loc>https://example.ru/about</loc></urlset>',
+        }
+        with patch.object(collect, 'fetch_text', side_effect=lambda url: (200, docs.get(url, ''))):
+            self.assertEqual(collect.discover_from_sitemap('https://example.ru'),
+                             ['https://example.ru/privacy', 'https://example.ru/about'])
+
     def test_page_budget_uses_observed_links_not_guessed_paths(self):
         with patch.object(collect, 'discover_from_sitemap', return_value=[]):
             self.assertEqual(collect.build_page_list('https://example.ru', 20),

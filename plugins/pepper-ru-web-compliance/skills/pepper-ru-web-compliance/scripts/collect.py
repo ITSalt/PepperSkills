@@ -27,6 +27,7 @@ cookie-баннером. Разница между ними показывает
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import socket
@@ -299,23 +300,34 @@ def fetch_text(url: str, timeout: int = 20) -> tuple[int | None, str]:
 
 
 def discover_from_sitemap(target: str, limit: int = 200) -> list[str]:
-    urls: list[str] = []
-    for path in ("/sitemap.xml", "/sitemap_index.xml", "/robots.txt"):
-        status, body = fetch_text(target + path)
+    host = urllib.parse.urlparse(target).hostname or ""
+    queue = [target + "/sitemap.xml", target + "/sitemap_index.xml"]
+    status, robots = fetch_text(target + "/robots.txt")
+    if status == 200:
+        queue.extend(line.split(":", 1)[1].strip() for line in robots.splitlines()
+                     if line.lower().startswith("sitemap:"))
+    seen_maps: set[str] = set()
+    pages: dict[str, None] = {}
+    while queue and len(seen_maps) < 20 and len(pages) < limit:
+        sitemap = queue.pop(0)
+        if sitemap in seen_maps or not same_host(sitemap, host):
+            continue
+        seen_maps.add(sitemap)
+        status, body = fetch_text(sitemap)
         if status != 200 or not body:
             continue
-        if path.endswith("robots.txt"):
-            for line in body.splitlines():
-                if line.lower().startswith("sitemap:"):
-                    sm = line.split(":", 1)[1].strip()
-                    st, sm_body = fetch_text(sm)
-                    if st == 200:
-                        urls += re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", sm_body)
-        else:
-            urls += re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", body)
-        if len(urls) >= limit:
-            break
-    return urls[:limit]
+        for raw in re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", body):
+            url = html.unescape(raw)
+            if not same_host(url, host):
+                continue
+            path = urllib.parse.urlparse(url).path.lower()
+            if path.endswith(".xml"):
+                queue.append(url)
+            else:
+                pages[url] = None
+            if len(pages) >= limit:
+                break
+    return list(pages)
 
 
 def score_url(url: str) -> int:
@@ -347,6 +359,17 @@ def build_page_list(target: str, max_pages: int) -> list[str]:
     return ordered[:max_pages]
 
 
+def wait_for_visible_content(page, timeout_ms: int) -> bool:
+    """A navigation commit can precede a site's client-rendered body."""
+    try:
+        page.wait_for_function(
+            "() => document.body && (document.body.innerText.trim().length > 20 || "
+            "document.querySelectorAll('a[href]').length > 0)", timeout=timeout_ms)
+        return True
+    except Exception:
+        return False
+
+
 # --- JS, исполняемый в браузере ---------------------------------------------
 # Вынесен отдельной константой, чтобы правки разметки не тонули в питоновском коде.
 
@@ -376,7 +399,20 @@ EXTRACT_JS = r"""
     const groups = new Map();
     for (const el of loose) {
       let box = el;
-      for (let up = 0; up < 4 && box.parentElement; up += 1) box = box.parentElement;
+      let shared = null;
+      for (let up = 0; up < 8 && box.parentElement; up += 1) {
+        box = box.parentElement;
+        const count = box.querySelectorAll('input, textarea, select').length;
+        if (count > 1 && count <= 12 && box.querySelector('button, [type="submit"]')) {
+          shared = box;
+          break;
+        }
+      }
+      if (shared) box = shared;
+      else {
+        box = el;
+        for (let up = 0; up < 4 && box.parentElement; up += 1) box = box.parentElement;
+      }
       if (!groups.has(box)) groups.set(box, []);
       groups.get(box).push(el);
     }
@@ -630,6 +666,9 @@ def browser_collect(target: str, pages: list[str], out: Path,
         except Exception as exc:
             manifest.notes.append(f"первый проход: {type(exc).__name__}: {exc}")
         page.wait_for_timeout(2500)
+        if not wait_for_visible_content(page, 30000):
+            manifest.partial_pages = True
+            manifest.notes.append("главная страница открылась без наблюдаемого текста и ссылок")
 
         # Ссылки с главной дополняют список обхода. Угадывание путей
         # (/privacy, /policy, ...) работает на типовых сайтах и промахивается на
@@ -645,7 +684,7 @@ def browser_collect(target: str, pages: list[str], out: Path,
             # из четырёх страниц выглядел как одностраничник. Берём все внутренние
             # ссылки, приоритет — по значимости, отсечение — по бюджету.
             internal = sorted(
-                {l.split("#")[0].rstrip("/") for l in (home_data.get("links") or [])
+                {l.split("#")[0] for l in (home_data.get("links") or [])
                  if same_host(l, host)},
                 key=lambda u: (-score_url(u), len(u)))
             discovered.extend(internal)
@@ -742,6 +781,7 @@ def browser_collect(target: str, pages: list[str], out: Path,
                 art.status = resp.status if resp else None
                 art.final_url = p.url
                 p.wait_for_timeout(1200)
+                wait_for_visible_content(p, 10000)
                 data = p.evaluate(EXTRACT_JS)
                 art.title = data["title"]
                 art.forms = data["forms"]
@@ -749,6 +789,8 @@ def browser_collect(target: str, pages: list[str], out: Path,
                 art.policy_link_hrefs = data["policy_links"]
                 art.has_policy_link = bool(data["policy_links"])
                 art.text_chars = len(data["text"])
+                if art.status == 200 and art.text_chars == 0 and not art.links and not art.forms:
+                    art.error = "empty_rendered_page"
                 page_dir = out / "pages" / art.slug
                 page_dir.mkdir(parents=True, exist_ok=True)
                 (page_dir / "dom.html").write_text(p.content(), encoding="utf-8")
@@ -984,6 +1026,8 @@ def collect(args):
             manifest.partial_pages = True
             manifest.notes.append(f"часть страниц недоступна: {denied} из {len(statuses)} "
                                   "вернули 401, 403 или 429")
+            transport.current().metadata["coverage_reason"] = (
+                f"{denied} из {len(statuses)} страниц вернули 401, 403 или 429")
         if not any(st == 200 for st in statuses) and denied:
             manifest.blocked = True
             manifest.notes.append(
@@ -991,6 +1035,8 @@ def collect(args):
                 f"(отказов {denied} из {len(statuses)})")
 
         transport.current().status()
+        if manifest.partial_pages and not transport.current().metadata.get("coverage_reason"):
+            transport.current().metadata["coverage_reason"] = "часть страниц недоступна или пуста"
         transport.current().metadata["complete"] = not (
             transport.current().metadata.get("transport_error") or manifest.blocked or manifest.degraded or
             manifest.partial_pages or
@@ -1013,7 +1059,10 @@ def collect(args):
     print(f"  баннер: {'найден' if manifest.banner.get('found') else 'не найден'}"
           f"{', согласие нажато' if manifest.banner.get('accepted') else ''}",
           file=sys.stderr)
-    print(f"  режим: {'degraded' if manifest.degraded else 'полный'}", file=sys.stderr)
+    mode_label = ('degraded' if manifest.degraded else
+                  'частичный' if transport.current().metadata.get('complete') is False else
+                  'полный')
+    print(f"  режим: {mode_label}", file=sys.stderr)
     if manifest.blocked:
         print("  ВНИМАНИЕ: обход заблокирован сайтом — проверка невозможна",
               file=sys.stderr)

@@ -16,6 +16,17 @@ from selftest import artifacts_fixture
 
 
 class ReportQuality(unittest.TestCase):
+    def test_producer_version_has_no_yaml_quotes(self):
+        self.assertEqual(current_producer()['skill_version'], '2.4.0')
+
+    def test_partial_network_summary_names_coverage_reason(self):
+        summary = render.network_summary({
+            'complete': False, 'mode': 'managed',
+            'coverage_reason': '4 из 20 страниц вернули 403',
+        })
+        self.assertIn('Причина ограничения: 4 из 20 страниц вернули 403', summary)
+        self.assertNotIn('Причина ограничения: нет', summary)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

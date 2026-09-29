@@ -62,10 +62,13 @@ STATUS_RU = {"FAIL": "НАРУШЕНО", "WARN": "НУЖНА РУЧНАЯ ПРО
 def network_summary(network):
     egress = network.get("egress", {})
     state = "завершён" if network.get("complete") else "НЕПОЛОН — зависимые выводы UNKNOWN"
+    reason = (network.get("transport_error") or network.get("coverage_reason") or
+              "причина не установлена")
+    detail = f"Причина ограничения: {reason}. " if not network.get("complete") else ""
     return (f"Сетевой этап: {state}. Транспорт: {network.get('mode', 'UNKNOWN')}; "
             f"выход: {egress.get('ip', 'UNKNOWN')} ({egress.get('country', 'UNKNOWN')}); "
             f"период: {network.get('started_at', '?')} — {network.get('finished_at', '?')}. "
-            f"Причина ограничения: {network.get('transport_error', 'нет')}. "
+            + detail +
             "QUIC и непроксируемый WebRTC отключены; эта конфигурация может отличаться от обычного браузера.")
 
 

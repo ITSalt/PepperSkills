@@ -1650,8 +1650,11 @@ def run(ctx: Context) -> dict[str, Any]:
             f.summary = f"Сетевой этап неполон (предварительно {original}): " + f.summary
             f.semantic_review = None
     by_status: dict[str, int] = {}
+    effective_by_status: dict[str, int] = {}
     for f in findings:
         by_status[f.status] = by_status.get(f.status, 0) + 1
+        effective = (f.semantic_review or {}).get("status") or f.status
+        effective_by_status[effective] = effective_by_status.get(effective, 0) + 1
     fails = [f for f in findings if f.status == "FAIL"]
     sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     findings.sort(key=lambda f: (0 if f.status == "FAIL" else
@@ -1691,7 +1694,8 @@ def run(ctx: Context) -> dict[str, Any]:
                   "entries": len(d.entries), "stale_days": d.stale_days,
                   "error": d.error}
             for key, d in ctx._registries.items()},
-        "stats": {"by_status": by_status, "fail_count": len(fails),
+        "stats": {"by_status": by_status, "effective_by_status": effective_by_status,
+                  "fail_count": len(fails), "effective_fail_count": effective_by_status.get("FAIL", 0),
                   "needs_llm": sum(1 for f in findings if f.needs_llm)},
         "findings": [asdict(f) for f in findings],
     }

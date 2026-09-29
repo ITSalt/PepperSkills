@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def current_producer():
     skill = (ROOT / 'SKILL.md').read_text(encoding='utf-8')
-    version = re.search(r'^  version: (.+)$', skill, re.M).group(1).strip()
+    version = re.search(r'^  version: (.+)$', skill, re.M).group(1).strip().strip("\"'")
     return {
         'skill_version': version,
         'detector_version': version,
@@ -47,7 +47,7 @@ def provenance_line(data):
             '; формат наблюдений: ' + str(collector.get('observation_version', 'не установлен')) +
             '; транспорт: ' + str(network.get('mode', 'не установлен')) +
             '; выход: ' + str(egress.get('ip', 'не установлен')) +
-            '; полный сетевой сбор: ' + str(network.get('complete', 'не установлен')) +
+            '; полный сетевой сбор: ' + ({True: 'да', False: 'нет'}.get(network.get('complete'), 'не установлен')) +
             '; снимки страниц: ' + ('неполны' if collection.get('visual_complete') is False
                                      else 'сохранены' if collection.get('visual_complete') is True
                                      else 'не установлено') + '.')
