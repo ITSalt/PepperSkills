@@ -2,9 +2,13 @@
 
 > Written once, edited rarely. Current state lives in `status.md`.
 
-## Goal
+## Goal and completion condition
 
-<What must be true when the program is done; who benefits; how it is measured.>
+<The one goal of this program; who benefits.>
+
+Completion condition: <verifiable facts that mean the goal is reached, for example "packages
+WP-... are DONE, verified on PROD, and <measure> holds">. When it holds, the program is closed
+(`close`); the next goal is a new program.
 
 ## Scope
 

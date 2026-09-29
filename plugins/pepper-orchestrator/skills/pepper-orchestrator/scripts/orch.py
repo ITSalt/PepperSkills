@@ -25,6 +25,9 @@ Commands:
   upgrade                                add 0.2.0 tables to a 0.1.0 status.md
   ready                                  pushed branches of dispatched packages (READY without messages)
   review-start <WP>                      automatic review findings, report skeleton, clone command
+  owner carry <id> "<reason>"            move an open owner item to backlog.md
+  close --check | --apply                completion check; closeout report, state: closed
+  reopen "<reason>"                      make a closed program active again
 """
 import argparse
 import datetime as dt
@@ -55,6 +58,7 @@ TABLES = {
     'decisions': ('<!-- orch:decisions -->', ('id', 'date', 'text', 'source')),
     'locks': ('<!-- orch:locks -->', ('lock', 'repo', 'holder', 'since', 'waiting', 'note')),
     'merge': ('<!-- orch:merge -->', ('n', 'repo', 'wp', 'pr', 'rebase_after', 'status')),
+    'backlog': ('<!-- orch:backlog -->', ('id', 'date', 'item', 'origin', 'reason')),
 }
 SETTABLE = ('title', 'status', 'session', 'pr')
 
@@ -280,6 +284,9 @@ def find_workspace(explicit=None):
         if (parent / 'orch.yaml').is_file():
             return parent
     candidates = sorted(cwd.glob('features/*/orch.yaml')) or find_nested_configs(cwd)
+    if len(candidates) > 1:  # closed programs are never picked automatically among several
+        active = [c for c in candidates if parse_yaml(c.read_text(encoding='utf-8')).get('state') != 'closed']
+        candidates = active or candidates
     if len(candidates) == 1:
         return candidates[0].parent
     if candidates:
@@ -315,6 +322,15 @@ class Workspace:
     def stream_warnings(self):
         self.streams()
         return self._streams[3]
+
+    @property
+    def closed(self):
+        return self.config.get('state') == 'closed'
+
+    def require_open(self, action):
+        if self.closed:
+            raise OrchError(f'program {self.config.get("program")} is closed: {action} is not allowed. A new goal is '
+                            'a new program (init); to continue this one, reopen "<reason>"')
 
     @property
     def git_top(self):
@@ -635,6 +651,7 @@ def render_config(base, modules, repos=(), areas=(), in_repo=None):
 
 def cmd_new_wp(args):
     ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('new-wp')
     mod = args.module.lower()
     modules = ws.modules()
     if mod not in modules:
@@ -747,7 +764,10 @@ def cmd_owner(args):
         raise OrchError(f'{target}: expected exactly one owner row, found {len(matches)}')
     if matches[0]['closed']:
         raise OrchError(f'{target} is already closed: {matches[0]["closed"]}')
-    note = f'{today()}: {args.text}' if args.action == 'close' else f'{today()} dropped: {args.text}'
+    if args.action == 'carry':
+        carry_to_backlog(ws, target, matches[0], args.text)
+    note = {'close': f'{today()}: {args.text}', 'drop': f'{today()} dropped: {args.text}',
+            'carry': f'{today()} carried to backlog.md: {args.text}'}[args.action]
 
     def transform(body):
         result = []
@@ -760,10 +780,23 @@ def cmd_owner(args):
         return result
 
     ws.rewrite_table(ws.status, 'owner', transform)
-    verb = 'closed' if args.action == 'close' else 'dropped'
+    verb = {'close': 'closed', 'drop': 'dropped', 'carry': 'carried to backlog'}[args.action]
     ws.journal(f'{target} {verb}', evidence=args.text)
     print(f'{target} {verb}')
     return 0
+
+
+def carry_to_backlog(ws, item_id, item, reason):
+    """Append an open owner item to backlog.md (created from the template on first use)."""
+    path = ws.root / 'backlog.md'
+    if not path.is_file():
+        template = (TEMPLATES / ws.lang / 'backlog.md').read_text(encoding='utf-8')
+        safe_edit.create(path, fill(template, {'PROGRAM_TITLE': ws.config.get('title') or ws.config.get('program')}))
+    _, _, rows = ws.table(path, 'backlog')
+    new = next_id([plain_id(r['id']) for r in rows], 'B')
+    line = row([new, today(), item['text'], item_id, reason])
+    ws.rewrite_table(path, 'backlog', lambda body: body + [line])
+    return new
 
 
 def open_owner_items(ws):
@@ -871,6 +904,14 @@ def lint(ws):
                 tables[name] = ws.table(ws.status, name)[2]
             except OrchError as error:
                 errors.append(str(error))
+    backlog_path = ws.root / 'backlog.md'
+    if backlog_path.is_file():
+        try:
+            backlog_ids = [plain_id(r['id']) for r in ws.table(backlog_path, 'backlog')[2]]
+            for dup in sorted({i for i in backlog_ids if backlog_ids.count(i) > 1}):
+                errors.append(f'backlog.md: duplicate {dup}')
+        except OrchError as error:
+            errors.append(str(error))
     lock_names = [r['lock'] for r in tables.get('locks', [])]
     for dup in sorted({n for n in lock_names if lock_names.count(n) > 1}):
         errors.append(f'status.md: lock {dup} appears twice')
@@ -892,6 +933,8 @@ def lint(ws):
             errors.append(f'status.md: merge queue status must be queued, merged or dropped: {r["status"]}')
         if not r['n'].isdigit():
             errors.append(f'status.md: merge queue position must be a number: {r["n"]}')
+    if config.get('state', 'active') not in ('active', 'closed'):
+        errors.append('orch.yaml: state must be active or closed')
     if config.get('workspace_mode', 'separate') not in ('separate', 'in-repo'):
         errors.append('orch.yaml: workspace_mode must be separate or in-repo')
     if ws.in_repo:
@@ -1237,6 +1280,8 @@ def resolve_lock_name(ws, name, wp, repo_id):
 
 def cmd_lock(args):
     ws = Workspace(find_workspace(args.workspace))
+    if args.action != 'list':
+        ws.require_open(f'lock {args.action}')
     require_table(ws, 'locks')
     if args.action == 'list':
         rows = locks(ws)
@@ -1338,6 +1383,7 @@ def dispatch_problems(ws, wp):
 
 def cmd_dispatch(args):
     ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('dispatch')
     wp = args.wp
     problems, wanted, busy, r, module = dispatch_problems(ws, wp)
     if wanted:
@@ -1391,6 +1437,8 @@ def cmd_dispatch(args):
 
 def cmd_merge(args):
     ws = Workspace(find_workspace(args.workspace))
+    if args.action != 'list':
+        ws.require_open(f'merge {args.action}')
     require_table(ws, 'merge')
     _, _, rows = ws.table(ws.status, 'merge')
     if args.action == 'list':
@@ -1775,6 +1823,178 @@ def shutil_which(name):
     return shutil.which(name)
 
 
+TERMINAL = ('DONE',)
+
+
+def is_terminal(status):
+    return status in TERMINAL or status.startswith('CANCELLED (')
+
+
+def section(text, headings):
+    """Body of the first '## <heading>' found, up to the next '## '."""
+    for heading in headings:
+        match = re.search(r'(?m)^## ' + re.escape(heading) + r'[^\n]*\n(.*?)(?=^## |\Z)', text, re.S)
+        if match:
+            return match.group(1).strip()
+    return ''
+
+
+def close_blockers(ws, prs_verified=None):
+    """(blockers, notes, sessions) for closing the program, checked by facts."""
+    blockers, notes = [], []
+    rows = ws.wp_rows()
+    for wp, r in rows.items():
+        if not is_terminal(r['status']):
+            blockers.append(f'{wp} is {r["status"]}: finish it (DONE after verification) or cancel it with a reason')
+    for wp, r in rows.items():
+        try:
+            _, module, meta = wp_context(ws, wp)
+        except OrchError:
+            continue
+        branch = meta['branch']
+        if not branch or not module.repo.local.is_dir():
+            continue
+        name = streams.origin_name(module.repo)
+        if name and shutil_which('gh'):
+            prs = subprocess.run(['gh', 'pr', 'list', '--repo', name, '--head', branch, '--state', 'open',
+                                  '--json', 'url', '-q', '.[].url'], text=True, capture_output=True)
+            if prs.returncode:
+                blockers.append(f'{wp}: cannot list PRs of {branch} with gh: {prs.stderr.strip()[:120]}')
+            elif prs.stdout.strip():
+                blockers.append(f'{wp}: open PR {prs.stdout.split()[0]} for {branch}')
+            continue
+        heads = streams.git(module.repo.local, 'ls-remote', '--heads', 'origin', branch)
+        if heads.returncode == 0 and heads.stdout.strip():
+            if prs_verified:
+                notes.append(f'{wp}: branch {branch} still on origin; PRs verified closed: {prs_verified}')
+            else:
+                blockers.append(f'{wp}: branch {branch} is still on origin and PRs cannot be listed here; check its '
+                                'PRs with the session GitHub tools or ask the owner, then pass --prs-verified "<evidence>"')
+    for lock in locks(ws):
+        blockers.append(f'lock {lock["lock"]} is still in the lock table (holder {lock["holder"]}, waiting '
+                        f'{lock["waiting"]}): release it or clear its queue')
+    if ws.has_table(ws.status, 'merge'):
+        for q in ws.table(ws.status, 'merge')[2]:
+            if q['status'] == 'queued':
+                blockers.append(f'{q["wp"]} is still queued for merge')
+    for item in open_owner_items(ws):
+        blockers.append(f'{item["id"]} is open: close it with a verified fact, drop it, or carry it to the backlog '
+                        f'(orch.py owner carry {item["id"]} "<reason>")')
+    _, modules, _ = ws.streams()
+    sessions = sorted({r['session'] for r in rows.values() if r['session'] not in ('', '—')} |
+                      {m.session for m in modules.values()})
+    return blockers, notes, sessions
+
+
+def cmd_close(args):
+    ws = Workspace(find_workspace(args.workspace))
+    if ws.closed:
+        print(f'program {ws.config.get("program")} is already closed')
+        return 0
+    blockers, notes, sessions = close_blockers(ws, args.prs_verified)
+    for note in notes:
+        print(f'note: {note}')
+    if blockers:
+        for blocker in blockers:
+            print(f'close blocked: {blocker}', file=sys.stderr)
+        return 1
+    print('close check: no blockers')
+    print('module sessions to close: ' + (', '.join(sessions) or 'none'))
+    if args.check:
+        return 0
+    rows = ws.wp_rows()
+    date = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
+    plan = (ws.root / 'PLAN.md').read_text(encoding='utf-8') if (ws.root / 'PLAN.md').is_file() else ''
+    goal = section(plan, ('Goal and completion condition', 'Цель и условие завершения', 'Goal', 'Цель')) or '—'
+    risks = section(plan, ('Risks', 'Риски')) or '—'
+    packages = '\n'.join(row([wp, r['module'], r['title'], r['status'], r['pr']]) for wp, r in sorted(rows.items()))
+    decisions = '\n'.join(f'- {r["id"]} ({r["date"]}): {r["text"]}' for r in ws.table(ws.decisions, 'decisions')[2]
+                          if r['id'].startswith('D-')) or '—'
+    backlog_path = ws.root / 'backlog.md'
+    backlog = ('\n'.join(f'- {r["id"]}: {r["item"]} (from {r["origin"]}; {r["reason"]})'
+                         for r in ws.table(backlog_path, 'backlog')[2]) if backlog_path.is_file() else '') or '—'
+    name = f'closeout-{date}.md'
+    report = ws.root / 'reports' / name
+    template = (TEMPLATES / ws.lang / 'closeout.md').read_text(encoding='utf-8')
+    safe_edit.create(report, fill(template, {
+        'PROGRAM_TITLE': ws.config.get('title') or ws.config.get('program'), 'PROGRAM': ws.config.get('program'),
+        'DATE': today(), 'GOAL': goal, 'SUMMARY': args.summary or '<result against the completion condition>',
+        'PACKAGES': packages or '| — | — | — | — | — |', 'DECISIONS': decisions, 'BACKLOG': backlog,
+        'RISKS': risks, 'SESSIONS': ', '.join(sessions) or '—'}))
+    set_state(ws, 'closed')
+    status_text = ws.status.read_text(encoding='utf-8')
+    first = status_text.split('\n', 1)[0]
+    banner = {'en': f'> **Closed {today()}.** Closeout: [reports/{name}](reports/{name}). A new goal is a new program.',
+              'ru': f'> **Закрыта {today()}.** Итог: [reports/{name}](reports/{name}). Новая цель — новая программа.'}
+    safe_edit.replace_once(ws.status, first + '\n', first + '\n\n' + banner[ws.lang] + '\n')
+    ws.journal('program closed', evidence=f'reports/{name}')
+    archive_items(ws, date)
+    if streams.git_toplevel(ws.root) is not None and not args.no_commit:
+        cmd_commit(argparse.Namespace(workspace=str(ws.root), message=f'{ws.config.get("program")}: close program',
+                                      no_push=False))
+        if not ws.in_repo and ws.root.parent.name != '_archive':
+            target = ws.root.parent / '_archive' / ws.root.name
+            if target.exists():
+                print(f'note: {target} exists; the workspace stays at {ws.root}')
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                moved = streams.git(ws.root.parent, 'mv', str(ws.root), str(target))
+                if moved.returncode:
+                    raise OrchError(f'git mv to the archive failed: {moved.stderr.strip()}')
+                streams.git(target, 'commit', '-q', '-m', f'{ws.config.get("program")}: archive workspace', '--',
+                            str(ws.root), str(target))
+                print(f'archived: {target}')
+                report = target / 'reports' / name
+    print(f'closeout: {report}')
+    return 0
+
+
+def archive_items(ws, date):
+    """In-repo archive steps for the owner: tag and branch deletion are never run by the plugin."""
+    if not ws.in_repo:
+        return
+    program, branch, top = ws.config.get('program'), ws.workspace_branch, ws.git_top
+    tag = f'orch-{program}-closed-{date}'
+    command = (f'git -C {top} fetch origin {branch} && git -C {top} tag {tag} origin/{branch} && '
+               f'git -C {top} push origin {tag} && git -C {top} push origin --delete {branch}')
+    cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where='reports/closeout',
+                                 text=f'Archive the workspace branch: {command} ; expected: tag {tag} on origin, '
+                                      f'branch {branch} deleted'))
+    cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='P', where='reports/closeout',
+                                 text=f'Keep the workspace as history in docs/ of the base branch through a PR? '
+                                      '(a) yes, one PR copying the workspace (b) no, the tag is enough ; '
+                                      'recommendation: (b)'))
+
+
+def set_state(ws, state):
+    config = ws.root / 'orch.yaml'
+    text = config.read_text(encoding='utf-8')
+    current = re.search(r'(?m)^state: .*$', text)
+    if current:
+        safe_edit.replace_once(config, current.group(0) + '\n', f'state: {state}\n')
+    else:
+        program_line = re.search(r'(?m)^program: .*$', text).group(0)
+        safe_edit.replace_once(config, program_line + '\n', f'{program_line}\nstate: {state}\n')
+
+
+def cmd_reopen(args):
+    ws = Workspace(find_workspace(args.workspace))
+    if not ws.closed:
+        raise OrchError(f'program {ws.config.get("program")} is not closed')
+    set_state(ws, 'active')
+    text = ws.status.read_text(encoding='utf-8')
+    banner = re.search(r'(?m)^> \*\*(Closed|Закрыта) [^\n]*\n', text)
+    if banner:
+        note = {'en': f'> Reopened {today()}: {cell(args.reason)}\n', 'ru': f'> Открыта снова {today()}: {cell(args.reason)}\n'}
+        safe_edit.replace_once(ws.status, banner.group(0), banner.group(0) + note[ws.lang])
+    ws.journal(f'program reopened: {args.reason}', evidence='orch.py reopen')
+    print(f'program {ws.config.get("program")} reopened')
+    if ws.root.parent.name == '_archive':
+        print(f'note: the workspace is in the archive; to move it back: git mv {ws.root} '
+              f'{ws.root.parent.parent / ws.root.name}')
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='orch.py', description=__doc__.split('\n\n')[0])
     parser.add_argument('--workspace', help='workspace directory (contains orch.yaml)')
@@ -1827,8 +2047,8 @@ def build_parser():
     p.set_defaults(func=cmd_journal)
 
     p = sub.add_parser('owner', parents=[common], help='owner queue: add, close, drop')
-    p.add_argument('action', choices=('add', 'close', 'drop'))
-    p.add_argument('target', help='R|P for add; item id for close/drop')
+    p.add_argument('action', choices=('add', 'close', 'drop', 'carry'))
+    p.add_argument('target', help='R|P for add; item id for close/drop/carry')
     p.add_argument('text')
     p.add_argument('--where', help='where the item is described')
     p.set_defaults(func=cmd_owner)
@@ -1902,6 +2122,20 @@ def build_parser():
                    help='do not fetch origin (by default review-start updates remote-tracking refs)')
     p.add_argument('--json', action='store_true')
     p.set_defaults(func=cmd_review_start)
+
+    p = sub.add_parser('close', parents=[common], help='program completion: --check or --apply')
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--check', action='store_true', help='list blockers only')
+    mode.add_argument('--apply', action='store_true', help='closeout report, state: closed, commit')
+    p.add_argument('--summary', help='result against the completion condition (for the closeout report)')
+    p.add_argument('--prs-verified', metavar='EVIDENCE',
+                   help='PRs of branches still on origin were verified closed without gh (how)')
+    p.add_argument('--no-commit', action='store_true', help='do not commit or archive')
+    p.set_defaults(func=cmd_close)
+
+    p = sub.add_parser('reopen', parents=[common], help='make a closed program active again')
+    p.add_argument('reason')
+    p.set_defaults(func=cmd_reopen)
 
     p = sub.add_parser('upgrade', parents=[common], help='add 0.2.0 tables to a 0.1.0 status.md')
     p.set_defaults(func=cmd_upgrade)

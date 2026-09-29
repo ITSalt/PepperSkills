@@ -1013,6 +1013,99 @@ def test_review(tmp):
     print('PASS review: automatic findings (outside paths, unlocked/undeclared shared, stale merge-base), '
           'report, rounds, disposable clone')
 
+
+def test_close(tmp):
+    """2d: completion check, carry to backlog, closeout, archive, refusals, reopen, discovery."""
+    mono = make_monorepo(tmp / 'close')
+    home = tmp / 'close/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'goal', '--lang', 'en', '--title', 'One goal', '--module', f'core={mono}')
+    ws = home / 'features/goal'
+    plan = ws / 'PLAN.md'
+    text = plan.read_text(encoding='utf-8')
+    assert '## Goal and completion condition' in text and 'Completion condition:' in text
+    goal_block = text[text.index('<The one goal'):text.index('## Scope')].rstrip()
+    safe_edit.replace_once(plan, goal_block, 'Ship orders export.\n\nCompletion condition: WP-CORE-01 DONE.')
+    run(home, 'new-wp', 'core', 'export')
+    run(home, 'new-wp', 'core', 'import')
+    run(home, 'decide', 'D', 'CSV only')
+    run(home, 'owner', 'add', 'R', 'Rotate the export token : see vault ; expected: rotated')
+    assert 'WP-CORE-01 is DRAFT' in run(home, 'close', '--check', ok=False).stderr
+    run(home, 'set', 'WP-CORE-01', 'status', 'DONE', '--evidence', 'verified on PROD')
+    run(home, 'set', 'WP-CORE-02', 'status', 'CANCELLED (superseded by D-1)')
+    # A package branch still on origin: PRs cannot be listed here without gh -> blocker.
+    git(mono, 'switch', '-q', '-c', 'goal/wp-core-01-export')
+    git(mono, 'push', '-q', 'origin', 'goal/wp-core-01-export')
+    git(mono, 'switch', '-q', 'main')
+    blocked = run(home, 'close', '--check', ok=False).stderr
+    assert 'R-1 is open' in blocked and 'owner carry R-1' in blocked, blocked
+    assert 'goal/wp-core-01-export is still on origin' in blocked, blocked
+    run(home, 'owner', 'carry', 'R-1', 'token rotation belongs to the next program')
+    backlog = (ws / 'backlog.md').read_text(encoding='utf-8')
+    assert '| B-1 |' in backlog and 'Rotate the export token' in backlog and '| R-1 |' in backlog
+    assert 'carried to backlog.md' in (ws / 'status.md').read_text(encoding='utf-8')
+    check = run(home, 'close', '--check', '--prs-verified', 'owner: PR merged and closed')
+    assert 'no blockers' in check.stdout and 'module sessions to close: goal-core' in check.stdout, check.stdout
+    assert run(home, 'dispatch', 'WP-CORE-01', '--dry-run', ok=False).returncode == 1  # still open, but not READY
+    out = run(home, 'close', '--apply', '--prs-verified', 'owner: PR merged and closed',
+              '--summary', 'Export shipped; import cancelled by D-1.').stdout
+    archived = (home / 'features/_archive/goal').resolve()
+    printed = {l.split(': ', 1)[0]: Path(l.split(': ', 1)[1]).resolve() for l in out.splitlines()
+               if l.startswith(('archived: ', 'closeout: '))}
+    assert printed.get('archived') == archived and printed['closeout'].parent == archived / 'reports', out
+    assert not ws.exists() and (archived / 'orch.yaml').is_file()
+    report = next((archived / 'reports').glob('closeout-*.md')).read_text(encoding='utf-8')
+    for expected in ('Ship orders export.', 'Completion condition: WP-CORE-01 DONE.', 'Export shipped',
+                     '| WP-CORE-01 | core |', 'D-1', 'B-1: Rotate the export token', 'goal-core'):
+        assert expected in report, (expected, report)
+    config = orch.parse_yaml((archived / 'orch.yaml').read_text(encoding='utf-8'))
+    assert config['state'] == 'closed'
+    assert '> **Closed ' in (archived / 'status.md').read_text(encoding='utf-8')
+    assert not git(home, 'status', '--porcelain').strip(), 'closeout and archive are committed'
+    assert 'archive workspace' in git(home, 'log', '-1', '--format=%s')
+    # After closing: refusals, read-only lint, closed workspaces are not picked among several.
+    wsarg = ['--workspace', str(archived)]
+    for command in (['dispatch', 'WP-CORE-01'], ['new-wp', 'core', 'more'], ['lock', 'acquire', 'x', '--wp', 'WP-CORE-01'],
+                    ['merge', 'add', 'WP-CORE-01']):
+        refused = run(home, *wsarg, *command, ok=False).stderr
+        assert 'is closed' in refused and 'new program (init)' in refused, (command, refused)
+    assert run(home, *wsarg, 'lint').returncode == 0
+    assert 'already closed' in run(home, *wsarg, 'close', '--check').stdout
+    run(home, 'init', 'next', '--lang', 'en', '--module', f'core={mono}')
+    found = subprocess.run([*ORCH, 'queue'], cwd=home, capture_output=True, text=True,
+                           env={**os.environ, **GIT_ENV})
+    assert found.returncode == 0, 'only the active workspace is picked automatically'
+    reopened = run(home, *wsarg, 'reopen', 'import is needed after all').stdout
+    assert 'reopened' in reopened and 'git mv' in reopened
+    assert orch.parse_yaml((archived / 'orch.yaml').read_text(encoding='utf-8'))['state'] == 'active'
+    assert 'Reopened ' in (archived / 'status.md').read_text(encoding='utf-8')
+    assert run(home, *wsarg, 'new-wp', 'core', 'import-again').returncode == 0
+    print('PASS close: blockers by fact, carry to backlog, closeout report, archive, refusals, reopen')
+
+
+def test_close_in_repo(tmp):
+    """2d in-repo: tag and branch deletion are printed to the owner, never run."""
+    mono = make_monorepo(tmp / 'closecloud')
+    with_workflow(mono, DEPLOY_WORKFLOW)
+    remote = tmp / 'closecloud/mono.git'
+    clone = tmp / 'closecloud/orch'
+    git(tmp, 'clone', '-q', str(remote), str(clone))
+    run(clone, 'init', 'demo', '--lang', 'en', '--in-repo', 'app', '--area', 'admin=app:apps/admin/**')
+    run(clone, 'new-wp', 'admin', 'orders')
+    run(clone, 'set', 'WP-ADMIN-01', 'status', 'DONE', '--evidence', 'verified')
+    run(clone, 'commit', 'demo: done')
+    out = run(clone, 'close', '--apply', '--summary', 'Goal reached.').stdout
+    assert 'closeout:' in out and 'archived' not in out, out
+    status = (clone / 'docs/orchestration/demo/status.md').read_text(encoding='utf-8')
+    assert 'push origin --delete orch/demo' in status and 'tag orch-demo-closed-' in status, status
+    assert 'Keep the workspace as history in docs/' in status
+    assert not git(remote, 'tag', '-l').strip(), 'the plugin never creates tags'
+    assert git(remote, 'branch', '--list', 'orch/demo').strip(), 'the plugin never deletes branches'
+    assert 'state: closed' in git(remote, 'show', 'orch/demo:docs/orchestration/demo/orch.yaml')
+    assert not git(remote, 'log', '--oneline', 'main', '--', 'docs').strip(), 'nothing on the base'
+    print('PASS close in-repo: archive commands printed for the owner, not run; closeout pushed to orch/')
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -1033,6 +1126,8 @@ def main():
         test_cloud_deploy_scan(tmp)
         test_cloud_dispatch_safety(tmp)
         test_review(tmp)
+        test_close(tmp)
+        test_close_in_repo(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

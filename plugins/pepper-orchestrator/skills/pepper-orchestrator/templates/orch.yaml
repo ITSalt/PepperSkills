@@ -3,6 +3,8 @@
 
 # Prefix of session names and messages.
 program: {{PROGRAM}}
+# active | closed: `close --apply` closes the program (one program, one goal), `reopen` reopens it.
+state: active
 title: {{PROGRAM_TITLE_YAML}}
 # [{{TAG}}] in messages and PR titles.
 tag: {{TAG}}
