@@ -10,7 +10,8 @@ step. No argument, or the program name when several workspaces exist.
    subcommand), or set `ORCH_WORKSPACE`. A new orchestrator session can start from
    `orchestration/bootstrap-prompt.md` of the workspace.
 2. **Closed program?** If `orch.yaml` has `state: closed`, only report the result (the closeout
-   report in `reports/`) and say: a new goal is a new program (`init`); to continue this goal,
+   report in `reports/`) together with the open archive items R/P of the owner queue
+   (`orch.py queue`), and say: a new goal is a new program (`init`); to continue this goal,
    `reopen "<reason>"`. Do not look for work in it.
 3. **Read state.** `status.md` (WP table, owner queue, top of the journal), the tail of
    `decisions.md`, `orch.yaml`. `orch.py queue` lists open owner items.

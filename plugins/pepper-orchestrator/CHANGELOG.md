@@ -21,6 +21,18 @@ a new program.
   closed program reports the result, and on a finished one proposes `close`.
 - Mode `reopen` and `orch.py reopen "<reason>"`.
 - Concept 1.3 (EN and RU), section 21 "Program completion"; README scenario 10.
+- Closing is strict: `--prs-verified` needs concrete evidence (a PR URL with its state, or
+  `list_pull_requests`/`gh pr list` output) and is written to the journal and the closeout; recorded
+  PR URLs are checked with `gh pr view`; a failing `ls-remote`, a missing module repository or an
+  uncheckable PR URL blocks until verified; an unwritten completion condition needs
+  `--goal-confirmed`. `close --apply` checks the commit conditions before changing anything and a
+  second `--apply` finishes an unfinished close; the archive move is pushed; a workspace at the root
+  of its repository is not moved. In-repo archive commands run from any clone and are tied to the
+  closeout commit (`git push origin <sha>:refs/tags/<tag> && git push origin --delete orch/<p>`),
+  and a closed in-repo program whose branch is gone is never pushed again. The closeout has a
+  version column to fill in and a "checks without full evidence" section. After closing `set`,
+  `decide`, `owner add` and `review-start` are refused too, and `lint` reports a closed program with
+  a non-terminal package. `ORCH_NO_GH=1` hides `gh`.
 
 ## 0.3.0 — preview, unreleased
 

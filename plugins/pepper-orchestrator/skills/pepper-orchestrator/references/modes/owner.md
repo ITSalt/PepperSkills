@@ -20,6 +20,14 @@ Show the owner queue as ready commands; on "done", verify by facts and close. Ar
    batch through a release sheet instead of merging package by package, and say why (every merge
    is a production release and a new tag).
 
+## Archive items of a closed in-repo program
+
+When the owner reports the archive R-n done: verify with `git ls-remote --tags origin
+orch-<program>-closed-*` (tag present at the closeout commit) and `git ls-remote --heads origin
+orch/<program>` (branch gone), then `orch.py owner close R-n "<facts>"` and `orch.py commit`.
+The commit stays local: a closed in-repo program whose branch is gone from origin is never
+pushed again (the branch would come back).
+
 ## The owner says an item is done
 
 1. Verify the fact yourself, read-only: `gh pr view`, `gh run view`, SELECT through a read-only

@@ -75,8 +75,9 @@ Without a clear mode: if a workspace exists, run `resume`; otherwise propose `in
 
 **One program, one goal.** `PLAN.md` states the goal and its completion condition. When the
 condition holds, close the program (`close`); the next goal is a new program (`init`), not more
-packages in a finished one. A closed program refuses `plan`, `dispatch`, `new-wp`, `lock` and
-`merge` changes; `reopen` is only for its own unfinished goal.
+packages in a finished one. A closed program refuses `plan`, `dispatch`, `new-wp`, `set`,
+`decide`, `owner add`, `review-start`, `lock` and `merge` changes; `reopen` is only for its own
+unfinished goal. `ORCH_NO_GH=1` makes the scripts ignore `gh` (offline checks).
 
 Planned modes, not automated in this version: `verify`, `release`, `retro`. When the program
 needs them, follow the concept directly: verify per section 9, release per section 15. Record every result through `scripts/orch.py` as usual.
@@ -115,7 +116,7 @@ python3 SKILL_DIR/scripts/orch.py --help
 | `upgrade` | add the locks and merge queue tables to a 0.1.0 `status.md` |
 | `ready [--json]` | dispatched packages whose branch is on origin (READY without messages) |
 | `owner carry <id> "<reason>"` | move an open owner item to `backlog.md` |
-| `close --check \| --apply [--summary "..."] [--prs-verified "..."]` | completion check; closeout report, `state: closed`, archive |
+| `close --check \| --apply [--summary "..."] [--prs-verified "<concrete evidence>"] [--goal-confirmed "..."]` | completion check by facts; closeout report, `state: closed`, archive (a second `--apply` finishes an unfinished close) |
 | `reopen "<reason>"` | `state: active` again, journal line |
 | `review-start <WP> --pr URL --ref <PR head sha> [--since OLD --round N] [--no-fetch]` | automatic review findings, report skeleton, clone command; status `REVIEW` |
 
