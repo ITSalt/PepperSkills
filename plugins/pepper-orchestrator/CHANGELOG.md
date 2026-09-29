@@ -23,6 +23,13 @@ environment.
   (`cd <repo> && claude --resume <session> --model <escalate>` locally; model list or `/model` in the
   cloud).
 - Agents: `orchestrator-scout` has `model: opus`; `orchestrator-reviewer` has no `model` on purpose.
+- `dispatch --dry-run` prints a model note (`model <m>, effort <e>` or `model owner default`) next to
+  the locks, and the journal line of `DISPATCHING` gets the same suffix, also in workspaces created
+  before 0.5.0.
+- Model and effort in package headers are validated: invalid values are `lint` errors and refuse
+  `dispatch`; an Effort without a Model is a `lint` warning. From review round 3 the escalation
+  hint is printed every round, but only one open owner item per package. `init --sessions local
+  --cloud-environment` is refused.
 - Concept 1.4 (EN and RU): session kind and implementer model, and the `/model <name>` trap;
   README "Models and environment".
 

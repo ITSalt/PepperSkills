@@ -46,10 +46,12 @@ a title and modules.
    fix `branch_prefix` by point edit. Also ask for the worktree preparation commands (copy of the
    gitignored env with the stream's own test database and ports, dependency install) and whether
    each merge into the base deploys production (`base_deploys`).
-6. **Cloud program in one repository?** Use `--in-repo <repo-id>` from the repository checkout of
-   the orchestrator's cloud session: it switches to `orch/<program>`, finds a directory every push
-   workflow ignores (`paths-ignore`, branch filters) and puts the workspace there, and turns on
-   `push_after_milestone`; the session kind comes from `--sessions` as everywhere. The check reads the workflows of the
+6. **Workspace inside a module repository?** Use `--in-repo <repo-id>` from a checkout or clone of
+   that repository (a local one, or the orchestrator's cloud session): it switches to
+   `orch/<program>`, finds a directory every push workflow ignores (`paths-ignore`, branch
+   filters) and puts the workspace there, and turns on `push_after_milestone`. The session kind
+   comes from `--sessions` as for any `init`: local streams (`claude -w`) and cloud modules are
+   both supported. The check reads the workflows of the
    ref that will be pushed (`origin/orch/<program>` if it exists, else `origin/<base>`), never
    the working tree; hidden directories are never candidates and `docs/` comes first. It refuses
    when a workflow uses a form it does not understand, when no safe directory exists, when the
