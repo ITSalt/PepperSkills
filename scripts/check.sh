@@ -30,6 +30,7 @@ skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" plugins/pepper-ru-web-compliance/submission/run_tests.py --out "$qa_dir/submission"
 bash scripts/test-install-links.sh
 "$PYTHON" scripts/test-install-docs.py
+"$PYTHON" scripts/test-install-skill.py
 bash scripts/build-skills.sh
 bash scripts/build-plugins.sh
 "$PYTHON" scripts/sync-compat-archives.py --check
