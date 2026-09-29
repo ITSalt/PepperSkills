@@ -489,6 +489,30 @@ def branch_files(repo, branch):
     return None
 
 
+def resolve_ref(repo, ref):
+    """A commit-ish of the module repository: local ref, origin/<ref> or a SHA (fetched if needed)."""
+    for candidate in (ref, f'origin/{ref}'):
+        if ref_exists(repo.local, candidate):
+            return candidate
+    if re.fullmatch(r'[0-9a-f]{7,40}', ref or ''):
+        git(repo.local, 'fetch', '-q', 'origin', ref)
+        if ref_exists(repo.local, ref):
+            return ref
+    return None
+
+
+def merge_base_report(repo, ref, files):
+    """(merge_base, behind, overlapping) of ref against the base: commits the base gained since the
+    branch point and which of the branch's files the base changed meanwhile."""
+    base = base_ref(repo)
+    mb = git(repo.local, 'merge-base', base, ref).stdout.strip()
+    if not mb:
+        return None, None, []
+    behind = int(git(repo.local, 'rev-list', '--count', f'{mb}..{base}').stdout.strip() or 0)
+    changed = [f for f in git(repo.local, 'diff', '--name-only', mb, base).stdout.split('\n') if f]
+    return mb, behind, sorted(set(changed) & set(files))
+
+
 def worktrees(repo):
     """Entries of `git worktree list --porcelain` with dirty state and lag behind base."""
     result = git(repo.local, 'worktree', 'list', '--porcelain')
