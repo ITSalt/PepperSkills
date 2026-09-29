@@ -453,6 +453,8 @@ def cmd_init(args):
                         'owner for the name (never variable values)')
     if running_in_cloud() and args.sessions == 'local':
         raise OrchError(CLOUD_LOCAL_REFUSAL)
+    if args.sessions == 'local' and args.cloud_environment:
+        raise OrchError('--cloud-environment is only for --sessions cloud; local sessions use no cloud environment')
     in_repo = in_repo_setup(args, program) if args.in_repo else None
     root = in_repo['root'] if in_repo else Path(args.dir or Path('features') / program).expanduser()
     if root.exists() and any(root.iterdir()):
@@ -972,6 +974,10 @@ def lint(ws):
             errors.append(f'status.md: {plain_id(r["wp"])} links to missing {link.group(1)}')
     files = sorted(p for p in ws.wp_dir.glob('WP-*.md')) if ws.wp_dir.is_dir() else []
     for path in files:
+        meta = streams.wp_meta(path, None)
+        errors.extend(f'work-packages/{path.name}: {e}'
+                      for e in streams.model_errors('header', meta.get('model'), meta.get('effort')))
+    for path in files:
         wp = re.match(r'^(WP-[A-Z0-9-]+?-\d+)', path.name)
         if not wp or wp.group(1) not in wp_ids:
             errors.append(f'work-packages/{path.name}: no row in the status.md WP table')
@@ -1096,6 +1102,11 @@ def lint_warnings(ws):
     if problem:
         warnings.append(f'in-repo workspace: {problem}; commit refuses until the owner decides '
                         '(deploy_check_override: D-n)')
+    if ws.wp_dir.is_dir():
+        for path in sorted(ws.wp_dir.glob('WP-*.md')):
+            meta = streams.wp_meta(path, None)
+            if meta.get('effort') and not meta.get('model'):
+                warnings.append(f'work-packages/{path.name}: Effort without Model has no effect on the start command')
     local = [m for m in modules.values() if not m.cloud]
     warning = streams.main_checkout_warning(ws.root, local)
     if warning:
@@ -1482,6 +1493,11 @@ def dispatch_problems(ws, wp):
             for lock in lock_conflicts(ws, module.repo, 'staging', wp):
                 busy[lock['lock']] = lock
                 problems.append(f'lock {lock["lock"]} (stand slot) is held by {lock["holder"]}')
+    wp_path = ws.wp_path(r['wp'])
+    if wp_path and wp_path.is_file():
+        header_meta = streams.wp_meta(wp_path, module)
+        for error in streams.model_errors(f'{wp} header', header_meta.get('model'), header_meta.get('effort')):
+            problems.append(f'{error}; fix it with orch.py model {wp} <model> --reason "..."')
     if module.cloud and not module.cloud_environment:
         problems.append(f'module {module.id} runs cloud sessions but no cloud environment is set: ask the owner for '
                         'its name and record it with: orch.py cloud-env "<name>"' +
@@ -1765,7 +1781,9 @@ def cmd_review_start(args):
     if args.pr:
         cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='pr', text=args.pr, quiet=True,
                                    evidence=None))
-    if escalation:
+    already = any(item['text'].startswith(f'{wp}: round ') and 'restart the module session' in item['text']
+                  for item in open_owner_items(ws))
+    if escalation and not already:
         cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where=f'reports/{name}',
                                      quiet=True, text=f'{wp}: {escalation} ; expected: the session continues on the stronger '
                                           'model with its context'))
@@ -2252,7 +2270,7 @@ def build_parser():
                    help='module that is a domain of a --repo')
     p.add_argument('--in-repo', metavar='REPO_ID',
                    help='workspace inside this repository on branch orch/<program>, in a deploy-ignored '
-                        'directory; modules run as cloud sessions')
+                        'directory (session kind still comes from --sessions)')
     p.add_argument('--base', help='base branch of the --in-repo repository (default: origin HEAD)')
     p.add_argument('--sessions', choices=('local', 'cloud'),
                    help='required, the owner\'s explicit choice: module sessions run locally (recommended) or in the cloud')

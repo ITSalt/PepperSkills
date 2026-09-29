@@ -98,9 +98,9 @@ def test_safe_edit(tmp):
 
 
 SAMPLE_YAML = '''\
-program: corp-clients            # prefix
-title: "Corporate clients: B2B"
-tag: CORP
+program: example-program         # prefix
+title: "Example program: part B"
+tag: EXAMPLE
 owner_language: ru
 push_after_milestone: true
 modules:
@@ -130,7 +130,7 @@ def test_yaml():
     assert parsed['modules'][1]['web_urls']['prod'] == 'https://example.com'
     assert parsed['modules'][0]['tests'] == ['./scripts/test.sh']
     assert parsed['push_after_milestone'] is True and parsed['nothing'] is None
-    assert parsed['title'] == 'Corporate clients: B2B'
+    assert parsed['title'] == 'Example program: part B'
     assert parsed['note'] == "it's # not a comment"
     try:
         import yaml
@@ -994,6 +994,10 @@ def test_review(tmp):
     esc = [w for w in third['warnings'] if w.startswith('round 3:')]
     assert esc and f'cd {mono} && claude --resume rv-app --model opus' in esc[0], third['warnings']
     assert 'restart the module session on opus' in (home / 'features/rv/status.md').read_text(encoding='utf-8')
+    again = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', third['sha'], '--round', '4', '--json').stdout)
+    assert any(w.startswith('round 4:') for w in again['warnings']), 'the hint is printed every round'
+    open_escalations = [q for q in json.loads(run(home, 'queue', '--json').stdout) if 'restart the module session' in q['text']]
+    assert len(open_escalations) == 1, open_escalations
     command = third['revision_diff']
     assert f'range-diff origin/main..{second["sha"]} origin/main..{third["sha"]}' in command, command
     rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, text=True)
@@ -1215,6 +1219,21 @@ def test_models(tmp):
     assert '--model opus --effort high' in out
     status = (ws / 'status.md').read_text(encoding='utf-8')
     assert 'model opus, effort high' in status and 'WP-APP-01: model opus, effort high (cross-module' in status
+    # L2: model and effort in a package header are checked too.
+    app_path = ws / 'work-packages/WP-APP-01-list.md'
+    app_original = app_path.read_text(encoding='utf-8')
+    app_path.write_text(app_original.replace('| Model | `opus` |', '| Model | `gpt-4` |', 1), encoding='utf-8')
+    assert "header: model 'gpt-4' is not one of" in lint_errors(home)
+    run(home, 'set', 'WP-ADMIN-01', 'status', 'READY')
+    admin_path = ws / 'work-packages/WP-ADMIN-01-roles.md'
+    admin_original = admin_path.read_text(encoding='utf-8')
+    admin_path.write_text(admin_original.replace('| Model | `opus` |', '| Model | `gpt-4` |', 1), encoding='utf-8')
+    refusal = run(home, 'dispatch', 'WP-ADMIN-01', '--dry-run', ok=False).stderr
+    assert "WP-ADMIN-01 header: model 'gpt-4'" in refusal, refusal
+    admin_path.write_text(admin_original.replace('| Model | `opus` |', '| Model | — |', 1), encoding='utf-8')
+    app_path.write_text(app_original, encoding='utf-8')
+    assert 'Effort without Model' in run(home, 'lint').stderr
+    admin_path.write_text(admin_original, encoding='utf-8')
     # lint: invalid aliases and efforts are errors.
     original = config.read_text(encoding='utf-8')
     for bad, expected in (('models:\n  implement: sonnet', 'models:\n  implement: sonet'),
@@ -1350,6 +1369,9 @@ def test_local_cloud_matrix(tmp):
             assert 'the owner chooses the session kind' in asked and 'locally' in asked and 'recommended' in asked
             assert 'needs --cloud-environment' in run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'cloud',
                                                       '--module', f'core={mono}', ok=False).stderr
+            assert 'only for --sessions cloud' in run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local',
+                                                      '--cloud-environment', 'X', '--module', f'core={mono}',
+                                                      ok=False).stderr
             remote_env = {'CLAUDE_CODE_REMOTE': 'true'}
             refused = run(fresh, 'init', 'q', '--lang', 'en', '--sessions', 'local', '--module', f'core={mono}',
                           ok=False, extra_env=remote_env).stderr
