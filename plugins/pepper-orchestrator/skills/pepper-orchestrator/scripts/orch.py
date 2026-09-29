@@ -1534,12 +1534,26 @@ def cmd_review_start(args):
     if not module.repo.local.is_dir():
         raise OrchError(f'{module.repo.path} is not available locally: clone it (read-only) or pass --workspace '
                         'from a place where it is')
-    ref = args.ref or meta['branch']
+    if not args.no_fetch:  # updates the remote-tracking refs of the module repository
+        fetched = streams.git(module.repo.local, 'fetch', '-q', 'origin')
+        if fetched.returncode:
+            raise OrchError(f'git fetch origin failed in {module.repo.path}: {fetched.stderr.strip()} '
+                            '(pass --no-fetch to review the refs as they are)')
+    warnings = []
+    ref = args.ref
     if not ref:
-        raise OrchError(f'{wp}: no work branch in the package; pass --ref <branch or sha>')
-    streams.git(module.repo.local, 'fetch', '-q', 'origin')
+        branch = meta['branch']
+        if not branch or not streams.ref_exists(module.repo.local, f'origin/{branch}'):
+            raise OrchError(f'{wp}: no pushed branch origin/{branch or "?"}; pass --ref <PR head sha>')
+        ref = f'origin/{branch}'
+        local = streams.git(module.repo.local, 'rev-parse', '--verify', '-q', branch).stdout.strip()
+        remote = streams.git(module.repo.local, 'rev-parse', ref).stdout.strip()
+        if local and local != remote:
+            warnings.append(f'local branch {branch} ({local[:10]}) differs from {ref} ({remote[:10]}); '
+                            f'reviewing {ref} - pass --ref <PR head sha> to be explicit')
     sha, files, findings = review_auto(ws, wp, module, meta, ref)
     base = streams.base_ref(module.repo)
+    base_sha = streams.git(module.repo.local, 'rev-parse', base).stdout.strip()
     text = REPORT_TEXT[ws.lang]
     auto = '\n'.join(f'- **{text["kinds"][k]}**: {t}' for k, t in findings) or f'- {text["none"]}'
     stat = streams.git(module.repo.local, 'diff', '--shortstat', f'{base}...{sha}').stdout.strip()
@@ -1548,7 +1562,7 @@ def cmd_review_start(args):
         old = streams.resolve_ref(module.repo, args.since)
         if old is None:
             raise OrchError(f'--since {args.since} not found')
-        revision = (f'git -C {module.repo.path} range-diff {base}...{old} {base}...{sha}'
+        revision = (f'git -C {module.repo.path} range-diff {base}..{old} {base}..{sha}'
                     if streams.git(module.repo.local, 'merge-base', '--is-ancestor', old, sha).returncode
                     else f'git -C {module.repo.path} diff {old} {sha}')
     date = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
@@ -1556,7 +1570,8 @@ def cmd_review_start(args):
     name = f'{wp.lower()}-review-{date}' + (f'-r{args.round}' if args.round else '') + '.md'
     path = reports / name
     template = (TEMPLATES / ws.lang / 'review-report.md').read_text(encoding='utf-8')
-    body = fill(template, {'WP': wp, 'PR': args.pr or r['pr'], 'SHA': sha[:10], 'BASE': base, 'DATE': today(),
+    base_label = f'{module.repo.base} @ {base_sha[:10]}'
+    body = fill(template, {'WP': wp, 'PR': args.pr or r['pr'], 'SHA': sha[:10], 'BASE': base_label, 'DATE': today(),
                            'ROUND': str(args.round or 1), 'FILES': str(len(files)), 'STAT': stat or '—',
                            'AUTO': auto, 'REVISION': revision or '—'})
     safe_edit.create(path, body)
@@ -1572,19 +1587,22 @@ def cmd_review_start(args):
     origin = streams.git(module.repo.local, 'config', '--get', 'remote.origin.url').stdout.strip()
     tests = module.tests if isinstance(module.tests, dict) else {'full': module.tests or []}
     commands = [c for c in streams.as_list(tests.get('scoped')) + streams.as_list(tests.get('full'))]
-    clone = ['bash', str(SKILL_DIR / 'scripts' / 'review_clone.sh'), '--repo', origin or str(module.repo.local),
-             '--sha', sha]
-    for c in module.repo.worktree_setup:
+    clone = [f'ORCH_MAIN_CHECKOUT={module.repo.local}', 'bash', str(SKILL_DIR / 'scripts' / 'review_clone.sh'),
+             '--repo', origin or str(module.repo.local), '--sha', sha]
+    for c in module.repo.review_setup:
         clone += ['--setup', c]
     for c in commands:
         clone += ['--test', c]
-    result = {'wp': wp, 'sha': sha, 'base': base, 'files': files, 'stat': stat, 'report': str(path),
+    result = {'wp': wp, 'sha': sha, 'base': base_label, 'files': files, 'stat': stat, 'report': str(path),
+              'warnings': warnings,
               'findings': [{'kind': k, 'finding': t} for k, t in findings],
               'clone_command': ' '.join(shlex_quote(c) for c in clone), 'revision_diff': revision or None}
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
-    print(f'review {wp} at {sha[:10]} against {base}: {stat or "no changes"}')
+    for warning in warnings:
+        print(f'warning: {warning}')
+    print(f'review {wp} at {sha[:10]} against {base_label}: {stat or "no changes"}')
     print(f'report: {path}')
     for k, t in findings:
         print(f'[{k}] {t}')
@@ -1880,6 +1898,8 @@ def build_parser():
     p.add_argument('--pr', help='PR URL, recorded in the WP row')
     p.add_argument('--since', help='previous reviewed SHA: prints the revision diff command')
     p.add_argument('--round', type=int, help='resubmission number (report file suffix -rN)')
+    p.add_argument('--no-fetch', action='store_true',
+                   help='do not fetch origin (by default review-start updates remote-tracking refs)')
     p.add_argument('--json', action='store_true')
     p.set_defaults(func=cmd_review_start)
 

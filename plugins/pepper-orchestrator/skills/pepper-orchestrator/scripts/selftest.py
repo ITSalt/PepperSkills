@@ -909,7 +909,8 @@ def test_review(tmp):
     config = ws / 'orch.yaml'
     for old, new in (('    shared_paths: []', '    shared_paths: [pnpm-lock.yaml, "backend/migrations/**"]'),
                      ('    resources: []', '    resources: [migrations]'),
-                     ('    checks: []', '    checks: ["test -n \\"$ORCH_BRANCHES\\""]')):
+                     ('    checks: []', '    checks: ["test -n \\"$ORCH_BRANCHES\\""]\n'
+                                      '    review_setup: ["cp \\"$ORCH_MAIN_CHECKOUT/config.yaml\\" copied.yaml"]')):
         safe_edit.replace_once(config, old, new)
     safe_edit.replace_once(config, '    paths: ["apps/app/**"]\n',
                            '    paths: ["apps/app/**"]\n    tests: {scoped: ["test -f apps/app/src/page.tsx"], '
@@ -944,7 +945,27 @@ def test_review(tmp):
     rows = orch.Workspace(ws).wp_rows()
     assert rows['WP-APP-01']['status'] == 'REVIEW' and rows['WP-APP-01']['pr'] == 'https://example.invalid/pull/5'
     assert "--test 'test -f apps/app/src/page.tsx'" in result['clone_command'], result['clone_command']
+    assert result['clone_command'].startswith(f'ORCH_MAIN_CHECKOUT={mono} bash ')
+    assert 'copied.yaml' in result['clone_command'] and 'pnpm install' not in result['clone_command']
+    assert result['base'].startswith('main @ ') and 'main @ ' in text
     assert run(home, 'lint').returncode == 0, lint_errors(home)
+    # The review command runs the clone exactly as printed (review_setup with ORCH_MAIN_CHECKOUT).
+    printed = subprocess.run(['bash', '-c', result['clone_command'].replace("'test -f apps/app/src/page.tsx'",
+                                                                            "'test -f copied.yaml'", 1)],
+                             capture_output=True, text=True)
+    assert 'setup: cp' in printed.stdout and 'test: test -f copied.yaml -> exit 0' in printed.stdout, printed.stdout
+    # M2: an unpushed local commit on the branch is not reviewed; the default is origin/<branch>.
+    (wt / 'apps/app/src/local.tsx').write_text('local only\n', encoding='utf-8')
+    git(wt, 'add', '-A')
+    git(wt, 'commit', '-qm', 'not pushed')
+    local = json.loads(run(home, 'review-start', 'WP-APP-01', '--round', '9', '--json').stdout)
+    assert local['sha'] == result['sha'] and 'differs from origin/feature/wp-app-01-checkout' in local['warnings'][0]
+    git(wt, 'reset', '-q', '--hard', 'HEAD~1')
+    # L2: a failing fetch stops the review unless --no-fetch.
+    git(mono, 'remote', 'set-url', 'origin', str(tmp / 'review/missing.git'))
+    assert 'git fetch origin failed' in run(home, 'review-start', 'WP-APP-01', '--round', '8', ok=False).stderr
+    assert run(home, 'review-start', 'WP-APP-01', '--round', '8', '--no-fetch').returncode == 0
+    git(mono, 'remote', 'set-url', 'origin', str(tmp / 'review/mono.git'))
     # Resubmission: the revision diff command, a second report without clobbering the first.
     old_sha = result['sha']
     (wt / 'apps/app/src/page.tsx').write_text('fixed\n', encoding='utf-8')
@@ -954,6 +975,19 @@ def test_review(tmp):
     second = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', old_sha, '--round', '2',
                             '--json').stdout)
     assert second['report'].endswith('-r2.md') and f'diff {old_sha}' in second['revision_diff']
+    # L1: after a rebase the revision diff is a range-diff over base..old and base..new.
+    git(wt, 'fetch', '-q', 'origin')
+    git(wt, 'rebase', '-q', '-X', 'theirs', 'origin/main')
+    git(wt, 'push', '-q', '-f', 'origin', 'feature/wp-app-01-checkout')
+    third = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', second['sha'], '--round', '3',
+                           '--json').stdout)
+    command = third['revision_diff']
+    assert f'range-diff origin/main..{second["sha"]} origin/main..{third["sha"]}' in command, command
+    rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, text=True)
+    assert rd.returncode == 0 and 'resubmission 1' in rd.stdout, rd.stdout
+    assert 'base moves on' not in rd.stdout, 'base commits must not show up in the revision diff'
+    sym = subprocess.run(command.replace('..', '...').split(), capture_output=True, text=True)
+    assert 'base moves on' in sym.stdout, 'control: the symmetric form would show the base commit'
     # The disposable clone: tests pass at the new head, fail at the old one, cleanup is guarded.
     clone = [sys.executable, '-c', 'import sys, subprocess; sys.exit(subprocess.call(sys.argv[1:]))',
              'bash', str(HERE / 'review_clone.sh'), '--repo', str(tmp / 'review/mono.git')]
@@ -973,6 +1007,9 @@ def test_review(tmp):
     assert not Path(kept_dir).exists()
     missing = subprocess.run(clone + ['--sha', 'deadbeef'], capture_output=True, text=True)
     assert missing.returncode == 2
+    dangling = subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--repo', 'x', '--sha'], capture_output=True,
+                              text=True, timeout=10)
+    assert dangling.returncode == 2 and 'needs a value' in dangling.stderr
     print('PASS review: automatic findings (outside paths, unlocked/undeclared shared, stale merge-base), '
           'report, rounds, disposable clone')
 

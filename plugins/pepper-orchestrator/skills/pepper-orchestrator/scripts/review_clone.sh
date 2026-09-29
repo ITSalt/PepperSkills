@@ -5,18 +5,21 @@
 # SRC is a clone URL or a local path. The clone lives in a new temporary directory
 # (TMPDIR, marked with .orch-review-clone) and is removed at the end unless --keep;
 # --keep prints the directory for mutation runs, --cleanup removes only marked ones.
+# Setup commands run in the clone root; ORCH_MAIN_CHECKOUT (if set by the caller) points to the
+# repository's main checkout, for example to copy a gitignored env file.
 # Exit: 0 all tests passed, 1 a setup or test command failed, 2 usage or clone error.
 # Never pushes, never changes SRC.
 set -uo pipefail
 marker=".orch-review-clone"
-usage() { sed -n '2,9p' "$0" >&2; exit 2; }
+usage() { sed -n '2,11p' "$0" >&2; exit 2; }
+need() { [[ $# -ge 2 && -n "$2" ]] || { echo "review_clone: $1 needs a value" >&2; exit 2; }; }
 repo="" sha="" keep=0 setups=() tests=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --repo) repo="${2:-}"; shift 2 ;;
-    --sha) sha="${2:-}"; shift 2 ;;
-    --setup) setups+=("${2:-}"); shift 2 ;;
-    --test) tests+=("${2:-}"); shift 2 ;;
+    --repo) need "$@"; repo="$2"; shift 2 ;;
+    --sha) need "$@"; sha="$2"; shift 2 ;;
+    --setup) need "$@"; setups+=("$2"); shift 2 ;;
+    --test) need "$@"; tests+=("$2"); shift 2 ;;
     --keep) keep=1; shift ;;
     --cleanup)
       dir="${2:-}"
@@ -30,8 +33,9 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$repo" && -n "$sha" ]] || usage
 [[ "$sha" =~ ^[0-9a-fA-F]{7,40}$ ]] || { echo "review_clone: --sha must be a commit id" >&2; exit 2; }
-work="$(mktemp -d "${TMPDIR:-/tmp}/orch-review.XXXXXX")"
-touch "$work/$marker"
+work="$(mktemp -d "${TMPDIR:-/tmp}/orch-review.XXXXXX")" || { echo "review_clone: mktemp failed" >&2; exit 2; }
+[[ -n "$work" && -d "$work" ]] || { echo "review_clone: no temporary directory" >&2; exit 2; }
+touch "$work/$marker" || exit 2
 cleanup() { if [[ $keep -eq 0 ]]; then rm -rf "$work"; fi; }
 trap cleanup EXIT
 clone="$work/repo"

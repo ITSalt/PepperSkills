@@ -293,6 +293,9 @@ class Repo:
         self.branch_prefix = str(data.get('branch_prefix') or f'{program}/')
         self.worktree_root = str(data.get('worktree_root') or '.claude/worktrees')
         self.worktree_setup = as_list(data.get('worktree_setup'))
+        # Setup for review clones (run in the clone root, ORCH_MAIN_CHECKOUT = the main checkout);
+        # worktree_setup is written for session worktrees and is never reused for clones.
+        self.review_setup = as_list(data.get('review_setup'))
         self.merge_policy = str(data.get('merge_policy') or 'free')
         self.shared_paths = as_list(data.get('shared_paths'))
         self.resources = as_list(data.get('resources'))
