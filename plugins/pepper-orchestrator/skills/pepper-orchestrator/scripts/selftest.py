@@ -22,6 +22,7 @@ GIT_ENV = {
     # Like CI runners: a default branch other than main must not break any fixture.
     'GIT_CONFIG_KEY_2': 'init.defaultBranch', 'GIT_CONFIG_VALUE_2': 'master',
     'ORCH_NO_GH': '1',  # no network: gh paths are not exercised by the offline self-test
+    'ORCH_NO_CLAUDE': '1',  # plugin reports do not start the claude CLI for its version
 }
 
 
@@ -1859,6 +1860,159 @@ def test_windows_paths(tmp):
     print('PASS windows paths: //c/... rules, UNC refused, python/py forms, PowerShell commands, POSIX as in 0.7.0')
 
 
+REPORT_GH_STUB = """#!/usr/bin/env python3
+import base64, json, os, sys
+root = os.environ['GH_STUB_DIR']
+args = sys.argv[1:]
+with open(os.path.join(root, 'calls.log'), 'a') as log:
+    log.write(json.dumps(args) + '\\n')
+if args[:2] == ['issue', 'list']:
+    print(open(os.path.join(root, 'issues.json')).read())
+elif args[:2] == ['issue', 'create']:
+    print('https://github.com/ITSalt/PepperSkills/issues/101')
+elif args[:2] == ['issue', 'comment']:
+    if os.path.exists(os.path.join(root, 'fail_comment')):
+        sys.stderr.write('HTTP 502: bad gateway\\n')
+        sys.exit(1)
+    print('https://github.com/ITSalt/PepperSkills/issues/42#issuecomment-1')
+elif args[:1] == ['api']:
+    print(base64.b64encode(json.dumps({'version': '9.9.9'}).encode()).decode())
+else:
+    sys.exit(1)
+"""
+
+
+def test_report(tmp):
+    """3e: anonymized plugin defect reports; Issue only after the owner's yes; duplicates get a comment."""
+    import plugin_report
+    mono = make_monorepo(tmp / 'report')
+    git(mono, 'remote', 'set-url', 'origin', 'https://github.com/acme-hidden/quietmono.git')
+    stub = tmp / 'report/stub'
+    (stub / 'bin').mkdir(parents=True)
+    (stub / 'bin/gh').write_text(REPORT_GH_STUB, encoding='utf-8')
+    (stub / 'bin/gh').chmod(0o755)
+    (stub / 'issues.json').write_text('[]', encoding='utf-8')
+    gh_env = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(stub), 'PATH': f'{stub / "bin"}{os.pathsep}{os.environ["PATH"]}'}
+    home = tmp / 'report/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    git(home, 'remote', 'add', 'origin', 'https://git.hushcorp.example/hushowner/homerepo.git')
+    (home / '.private-terms.local').write_text('# private\nhushterm\n', encoding='utf-8')
+    run(home, 'init', 'quietprog', '--lang', 'ru', '--sessions', 'local', '--permission-mode', 'auto', '--tag', 'QPX',
+        '--repo', f'quietrepo={mono}', '--area', 'billzone=quietrepo:apps/app/**')
+    ws = home / 'features/quietprog'
+    safe_edit.replace_once(ws / 'orch.yaml', '    session: quietprog-billzone\n',
+                           '    session: quietprog-billzone\n    web_urls: {test: https://stage.hidden-shop.example}\n')
+    token = 'gh' + 'p_' + 'A' * 36
+    log = tmp / 'report/out.log'
+    log.write_text('\n'.join([
+        f'$ python3 orch.py settings all   (in {ws.resolve()})',
+        f'Traceback: orch: settings billzone: error in {mono}/apps/app for quietprog-billzone',
+        f'origin https://github.com/acme-hidden/quietmono.git, QPX, quietprog, {Path.home()}/notes, hushterm',
+        f'contact owner@hidden-shop.example token {token} host stage.hidden-shop.example',
+        'DB_PASSWORD=plainvalue123 STRIPE_KEY: sk_live_abcdef123456 url acme-hidden%2Fquietmono',
+        'home origin https://git.hushcorp.example/hushowner/homerepo.git by hushowner',
+    ] + [f'line {i}' for i in range(40)]), encoding='utf-8')
+    out = run(home, 'report', '--check', '--command', f'python3 orch.py settings all --workspace {ws}', '--log', str(log),
+              '--expected-actual', 'Expected settings for billzone; got an error.', '--workaround=dispatch with --no-settings').stdout
+    record = (ws / 'bugs/PLUGIN-BUG-1.md').read_text(encoding='utf-8')
+    issue = (ws / 'bugs/PLUGIN-BUG-1.issue.md').read_text(encoding='utf-8')
+    body = record + issue + out
+    for secret in ('quietprog', 'QPX', 'billzone', 'quietrepo', 'acme-hidden', 'quietmono', 'hidden-shop', 'hushterm',
+                   str(Path.home()), str(mono), str(ws), token, 'owner@', 'plainvalue123', 'sk_live_abcdef',
+                   'hushowner', 'hushcorp', 'homerepo'):
+        assert secret.lower() not in body.lower(), (secret, body)
+    assert '<module-1>' in issue and '<repo-1>' in issue and '<workspace>' in issue and '[redacted]' in issue, issue
+    assert 'line 23' in record and 'line 26' not in record, 'first 30 lines only'
+    assert '## Вывод (первые строки, обезличен)' in record and '### Plugin and version' in issue
+    assert 'Publish this anonymized report' in out and 'fingerprint: pepper-orchestrator' in out, out
+    traces = next((p / 'scripts/check-private-traces.py' for p in HERE.parents
+                   if (p / 'scripts/check-private-traces.py').is_file()), None)
+    if traces:  # inside the PepperSkills repository (not in an unpacked package): the repository guard
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('traces', traces)
+        guard = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(guard)
+        scan = tmp / 'report/scan'
+        scan.mkdir()
+        git(scan, 'init', '-q')
+        (scan / 'issue.md').write_text(issue, encoding='utf-8')
+        git(scan, 'add', '-A')
+        assert guard.findings(scan, terms=['hushterm']) == [], guard.findings(scan, terms=['hushterm'])
+    refused = run(home, 'report', '--apply', ok=False).stderr
+    assert 'Publish PLUGIN-BUG-1' in refused and '--confirmed' in refused, refused
+    manual = run(home, 'report', '--apply', '--confirmed').stdout
+    assert 'No gh here' in manual and 'create_issue owner=ITSalt repo=PepperSkills' in manual, manual
+    assert '| Issue | — |' in (ws / 'bugs/PLUGIN-BUG-1.md').read_text(encoding='utf-8')
+    sent = run(home, 'report', '--apply', '--confirmed', extra_env=gh_env).stdout
+    assert 'new Issue: https://github.com/ITSalt/PepperSkills/issues/101' in sent, sent
+    calls = [json.loads(line) for line in (stub / 'calls.log').read_text(encoding='utf-8').splitlines()]
+    assert calls[0][:4] == ['issue', 'list', '--repo', 'ITSalt/PepperSkills'] and '--state' in calls[0], calls
+    create = calls[1]
+    assert create[:4] == ['issue', 'create', '--repo', 'ITSalt/PepperSkills'], create
+    assert create[create.index('--title') + 1].startswith('[pepper-orchestrator '), create
+    assert [create[i + 1] for i, a in enumerate(create) if a == '--label'] == ['bug', 'from-agent', 'needs-triage']
+    assert '| Issue | https://github.com/ITSalt/PepperSkills/issues/101 |' in \
+        (ws / 'bugs/PLUGIN-BUG-1.md').read_text(encoding='utf-8')
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'PLUGIN-BUG-1 sent to ITSalt/PepperSkills' in status and 'FYI, no action needed' in status
+    assert 'already sent' in run(home, 'report', '--apply', '--confirmed', '--id', 'PLUGIN-BUG-1', ok=False).stderr
+    # A duplicate: a comment with the environment facts, no new Issue.
+    run(home, 'report', '--check', '--log', str(log), '--title', 'settings fail again')
+    (stub / 'issues.json').write_text(json.dumps([{'number': 42, 'title': 'x', 'url': 'u', 'state': 'OPEN'}]),
+                                      encoding='utf-8')
+    dup = run(home, 'report', '--apply', '--confirmed', extra_env=gh_env).stdout
+    assert 'comment on #42' in dup, dup
+    calls = [json.loads(line) for line in (stub / 'calls.log').read_text(encoding='utf-8').splitlines()]
+    assert calls[-1][:3] == ['issue', 'comment', '42'] and not any(c[:2] == ['issue', 'create'] for c in calls[2:])
+    # bug_reports: auto needs a recorded decision; with it, --apply needs no --confirmed.
+    config = ws / 'orch.yaml'
+    safe_edit.replace_once(config, 'push_after_milestone: false', 'push_after_milestone: false\nbug_reports: auto')
+    assert 'bug_reports: auto needs bug_reports_decision' in lint_errors(home)
+    run(home, 'decide', 'D', 'Plugin defect reports are published without asking')
+    safe_edit.replace_once(config, 'bug_reports: auto', 'bug_reports: auto\nbug_reports_decision: D-1')
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    run(home, 'report', '--check', '--log', str(log), '--title', 'third')
+    (stub / 'issues.json').write_text('[]', encoding='utf-8')
+    assert 'new Issue' in run(home, 'report', '--apply', extra_env=gh_env).stdout
+    status_out = run(home, 'report', '--status', extra_env=gh_env).stdout
+    assert 'PLUGIN-BUG-1: Issue https://' in status_out and 'update available: pepper-orchestrator' in status_out
+    assert 'SECURITY.md' in run(home, 'report', '--security').stdout
+    assert plugin_report.fingerprint('p', '1.0', 'orch: <module-1> error [redacted]') == 'p 1.0 orch: error'
+    # M1: the exception line of a traceback, not its header; volatile parts removed.
+    first = ['Traceback (most recent call last):', '  File "orch.py", line 10, in main', "KeyError: 'shell'"]
+    second = ['Traceback (most recent call last):', '  File "orch.py", line 99, in run', 'ValueError: bad sha']
+    fps = {plugin_report.fingerprint('p', '1', plugin_report.first_error_line(x)) for x in (first, second)}
+    assert len(fps) == 2 and "p 1 KeyError: shell" in fps, fps
+    assert plugin_report.fingerprint('p', '1', '2026-09-30 10:22Z WP-APP-01 dispatch refused at abc1234def') == \
+        plugin_report.fingerprint('p', '1', '2026-10-01 08:00Z WP-DB-07 dispatch refused at 9876543fed'), 'volatile parts'
+    assert plugin_report.first_error_line(['all good', 'still fine']) == ''
+    assert plugin_report.search_query('p 1.0 -x orch: error') == '"p 1.0 x orch error"'
+    # L4 d: environment, settings, key files and KEY=value files are never attached.
+    for name, content in (('.env.local', 'A=1\n'), ('orch.yaml', 'x: 1\n'), ('settings.local.json', '{}'),
+                          ('id.pem', 'x'), ('vars.txt', 'A=1\nB=2\nnote\n')):
+        bad = tmp / 'report-logs' / name  # outside the workspace tree: a stray orch.yaml would be found as one
+        bad.parent.mkdir(exist_ok=True)
+        bad.write_text(content, encoding='utf-8')
+        assert '--log refused' in run(home, 'report', '--check', '--log', str(bad), ok=False).stderr, name
+    # L3: a failed comment leaves no file behind; the retry works. L7: an open duplicate is preferred.
+    (stub / 'issues.json').write_text(json.dumps([{'number': 7, 'title': 'old', 'url': 'u7', 'state': 'CLOSED'},
+                                                  {'number': 42, 'title': 'x', 'url': 'u42', 'state': 'OPEN'}]),
+                                      encoding='utf-8')
+    run(home, 'report', '--check', '--log', str(log), '--title', 'fourth')
+    (stub / 'fail_comment').write_text('x', encoding='utf-8')
+    assert 'gh failed: HTTP 502' in run(home, 'report', '--apply', extra_env=gh_env, ok=False).stderr
+    (stub / 'fail_comment').unlink()
+    again = run(home, 'report', '--apply', extra_env=gh_env).stdout
+    assert 'comment on #42 (open, u42)' in again, again
+    assert 'comment on #42 (open' in (ws / 'status.md').read_text(encoding='utf-8')
+    calls = [json.loads(line) for line in (stub / 'calls.log').read_text(encoding='utf-8').splitlines()]
+    searches = [c[c.index('--search') + 1] for c in calls if c[:2] == ['issue', 'list']]
+    assert all(s.startswith('"') and s.endswith('"') for s in searches), searches
+    print('PASS report: anonymized record and Issue text, guard clean, owner yes required, stub gh create/comment, '
+          'auto by decision, no-gh instructions, update line')
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -1887,6 +2041,7 @@ def main():
         test_deploy_override_first_candidate(tmp)
         test_verify(tmp)
         test_windows_paths(tmp)
+        test_report(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

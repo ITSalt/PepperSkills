@@ -1,0 +1,69 @@
+name: Plugin defect (agent report)
+description: A defect of a PepperSkills plugin, reported by an agent (for example `orch.py report` of pepper-orchestrator) or by hand with the same facts. Anonymized.
+title: "[<plugin> <version>] "
+labels: ["bug", "from-agent", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Only anonymized facts: no names, paths, addresses, e-mails or secrets of your programs.
+        Security problems are not public Issues: see SECURITY.md.
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin and version
+      placeholder: pepper-orchestrator 0.8.0
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Claude Code version, OS and architecture, Python, shell, workspace shape.
+      placeholder: |
+        - Claude Code: 2.x
+        - OS: Linux 6.x (x86_64)
+        - Python: 3.12
+        - Shell: bash
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output (first lines, anonymized)
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected and actual
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+    validations:
+      required: false
+  - type: input
+    id: fingerprint
+    attributes:
+      label: Fingerprint
+      description: Plugin, version and the first error line; used to find duplicates.
+    validations:
+      required: false
+  - type: checkboxes
+    id: anonymized
+    attributes:
+      label: Anonymized
+      options:
+        - label: The report has no private names, paths, addresses, e-mails or secrets.
+          required: true

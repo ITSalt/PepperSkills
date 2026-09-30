@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.8.0 — preview, unreleased
+
+Preview of stage 3e: a channel for defects of the plugin itself.
+
+- `orch.py report --check [--command] [--log] [--title] [--expected-actual] [--workaround]`: facts of
+  the installed copy and the environment (plugin and version, Claude Code, OS and architecture,
+  Python, shell), the command and the first 30 lines of its output (or the top of the journal), the
+  workspace shape without names. Names from `orch.yaml` (program, tag, title, coordinator, modules,
+  sessions, repositories, their paths and origin URLs, web hosts, cloud environments, workspace
+  path and branch) become placeholders; home paths, e-mail addresses, secret-looking strings and the
+  terms of a gitignored `.private-terms.local` are removed; the result is scanned again and nothing
+  is written if anything private remains. Writes `bugs/PLUGIN-BUG-<n>.md` (owner language) and
+  `bugs/PLUGIN-BUG-<n>.issue.md` (English), prints the Issue text and a fingerprint: plugin, version
+  and the error line (the exception line of a traceback, else the first line with an error word,
+  else the title) without placeholders, timestamps, SHAs, package ids and numbers. Also covered:
+  owners and non-public hosts of every origin (the home repository too), URL-encoded forms, and
+  `NAME_PASSWORD=`/`NAME_KEY:` secrets. `--log` refuses environment, settings and key files,
+  `orch.yaml` and mostly `KEY=value` files.
+- `orch.py report --apply [--id] [--confirmed]`: without `--confirmed` and without `bug_reports: auto`
+  (which needs `bug_reports_decision: D-n` recorded in decisions.md; `lint` checks it) it refuses
+  with the question for the owner. The title and the text are scanned again. Searches Issues of
+  `ITSalt/PepperSkills` by the fingerprint as a quoted phrase (open and closed, open ones preferred,
+  the state journaled); a match gets a comment with this environment's facts, otherwise
+  `gh issue create --title "[<plugin> <version>] <title>" --label bug,from-agent,needs-triage`
+  (retried with `bug` only when the labels are missing, with a command for the maintainer). The URL
+  goes to the record, the journal and an FYI owner item. Without `gh`: steps for the GitHub MCP
+  tools, or the text for manual posting. `--security` points to SECURITY.md and writes nothing.
+- `orch.py report --status` (used by `resume`): recorded defects with their Issues and, with `gh`, one
+  line when a newer version is on the marketplace's `main`.
+- `report` mode and command; hard rule 11 "a defect of the plugin is reported, not patched"; the
+  package section "If a permission is denied" points to it. README (EN/RU) scenario "The plugin
+  broke - report it"; concept 1.7, section 16.
+- Repository: issue form `agent-bug-report.yml` (labels `bug`, `from-agent`, `needs-triage`), links to
+  SECURITY.md and CONTRIBUTING in `config.yml`, the indentation of `bug.yml` fixed (it did not parse),
+  `.github/CODEOWNERS` (`* @ITSalt`), PR template with `Fixes #N` and a private-traces check,
+  CONTRIBUTING sections "Report a defect from an agent", "Fix from an agent" and the merge rule;
+  `scripts/test-github-templates.py` in `check.sh`.
+
 ## 0.7.1 — preview, unreleased
 
 Hotfix for Windows: generated settings were rejected by their own validator, so no settings files

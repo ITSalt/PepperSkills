@@ -14,6 +14,7 @@ export PYTHONPATH="$(pwd)/scripts/offline_guard${PYTHONPATH:+:$PYTHONPATH}"
 "$PYTHON" scripts/test-offline-guard.py
 "$PYTHON" scripts/test-private-traces.py
 "$PYTHON" scripts/check-private-traces.py
+"$PYTHON" scripts/test-github-templates.py
 skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" scripts/sync-skill-versions.py --check
 "$PYTHON" scripts/sync-plugin-manifests.py --check

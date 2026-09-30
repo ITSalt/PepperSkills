@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.6 · 2026-09-30 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12; 1.6: verification by facts, section 9) · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.7 · 2026-09-30 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12; 1.6: verification by facts, section 9; 1.7: plugin defects reported, section 16) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -367,6 +367,7 @@ Discrepancies go to the `status.md` journal first, then action.
 | times in logs/messages without a time zone | draw no conclusions from matching times; ask to add UTC to the format (a task for the module) |
 | the package hypothesis is refuted by measurement | cancel the package with the reason, close the defect with the correct cause |
 | the owner repeated their requirement after an objection | that is the decision; record it and carry it out in full |
+| the plugin itself fails (its script, a rule it generates, a mode text) | never patch it in place: keep going with a workaround, record an anonymized report (`report` mode) and publish it as an Issue of the plugin's repository only after the owner's yes |
 
 ## 17. Anti-patterns
 

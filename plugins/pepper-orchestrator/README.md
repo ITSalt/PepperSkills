@@ -1,7 +1,7 @@
 # Pepper Orchestrator
 
-> **Preview (0.7.1).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
-> `close`, `reopen`;
+> **Preview (0.8.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
+> `close`, `reopen`, `report`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
 
@@ -34,8 +34,9 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:decide <text>` | record D-n / A-n / Q-n or open an owner question P-n |
 | `/pepper-orchestrator:close [result]` | goal reached: completion check, closeout report, archive |
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
+| `/pepper-orchestrator:report [what]` | report a defect of the plugin: anonymized record, Issue after your yes |
 
-Version 0.7.1 is a preview (stages 2a-2e, 3a, 3b). Modules can be whole repositories or areas and
+Version 0.8.0 is a preview (stages 2a-2e, 3a, 3b, 3e). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
@@ -92,6 +93,15 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
     `orch.py settings <module>`, then the session is restarted with the same command (or you answer
     the prompt in its window); an action only the owner does (merge, deploy, production) becomes an
     owner item. "Classifier unavailable" is not a verdict: the session retries later.
+13. **The plugin broke - report it.** When the plugin itself is wrong (a script error, a wrong
+    generated rule), the orchestrator keeps the program going with a workaround and runs `report`:
+    `orch.py report --check` writes an anonymized `bugs/PLUGIN-BUG-<n>.md` (names of your program,
+    modules, sessions and repositories, paths, addresses, e-mails, tokens and the terms of your
+    gitignored `.private-terms.local` become placeholders) and shows the Issue text. After your
+    explicit yes, `orch.py report --apply --confirmed` comments on a matching Issue in
+    ITSalt/PepperSkills or opens a new one (labels `bug`, `from-agent`, `needs-triage`); with
+    `bug_reports: auto` and your decision D-n it sends without asking. Security problems go through
+    SECURITY.md. `resume` lists the reports and says when a newer plugin version is available.
 
 ## Session permissions and permission mode
 

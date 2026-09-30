@@ -2,7 +2,9 @@
 
 ## What this changes
 
-<!-- One or two sentences. Link related issues with "Closes #N" or "Refs #N". -->
+<!-- One or two sentences. A fix of a reported defect starts with "Fixes #N". -->
+
+Fixes #
 
 ## Type
 
@@ -19,6 +21,9 @@
 - [ ] Internal links are relative and resolve.
 - [ ] I ran the affected examples against a current model and the behavior matches the documentation.
 - [ ] No personal data, internal URLs, or secrets in the diff.
+- [ ] No private traces: no names, domains or paths of private projects or machines in the diff,
+      the commits or this description (`scripts/check.sh` runs `check-private-traces.py`).
+- [ ] `bash scripts/check.sh` passes locally.
 
 ## Notes for the reviewer
 

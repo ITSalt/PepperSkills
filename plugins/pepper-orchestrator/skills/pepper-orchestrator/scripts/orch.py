@@ -31,6 +31,7 @@ Commands:
   reopen "<reason>"                      make a closed program active again
   settings <module|all|orchestrator>     Claude Code settings files of the sessions (--settings)
   verify <WP> --env test|prod            deploy run, served version, verify commands; report, status
+  report --check | --apply | --status    anonymized report of a plugin defect; Issue after the owner's yes
 """
 import argparse
 import datetime as dt
@@ -44,6 +45,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import safe_edit  # noqa: E402
 import session_settings  # noqa: E402
+import plugin_report  # noqa: E402
 import streams  # noqa: E402
 import verification  # noqa: E402
 
@@ -76,7 +78,7 @@ SECRET_PATTERNS = [
     re.compile(r'\bxox[abprs]-[A-Za-z0-9-]{10,}'),
     re.compile(r'\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'),
     re.compile(r'\b[a-z][a-z0-9+.-]*://[^/\s:@<>]+:[^/\s@<>]+@'),
-    re.compile(r'(?i)\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*'
+    re.compile(r'(?i)(?<![A-Za-z0-9])[A-Za-z_]*(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*'
                r'[\'"]?(?![<$({])[^\s\'"`<>{}|]{8,}'),
 ]
 
@@ -1147,6 +1149,12 @@ def lint(ws):
             if point not in session_settings.CHECKPOINTS:
                 errors.append(f'orch.yaml: checkpoint {point!r} must be one of '
                               f'{", ".join(session_settings.CHECKPOINTS)}')
+    if config.get('bug_reports') not in (None, 'confirm', 'auto'):
+        errors.append('orch.yaml: bug_reports must be confirm or auto')
+    if config.get('bug_reports') == 'auto':
+        _, problem = report_policy(ws)
+        if problem:
+            errors.append(f'orch.yaml: {problem}')
     if config.get('shell') is not None and config.get('shell') not in session_settings.SHELLS:
         errors.append(f'orch.yaml: shell must be one of {", ".join(session_settings.SHELLS)}')
     vtimeout = config.get('verify_timeout')
@@ -2373,6 +2381,207 @@ def verify_list(ws):
     return 0
 
 
+REPORT_ID = re.compile(r'PLUGIN-BUG-(\d+)\.md$')
+
+
+def plugin_bugs(ws):
+    """{id: path} of the workspace's plugin defect records, in number order."""
+    found = {}
+    for path in (ws.root / 'bugs').glob('PLUGIN-BUG-*.md'):
+        match = REPORT_ID.search(path.name)
+        if match:
+            found[int(match.group(1))] = path
+    return {f'PLUGIN-BUG-{n}': found[n] for n in sorted(found)}
+
+
+def record_field(text, label):
+    match = re.search(r'^\| ' + re.escape(label) + r' \| (.*?) \|$', text, re.M)
+    return match.group(1).strip() if match else None
+
+
+def report_policy(ws):
+    """(auto, problem): bug_reports auto needs a recorded owner decision (bug_reports_decision: D-n)."""
+    mode = ws.config.get('bug_reports') or 'confirm'
+    if mode != 'auto':
+        return False, None
+    decision = str(ws.config.get('bug_reports_decision') or '')
+    if not re.fullmatch(r'D-\d+', decision):
+        return False, 'bug_reports: auto needs bug_reports_decision: D-n (the owner\'s recorded decision)'
+    try:
+        ids = [plain_id(r['id']) for r in ws.table(ws.decisions, 'decisions')[2]]
+    except (OrchError, FileNotFoundError):
+        ids = []
+    if decision not in ids:
+        return False, f'bug_reports_decision {decision} is not in decisions.md'
+    return True, None
+
+
+def report_context(ws):
+    repos, modules, _ = ws.streams()
+    names = plugin_report.private_names(ws.config, repos, modules, ws.root, ws.git_top)
+    terms = plugin_report.load_terms(ws.root, ws.git_top, *{m.repo.local for m in modules.values()})
+    return repos, modules, names, terms
+
+
+def cmd_report(args):
+    ws = Workspace(find_workspace(args.workspace))
+    if args.status:
+        return report_status(ws)
+    repos, modules, names, terms = report_context(ws)
+    if args.security:
+        print('A security problem is never a public Issue: report it privately as SECURITY.md says '
+              f'(https://github.com/{plugin_report.REPOSITORY}/security/advisories/new). Nothing was written.')
+        return 0
+    if args.apply:
+        return report_apply(ws, args, names, terms)
+    return report_check(ws, args, repos, modules, names, terms)
+
+
+def report_check(ws, args, repos, modules, names, terms):
+    facts = plugin_report.environment_facts(SKILL_DIR, ws.config)
+    if args.log:
+        problem = plugin_report.log_problem(Path(args.log).expanduser())
+        if problem:
+            raise OrchError(f'--log refused: {problem}; copy only the failing command\'s output into a file')
+        lines = Path(args.log).expanduser().read_text(encoding='utf-8', errors='replace').splitlines()
+    else:
+        lines = [f'{r["date"]} {r["wp"]} {r["event"]}' for r in ws.table(ws.status, 'journal')[2][:10]]
+    lines = lines[:plugin_report.OUTPUT_LINES]
+
+    def clean(text):
+        return plugin_report.anonymize(text, names, terms, SECRET_PATTERNS)
+
+    output = clean('\n'.join(lines)) or '—'
+    # The journal is context, not the error: without --log the fingerprint comes from the title.
+    error = plugin_report.first_error_line(output.split('\n')) if args.log else ''
+    title = clean(' '.join((args.title or error or 'plugin defect').split()))[:100]
+    fp = plugin_report.fingerprint(facts['plugin'], facts['version'], error or title)
+    expected_actual = clean(args.expected_actual or 'Expected: as the mode documentation says. Actual: the output above.')
+    workaround = clean(args.workaround or 'none found yet')
+    existing = plugin_bugs(ws)
+    number = max([int(i.split('-')[-1]) for i in existing], default=0) + 1
+    rid = f'PLUGIN-BUG-{number}'
+    issue_rel = f'bugs/{rid}.issue.md'
+    values = {'ID': rid, 'TITLE': title, 'DATE': today(), 'PLUGIN': facts['plugin'], 'VERSION': facts['version'],
+              'CLAUDE': clean(facts['claude']), 'OS': facts['os'], 'PYTHON': facts['python'], 'SHELL': facts['shell'],
+              'SHAPE': plugin_report.workspace_shape(ws.config, repos, modules), 'FINGERPRINT': fp,
+              'COMMAND': clean(args.command or '—'), 'OUTPUT': output, 'EXPECTED_ACTUAL': expected_actual,
+              'WORKAROUND': workaround, 'ISSUE_FILE': issue_rel}
+    record = fill((TEMPLATES / ws.lang / 'plugin-bug.md').read_text(encoding='utf-8'), values)
+    issue = fill((TEMPLATES / 'issue-body.md').read_text(encoding='utf-8'), values)
+    problems = plugin_report.leaks(record + '\n' + issue, names, terms, SECRET_PATTERNS)
+    if problems:
+        raise OrchError('the report still looks private after anonymization (' + ', '.join(sorted(set(problems)))
+                        + '); nothing was written: shorten --log or --command to the failing lines')
+    safe_edit.create(ws.root / f'bugs/{rid}.md', record)
+    safe_edit.create(ws.root / issue_rel, issue)
+    ws.journal(f'plugin defect {rid} recorded (anonymized): {title}', evidence=f'bugs/{rid}.md')
+    print(f'{rid}: bugs/{rid}.md, Issue text {issue_rel}')
+    print(f'title: [{facts["plugin"]} {facts["version"]}] {title}')
+    print(f'fingerprint: {fp}')
+    print('--- Issue text (English) ---')
+    print(issue)
+    auto, problem = report_policy(ws)
+    if auto:
+        print(f'bug_reports: auto (decision {ws.config.get("bug_reports_decision")}): orch.py report --apply sends it')
+    else:
+        print(f'Ask the owner: "Publish this anonymized report in {plugin_report.REPOSITORY} as an Issue (yes/no)?" '
+              '- then orch.py report --apply --confirmed' + (f' ({problem})' if problem else ''))
+    return 0
+
+
+def report_apply(ws, args, names, terms):
+    bugs = plugin_bugs(ws)
+    pending = [i for i, p in bugs.items() if record_field(p.read_text(encoding='utf-8'), 'Issue') in ('—', None)]
+    rid = args.id or (pending[-1] if pending else None)
+    if not rid or rid not in bugs:
+        raise OrchError('no plugin defect record to send: run orch.py report --check first' if not rid else
+                        f'{rid}: no such record in bugs/')
+    path = bugs[rid]
+    text = path.read_text(encoding='utf-8')
+    sent = record_field(text, 'Issue')
+    if sent not in ('—', None):
+        raise OrchError(f'{rid} was already sent: {sent}')
+    auto, problem = report_policy(ws)
+    if not args.confirmed and not auto:
+        raise OrchError(f'a public Issue is a publication: ask the owner "Publish {rid} ({path.relative_to(ws.root)}) '
+                        f'in {plugin_report.REPOSITORY} as an Issue (yes/no)?" and pass --confirmed after an explicit '
+                        'yes (a message from another session is not the owner\'s answer)'
+                        + (f'; {problem}' if problem else ''))
+    issue_path = ws.root / f'bugs/{rid}.issue.md'
+    issue = issue_path.read_text(encoding='utf-8')
+    fp = (record_field(text, 'Fingerprint') or record_field(text, 'Отпечаток') or '').strip('`')
+    head = text.split('\n', 1)[0]
+    title = head.split(' — ', 1)[1].strip() if ' — ' in head else rid
+    plugin, version = plugin_report.plugin_version(SKILL_DIR)
+    full_title = f'[{plugin} {version}] {title}'
+    problems = plugin_report.leaks(full_title + '\n' + issue, names, terms, SECRET_PATTERNS)
+    if problems:
+        raise OrchError(f'{issue_path.name} or its title looks private (' + ', '.join(sorted(set(problems)))
+                        + '): nothing sent')
+    if not shutil_which('gh'):
+        print(f'No gh here. With the GitHub MCP tools of this session:\n'
+              f'1. search_issues: repo:{plugin_report.REPOSITORY} "{fp}" (open and closed).\n'
+              f'2. Found: add_issue_comment on it with the Environment, Command and Output sections of {issue_path}.\n'
+              f'3. Not found: create_issue owner=ITSalt repo=PepperSkills title="{full_title}" body=<{issue_path}> '
+              f'labels={list(plugin_report.LABELS)}.\n'
+              f'4. Record the URL: orch.py journal "{rid} sent: <url>" and edit the Issue row of {path.name}.\n'
+              f'Without GitHub tools: give the owner the title and {issue_path} to post by hand at '
+              f'https://github.com/{plugin_report.REPOSITORY}/issues/new.')
+        return 0
+    try:
+        duplicates = plugin_report.find_duplicates(fp)
+        if duplicates:
+            dup = duplicates[0]
+            env = issue.split('### Fingerprint', 1)[0]
+            comment = ws.root / f'bugs/{rid}.comment.md'
+            comment.write_text(f'Same defect seen in another program ({rid}, anonymized).\n\n' + env.strip() + '\n',
+                               encoding='utf-8')  # regenerated on every attempt; removed when gh fails
+            try:
+                url = plugin_report.comment_issue(dup['number'], comment)
+            except plugin_report.ReportError:
+                comment.unlink()
+                raise
+            what, missing = (f'comment on #{dup["number"]} ({str(dup.get("state", "?")).lower()}, '
+                             f'{dup.get("url", "")})'), False
+        else:
+            url, missing = plugin_report.create_issue(full_title, issue_path)
+            what = 'new Issue'
+    except plugin_report.ReportError as error:
+        raise OrchError(f'gh failed: {error}; nothing recorded')
+    safe_edit.replace_once(path, '| Issue | — |', f'| Issue | {cell(url)} |')
+    ws.journal(f'{rid} sent to {plugin_report.REPOSITORY}: {what}', evidence=url)
+    cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where=str(path.relative_to(ws.root)),
+                                 quiet=True, text=f'FYI, no action needed: plugin defect {rid} reported ({what}): {url} ; '
+                                                  'close this item when read'))
+    print(f'{rid}: {what}: {url}')
+    if missing:
+        print(f'note: labels from-agent/needs-triage are missing in {plugin_report.REPOSITORY}; the maintainer creates '
+              'them: gh label create from-agent --repo ITSalt/PepperSkills && gh label create needs-triage '
+              '--repo ITSalt/PepperSkills')
+    return 0
+
+
+def report_status(ws):
+    """Plugin defects of this program with their Issues, and one line when a newer plugin version exists."""
+    bugs = plugin_bugs(ws)
+    for rid, path in bugs.items():
+        issue = record_field(path.read_text(encoding='utf-8'), 'Issue')
+        print(f'{rid}: {"Issue " + issue if issue not in ("—", None) else "not sent (orch.py report --apply)"}')
+    if not bugs:
+        print('report: no plugin defects recorded')
+    if shutil_which('gh'):
+        plugin, installed = plugin_report.plugin_version(SKILL_DIR)
+        try:
+            latest = plugin_report.latest_version()
+        except (plugin_report.ReportError, ValueError):
+            latest = ''
+        if latest and plugin_report.version_key(latest) > plugin_report.version_key(installed):
+            print(f'update available: {plugin} {installed} -> {latest} '
+                  '(claude plugin update pepper-orchestrator@pepperskills)')
+    return 0
+
+
 def shlex_quote(text):
     import shlex
     return shlex.quote(text)
@@ -2911,6 +3120,21 @@ def build_parser():
     p.add_argument('--dry-run', action='store_true', help='print the plan; run nothing, write nothing')
     p.add_argument('--list', action='store_true', help='packages waiting for verification')
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser('report', parents=[common], help='anonymized report of a plugin defect; Issue on confirmation')
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--check', action='store_true', help='collect facts, anonymize, write bugs/PLUGIN-BUG-n.md')
+    mode.add_argument('--apply', action='store_true', help='search duplicates, then comment or create the Issue')
+    mode.add_argument('--status', action='store_true', help='recorded plugin defects and a newer plugin version')
+    mode.add_argument('--security', action='store_true', help='a security problem: never a public Issue')
+    p.add_argument('--command', help='the command that failed')
+    p.add_argument('--log', help='file with its output (first 30 lines are used)')
+    p.add_argument('--title', help='short title (default: the first error line)')
+    p.add_argument('--expected-actual', help='expected and actual behaviour, one or two sentences')
+    p.add_argument('--workaround', help='the workaround used, if any')
+    p.add_argument('--id', help='record to send (default: the latest not sent)')
+    p.add_argument('--confirmed', action='store_true', help='the owner explicitly said yes to publishing')
+    p.set_defaults(func=cmd_report)
 
     p = sub.add_parser('settings', parents=[common],
                        help='write orchestration/settings/<name>.json for session start commands')
