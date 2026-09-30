@@ -2026,6 +2026,9 @@ if args[:2] == ['pr', 'view']:
 elif args[:2] == ['pr', 'checks']:
     print(load('checks.json'))
 elif args[:2] == ['pr', 'merge']:
+    if os.path.exists(os.path.join(root, 'no_merge_commit')):
+        print('Merged pull request')
+        sys.exit(0)
     if os.path.exists(os.path.join(root, 'fail_merge')):
         sys.stderr.write('GraphQL: At least 1 approving review is required\\n')
         sys.exit(1)
@@ -2078,9 +2081,11 @@ def test_deliver(tmp):
                            '    deploy_workflows: [deploy.yml]\n    verify_test: ["echo stand ok"]\n'
                            '    rollback_test: "echo rollback {previous_sha}"\n')
     git(mono, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
-    for slug in ('orders', 'cart', 'fees'):
+    # The hosted URL resolves to the local bare remote: no fetch ever reaches the network.
+    git(mono, 'config', f'url.{tmp / "deliver/mono.git"}.insteadOf', 'https://github.com/example/mono.git')
+    for slug in ('orders', 'cart', 'fees', 'tax', 'ship'):
         run(home, 'new-wp', 'app', slug)
-    for n, wp in enumerate(('WP-APP-01', 'WP-APP-02', 'WP-APP-03'), 5):
+    for n, wp in enumerate(('WP-APP-01', 'WP-APP-02', 'WP-APP-03', 'WP-APP-04', 'WP-APP-05'), 5):
         run(home, 'set', wp, 'pr', f'https://github.com/example/mono/pull/{n}')
         run(home, 'set', wp, 'status', 'REVIEW')
     # Default (and every workspace before 0.9.0): the owner delivers.
@@ -2096,6 +2101,12 @@ def test_deliver(tmp):
     original = config.read_text(encoding='utf-8')
     safe_edit.replace_once(config, '  enabled_by: D-1\n', '')
     assert 'orchestrator needs enabled_by: D-n' in lint_errors(home)
+    invalid = run(home, 'deliver', '--apply', 'WP-APP-01', extra_env=env, ok=False).stderr
+    assert 'delivery configuration is invalid' in invalid, invalid  # M1: never delivers on a lint error
+    config.write_text(original, encoding='utf-8')
+    safe_edit.replace_once(config, '    merge_method: squash\n', '    merge_method: admin\n')
+    admin = run(home, 'deliver', '--apply', 'WP-APP-01', extra_env=env, ok=False).stderr
+    assert 'merge_method must be merge, squash or rebase' in admin, admin
     config.write_text(original, encoding='utf-8')
     assert run(home, 'lint').returncode == 0, lint_errors(home)
     # G1: not accepted; G2: accepted at another SHA; then every gate green.
@@ -2108,6 +2119,11 @@ def test_deliver(tmp):
     g2 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
     assert '| G2 | RED |' in g2 and 'new commits need a new review' in g2, g2
     run(home, 'accept', 'WP-APP-01', head, '--report', 'reports/wp-app-01-review.md')
+    assert f'pull/5 (accepted {head[:10]})' in (ws / 'status.md').read_text(encoding='utf-8')
+    status_text = (ws / 'status.md').read_text(encoding='utf-8')  # L1: sequential without the queue table
+    (ws / 'status.md').write_text(status_text.replace('<!-- orch:merge -->', '<!-- no merge table -->'), encoding='utf-8')
+    assert 'run orch.py upgrade' in run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
+    (ws / 'status.md').write_text(status_text, encoding='utf-8')
     g5 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
     assert '| G5 | RED |' in g5 and 'merge queue' in g5, g5  # sequential policy: the queue first
     run(home, 'merge', 'add', 'WP-APP-01', '--pr', 'https://github.com/example/mono/pull/5')
@@ -2150,6 +2166,8 @@ def test_deliver(tmp):
     # GitHub refuses the merge: an owner item, never a bypass.
     (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
     (stub / 'fail_merge').write_text('x', encoding='utf-8')
+    bad = run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'yes', extra_env=env, ok=False).stderr
+    assert '--after-failure takes the owner decision' in bad, bad  # M2
     refused = run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env, ok=False).stderr
     assert 'GitHub refused the merge' in refused and 'owner item opened' in refused, refused
     assert 'R-1' in run(home, 'queue').stdout
@@ -2160,6 +2178,33 @@ def test_deliver(tmp):
     assert '| G9 | RED |' in g9 and 'graph: checked' in g9, g9
     review3.write_text('# Review\n\ngraph: checked (status command output in the PR report)\n', encoding='utf-8')
     assert '| G9 | green |' in run(home, 'deliver', '--check', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env).stdout
+    # M3: a deploy run still in progress at verification: exit 2, MERGED, no hold, no rollback.
+    run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env)  # green again
+    pr('WP-APP-04', 8)
+    (ws / 'reports/wp-app-04-review.md').write_text('# Review\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-04', head, '--report', 'reports/wp-app-04-review.md')
+    run(home, 'merge', 'add', 'WP-APP-04')
+    (stub / 'runs.json').write_text(json.dumps([{'databaseId': 10, 'status': 'in_progress', 'conclusion': None,
+                                                 'headBranch': 'main', 'url': 'u10'}]), encoding='utf-8')
+    waiting = run(home, 'deliver', '--apply', 'WP-APP-04', '--after-failure', 'D-1', extra_env=env, ok=False)
+    assert waiting.returncode == 2 and 'waits for the deploy run' in waiting.stderr, waiting.stderr
+    assert 'hold' not in orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']
+    assert '| MERGED |' in next(l for l in (ws / 'status.md').read_text(encoding='utf-8').split('\n')
+                                if l.startswith('| [WP-APP-04]'))
+    assert 'after failure by D-1' in (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    (stub / 'runs.json').write_text(json.dumps([{'databaseId': 9, 'status': 'completed', 'conclusion': 'success',
+                                                 'headBranch': 'main', 'url': 'u9'}]), encoding='utf-8')
+    # L4: GitHub has not reported the merge commit: stop before the stand, one ledger row.
+    pr('WP-APP-05', 9)
+    (ws / 'reports/wp-app-05-review.md').write_text('# Review\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-05', head, '--report', 'reports/wp-app-05-review.md')
+    run(home, 'merge', 'add', 'WP-APP-05')
+    (stub / 'no_merge_commit').write_text('x', encoding='utf-8')
+    unknown = run(home, 'deliver', '--apply', 'WP-APP-05', '--after-failure', 'D-1', extra_env={**env, 'ORCH_MERGE_POLLS': '2'},
+                  ok=False).stderr
+    assert 'merge commit is unknown yet' in unknown, unknown
+    assert 'merge SHA unknown: stand not started' in (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    (stub / 'no_merge_commit').unlink()
     # lint: prod by the orchestrator needs merge by the orchestrator; a hold is the first warning.
     original = config.read_text(encoding='utf-8')
     safe_edit.replace_once(config, '  merge: orchestrator\n', '  merge: owner\n  prod: orchestrator\n')
@@ -2171,7 +2216,7 @@ def test_deliver(tmp):
     # The orchestrator's settings follow the delivery levels.
     run(home, 'settings', 'orchestrator')
     rules = json.loads((ws / 'orchestration/settings/orchestrator.json').read_text(encoding='utf-8'))['permissions']
-    assert 'Bash(gh pr merge * --repo example/mono *)' in rules['allow'] and 'Bash(gh pr merge *)' not in rules['deny']
+    assert 'Bash(gh pr merge *)' in rules['deny'] and not any('pr merge' in r for r in rules['allow']), rules
     assert 'Bash(echo rollback *)' in rules['allow'] and 'Bash(echo stand ok)' in rules['allow'], rules['allow']
     print('PASS deliver: owner default, delivery set by D-n, lint, gates G1/G2/G5/G10, merge with the configured '
           'method, ledger, run watch, verify, hold on failure, unhold, GitHub refusal -> owner item, settings')

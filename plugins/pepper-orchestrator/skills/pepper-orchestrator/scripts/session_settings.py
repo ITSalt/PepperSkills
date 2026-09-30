@@ -380,9 +380,9 @@ def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, wor
 
 
 def delivery_rules(config, modules, perms):
-    """Trusted delivery (orch.yaml delivery levels set to orchestrator by a decision D-n): the exact
-    commands of delivery. `gh pr merge` is allowed only for the configured repositories, so the general
-    deny of it is dropped (a deny would win over any allow)."""
+    """Trusted delivery (orch.yaml delivery levels set to orchestrator by a decision D-n): the commands
+    the orchestrator may run itself (runs, PR facts, the stand commands). The merge itself happens only
+    inside `orch.py deliver --apply` (a subprocess, not a Bash call), so `gh pr merge` stays denied."""
     block = config.get('delivery') if isinstance(config.get('delivery'), dict) else {}
     if not block.get('enabled_by'):
         return
@@ -392,9 +392,6 @@ def delivery_rules(config, modules, perms):
         return
     ask_rollback = 'rollback' in checkpoints(config)
     for module in modules.values():
-        name = streams.origin_name(module.repo)
-        if merge_level and name:
-            perms['allow'].append(f'Bash(gh pr merge * --repo {name} *)')
         perms['allow'] += ['Bash(gh run watch *)', 'Bash(gh run list *)', 'Bash(gh pr view *)', 'Bash(gh pr checks *)']
         raw = {**module.repo.raw, **module.raw}
         if stand_level:
@@ -404,8 +401,6 @@ def delivery_rules(config, modules, perms):
             if raw.get('rollback_test'):
                 rule = f'Bash({str(raw["rollback_test"]).replace("{previous_sha}", "*")})'  # the SHA varies
                 (perms['ask'] if ask_rollback else perms['allow']).append(rule)
-    if merge_level:
-        perms['deny'] = [r for r in perms['deny'] if r != 'Bash(gh pr merge *)']
 
 
 def apply_flags(command, settings, mode):

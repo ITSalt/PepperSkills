@@ -11,7 +11,9 @@ Show the owner queue as ready commands; on "done", verify by facts and close. Ar
    block with the expected output, then P-n questions with options and the recommendation.
 3. Items that are stale (the fact already happened, or superseded) are verified and closed or
    dropped with a reason before showing the queue.
-4. **Merges** come from the merge queue (`orch.py merge list`), in its order, one block per merge:
+4. **Merges** (only with `delivery.merge: owner`; with `merge: orchestrator` the `deliver` mode merges
+   and the owner gets FYI lines, not merge blocks) come from the merge queue (`orch.py merge list`),
+   in its order, one block per merge:
    the merge command, then the wait before the next one. With `merge_policy: sequential`:
    "merge -> green stand deploy and health check -> rebase of the next package (a `REVISE`-style
    pointer to its session) -> its merge". Never print two merges of one sequential repository as

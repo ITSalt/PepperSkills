@@ -45,6 +45,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import safe_edit  # noqa: E402
@@ -2631,6 +2632,9 @@ def cmd_accept(args):
     if r['status'] != 'ACCEPTED':
         cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='status', text='ACCEPTED', quiet=True,
                                    evidence=f'{sha[:10]}; {rel}'))
+    base_pr = re.sub(r'\s*\(accepted [0-9a-f]+\)', '', r['pr']).strip()
+    note = f'{base_pr} (accepted {sha[:10]})' if base_pr not in ('', '—') else f'(accepted {sha[:10]})'
+    cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='pr', text=note, quiet=True, evidence=None))
     ws.journal(f'{args.wp}: accepted at {sha}', wp=args.wp, evidence=f'report {rel}')
     print(f'{args.wp}: ACCEPTED at {sha[:10]} (report {rel})')
     return 0
@@ -2744,6 +2748,8 @@ def delivery_gates(ws, wp, args):
     else:
         gates += [('G3', False, 'no PR facts'), ('G4', False, 'no PR facts')]
     problems = []
+    if repo.merge_policy == 'sequential' and not ws.has_table(ws.status, 'merge'):
+        problems.append('merge_policy sequential needs the merge queue table: run orch.py upgrade')
     if repo.merge_policy == 'sequential' and ws.has_table(ws.status, 'merge'):
         rows = [q for q in ws.table(ws.status, 'merge')[2] if q['repo'] == repo.id]
         queued = [q for q in rows if q['status'] == 'queued']
@@ -2779,9 +2785,12 @@ def delivery_gates(ws, wp, args):
         (ws.root / report).read_text(encoding='utf-8'))))
     gates.append(('G9', graph_ok, 'no specification reference' if not spec_needed else
                   ('review report says graph: checked' if graph_ok else 'the review report lacks "graph: checked"')))
-    fresh = delivery.settings(Workspace(ws.root).config)  # re-read orch.yaml before every action
-    g10 = fresh['merge'] == 'orchestrator' and not fresh['hold']
-    gates.append(('G10', g10, f'merge {fresh["merge"]}, hold {fresh["hold"] or "none"}'))
+    reread = Workspace(ws.root)  # re-read orch.yaml before every action
+    fresh = delivery.settings(reread.config)
+    invalid = delivery.errors(reread.config, decision_ids(reread))
+    g10 = fresh['merge'] == 'orchestrator' and not fresh['hold'] and not invalid
+    gates.append(('G10', g10, f'merge {fresh["merge"]}, hold {fresh["hold"] or "none"}'
+                  + (f'; configuration invalid: {"; ".join(invalid)}' if invalid else '')))
     return gates, {'row': r, 'module': module, 'facts': facts, 'sha': sha, 'name': name, 'pr': pr}
 
 
@@ -2794,6 +2803,13 @@ def cmd_deliver(args):
         raise OrchError(f'delivery is done by the owner (delivery.merge: {d["merge"]}): the owner merges with '
                         f'`{owner_delivery_command(ws, module, r)}`; to hand merges to the orchestrator the owner '
                         'decides (D-n) and runs orch.py delivery set merge orchestrator --decision D-n')
+    problems = delivery.errors(ws.config, decision_ids(ws))
+    if problems:
+        raise OrchError('delivery configuration is invalid, nothing is delivered: ' + '; '.join(problems))
+    if args.after_failure:
+        if not re.fullmatch(r'D-\d+', args.after_failure) or args.after_failure not in decision_ids(ws):
+            raise OrchError(f'--after-failure takes the owner decision recorded in decisions.md (D-n), not '
+                            f'{args.after_failure!r}')
     if not shutil_which('gh'):
         raise OrchError('deliver needs gh (gh auth login): gates read the PR, its checks and deploy runs')
     gates, ctx = delivery_gates(ws, args.wp, args)
@@ -2820,22 +2836,39 @@ def cmd_deliver(args):
         ws.journal(f'{args.wp}: merge refused by GitHub: {error}', wp=args.wp, evidence=pr)
         print(f'deliver: GitHub refused the merge: {error}; owner item opened (never bypassed)', file=sys.stderr)
         return 1
-    after = delivery.pr_facts(name, pr)
-    merge_sha = ((after or {}).get('mergeCommit') or {}).get('oid') or ''
+    interval = int(os.environ.get('ORCH_POLL_INTERVAL', '15'))
+    merge_sha = ''
+    for attempt in range(int(os.environ.get('ORCH_MERGE_POLLS', '6'))):  # GitHub fills mergeCommit with a delay
+        try:
+            after = delivery.pr_facts(name, pr)
+        except delivery.DeliveryError:
+            after = None
+        merge_sha = ((after or {}).get('mergeCommit') or {}).get('oid') or ''
+        if merge_sha:
+            break
+        time.sleep(interval)
+    after_note = f'; after failure by {args.after_failure}' if args.after_failure else ''
     cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='status', text='MERGED', quiet=True,
-                               evidence=f'gh pr merge --{method}: {merge_sha[:10]} ({pr})'))
+                               evidence=f'gh pr merge --{method}: {merge_sha[:10] or "SHA unknown"} ({pr}){after_note}'))
+    if not merge_sha:
+        ledger(ws, args.wp, pr, 'unknown', note=f'merged --{method}; merge SHA unknown: stand not started{after_note}')
+        ws.journal(f'{args.wp}: merged, but GitHub has not reported the merge commit: stand and verification not '
+                   'started', wp=args.wp, evidence=pr)
+        print(f'deliver: {args.wp} merged, but the merge commit is unknown yet: find it (gh pr view {pr} --json '
+              f'mergeCommit), then orch.py verify {args.wp} --env test --sha <sha>', file=sys.stderr)
+        return 1
     if ws.has_table(ws.status, 'merge') and any(q['wp'] == args.wp and q['status'] == 'queued'
                                                for q in ws.table(ws.status, 'merge')[2]):
         cmd_merge(argparse.Namespace(workspace=str(ws.root), action='done', wp=args.wp, pr=None, json=False,
                                      evidence=f'orch.py deliver: {merge_sha[:10]}'))
-    ledger(ws, args.wp, pr, merge_sha, note=f'merged --{method}')
+    note = f'merged --{method}{after_note}'
+    ledger(ws, args.wp, pr, merge_sha, note=note)
     print(f'{args.wp}: merged ({method}) at {merge_sha[:10]}')
     if d['stand'] != 'orchestrator':
         print(f'stand: the owner\'s (delivery.stand: owner): after the deploy, orch.py verify {args.wp} --env test')
         return 0
     repo = module.repo
     workflows = verification.workflows(module, 'test')
-    interval = int(os.environ.get('ORCH_POLL_INTERVAL', '15'))
     if workflows:
         ok, detail = True, ''
         for wf in workflows:
@@ -2851,14 +2884,18 @@ def cmd_deliver(args):
         ok, detail = True, 'no deploy_workflows or deploy_test: the stand deploys by itself'
     if not ok:
         return delivery_failure(ws, args.wp, module, pr, merge_sha, detail, stand_run=detail)
-    ledger(ws, args.wp, pr, merge_sha, stand_run=detail, note=f'merged --{method}')
+    ledger(ws, args.wp, pr, merge_sha, stand_run=detail, note=note)
     code = cmd_verify(argparse.Namespace(workspace=str(ws.root), wp=args.wp, env='test', sha=merge_sha,
                                          expect_version=None, dry_run=False, list=False))
+    if code == 2:  # the deploy is still under way: not a failure, no hold, no rollback
+        ws.journal(f'{args.wp}: merged; stand verification waits for the deploy run', wp=args.wp, evidence=pr)
+        print(f'deliver: {args.wp} merged at {merge_sha[:10]}; verification waits for the deploy run: '
+              f'orch.py verify {args.wp} --env test --sha {merge_sha[:12]} when it has finished', file=sys.stderr)
+        return 2
     if code != 0:
-        return delivery_failure(ws, args.wp, module, pr, merge_sha,
-                                'stand verification ' + ('waits for the deploy run' if code == 2 else 'failed'),
+        return delivery_failure(ws, args.wp, module, pr, merge_sha, 'stand verification failed',
                                 stand_run=detail, verified=False)
-    ledger(ws, args.wp, pr, merge_sha, stand_run=detail, stand_verify='PASS', note=f'merged --{method}')
+    ledger(ws, args.wp, pr, merge_sha, stand_run=detail, stand_verify='PASS', note=note)
     print(f'{args.wp}: VERIFIED_TEST; next: the live scenario (verify mode), then the next package in the queue')
     return 0
 

@@ -24,9 +24,14 @@ Preview of stage 3c: trusted delivery of merges and the stand, only by an explic
   defect, `rollback_test` when configured, REVISE text; `orch.py hold` / `unhold`; the first `lint`
   warning and `resume` name the hold. Without `delivery.merge: orchestrator`, `deliver` refuses with
   "delivery is done by the owner" and the owner's command.
-- `settings orchestrator` follows the levels: `gh pr merge * --repo <origin> *` allowed (the general
-  deny dropped), `gh run watch/list`, `gh pr view/checks`, `deploy_test`, `verify_test` and
-  `rollback_test` verbatim (`rollback` checkpoint = ask).
+- `settings orchestrator` follows the levels: `gh run watch/list`, `gh pr view/checks`, `deploy_test`,
+  `verify_test` and `rollback_test` verbatim (`rollback` checkpoint = ask). `gh pr merge` stays denied
+  in every session: the merge happens only inside `orch.py deliver --apply`.
+- `deliver` refuses on an invalid delivery configuration (and G10 re-checks it); `merge_method` other
+  than merge, squash or rebase never reaches `gh`; `--after-failure` takes a recorded D-n, journaled
+  and in the ledger; a deploy run still in progress at verification exits 2 (MERGED, no hold); a merge
+  commit GitHub has not reported yet stops before the stand; `accept` notes the revision in the
+  package's PR cell; the review and owner modes hand merges to `deliver` when `merge: orchestrator`.
 - Work package row "Graph"; the review brief checks the graph and writes "graph: checked".
 - `deliver` mode and command; hard rules 1 and 13 name the only exception; README (EN/RU) "Trusted
   delivery"; concept 1.8, sections 1, 2 and 12.

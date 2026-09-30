@@ -158,6 +158,8 @@ def pr_checks(repo_name, number):
 
 
 def merge(repo_name, number, method, delete_branch):
+    if method not in MERGE_METHODS:  # never --admin or any other flag from a mistyped orch.yaml
+        raise DeliveryError(f'merge_method {method!r} is not one of {", ".join(MERGE_METHODS)}')
     args = ['gh', 'pr', 'merge', str(number), '--repo', repo_name, f'--{method}']
     if delete_branch:
         args.append('--delete-branch')
@@ -205,8 +207,13 @@ def run_command(command, cwd, timeout):
 
 
 def previous_sha(repo, sha):
+    """The first parent of sha: locally when known, else after a fetch that never prompts."""
     if not repo.local.is_dir():
         return None
-    streams.git(repo.local, 'fetch', '-q', 'origin')
-    result = streams.git(repo.local, 'rev-parse', f'{sha}^1')
+    result = streams.git(repo.local, 'rev-parse', '--verify', '-q', f'{sha}^1')
+    if result.returncode:
+        import os
+        subprocess.run(['git', '-C', str(repo.local), 'fetch', '-q', 'origin'], capture_output=True, text=True,
+                       env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'}, timeout=120)
+        result = streams.git(repo.local, 'rev-parse', '--verify', '-q', f'{sha}^1')
     return result.stdout.strip() if result.returncode == 0 else None
