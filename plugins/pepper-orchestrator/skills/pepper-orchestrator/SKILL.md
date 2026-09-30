@@ -1,8 +1,8 @@
 ---
 name: pepper-orchestrator
-description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, resume, owner, decide, close, reopen. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
+description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, resume, owner, decide, close, reopen. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.6.0
+  version: 0.7.0
 ---
 
 # Pepper Orchestrator
@@ -66,6 +66,7 @@ the skill as `/pepper-orchestrator <mode> <arguments>` or by a phrase.
 | `plan <task>` | facts -> plan -> work packages -> owner questions | [references/modes/plan.md](references/modes/plan.md) |
 | `dispatch <WP>` | checks, locks, start command or TASK line, `DISPATCHING` | [references/modes/dispatch.md](references/modes/dispatch.md) |
 | `review <WP> [PR]` | automatic findings, reviewer agent or revision diff, verdict, report | [references/modes/review.md](references/modes/review.md) |
+| `verify <WP> --env test\|prod` | deploy run, served version, verify commands, live scenario; `VERIFIED_TEST` / `PROD` | [references/modes/verify.md](references/modes/verify.md) |
 | `resume` | restore from files, reconcile with reality, next step | [references/modes/resume.md](references/modes/resume.md) |
 | `owner [id]` | owner queue as commands; on "done" verify and close | [references/modes/owner.md](references/modes/owner.md) |
 | `decide <text>` | record D-n / A-n / Q-n or open P-n | [references/modes/decide.md](references/modes/decide.md) |
@@ -87,8 +88,9 @@ packages in a finished one. A closed program refuses `plan`, `dispatch`, `new-wp
 `decide`, `owner add`, `review-start`, `lock` and `merge` changes; `reopen` is only for its own
 unfinished goal. `ORCH_NO_GH=1` makes the scripts ignore `gh` (offline checks).
 
-Planned modes, not automated in this version: `verify`, `release`, `retro`. When the program
-needs them, follow the concept directly: verify per section 9, release per section 15. Record every result through `scripts/orch.py` as usual.
+Planned modes, not automated in this version: `release`, `retro`. When the program needs them,
+follow the concept directly: release per section 15. Verification after a merge or deploy is the
+`verify` mode (`orch.py verify`, concept section 9), whoever merged or deployed. Record every result through `scripts/orch.py` as usual.
 
 **Session settings.** `orch.py settings <module|all|orchestrator>` generates
 `orchestration/settings/<name>.json` from `orch.yaml`: narrow allow rules (reading, the module's

@@ -18,7 +18,7 @@ RESOURCE_MODES = ('package', 'on-demand')
 # Statuses with a live, unmerged branch: they compete for paths and locks.
 ACTIVE = ('DISPATCHING', 'IN_PROGRESS', 'REVIEW', 'REVISE', 'ACCEPTED')
 # Statuses that satisfy a dependency.
-SATISFIED = ('MERGED', 'TEST-APPLIED', 'DEPLOYED_TEST', 'VERIFYING', 'PROD', 'DONE')
+SATISFIED = ('MERGED', 'TEST-APPLIED', 'DEPLOYED_TEST', 'VERIFYING', 'VERIFIED_TEST', 'PROD', 'DONE')
 
 # Header labels of the work package table, per template language.
 WP_LABELS = {
@@ -427,6 +427,7 @@ class Repo:
         self.sessions = str(data.get('sessions') or defaults.get('sessions') or 'local')
         self.cloud_environment = data.get('cloud_environment') or defaults.get('cloud_environment')
         self.implicit = implicit
+        self.raw = data
 
     def on_demand(self, name):
         return self.resource_modes.get(name) == 'on-demand'

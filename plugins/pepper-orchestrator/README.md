@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.6.0).** Modes `init`, `plan`, `dispatch`, `review`, `resume`, `owner`, `decide`,
+> **Preview (0.7.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
 > `close`, `reopen`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
@@ -28,18 +28,20 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:plan <task>` | facts -> plan -> work packages -> owner questions |
 | `/pepper-orchestrator:dispatch <WP>` | checks overlaps and locks, prints the start command |
 | `/pepper-orchestrator:review <WP> [PR]` | automatic findings, reviewer agent, verdict, report |
+| `/pepper-orchestrator:verify <WP> --env test\|prod` | deploy run, served version, verify commands, live scenario |
 | `/pepper-orchestrator:resume` | read state, reconcile with reality, next step |
 | `/pepper-orchestrator:owner` | owner queue as commands; on "done" verify and close |
 | `/pepper-orchestrator:decide <text>` | record D-n / A-n / Q-n or open an owner question P-n |
 | `/pepper-orchestrator:close [result]` | goal reached: completion check, closeout report, archive |
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 
-Version 0.6.0 is a preview (stages 2a-2e, 3a). Modules can be whole repositories or areas and
+Version 0.7.0 is a preview (stages 2a-2e, 3a, 3b). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
-on resubmissions. Verify, release and retro modes and PreToolUse guards come in later versions;
-until then the skill follows the concept for those steps by instructions.
+on resubmissions. `verify` checks the stand and production by facts. Release and retro modes and
+PreToolUse guards come in later versions; until then the skill follows the concept for those steps
+by instructions.
 
 ## Typical workflows
 
@@ -78,7 +80,13 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
     `PLAN.md` holds, run `close` (it checks packages, PRs, locks and owner items by facts; carry
     leftovers with `orch.py owner carry <id> "<reason>"`), then start the next goal as a new
     program with `init`. In-repo, the owner runs the printed tag and branch-deletion commands.
-11. **A stream got a refusal.** The session does not work around it: it sends
+11. **Checking the stand and production by facts.** After you merge (and the stand or production
+    deploys), `verify <WP> --env test` checks the deploy run for the merge commit, the version the
+    environment serves (`version_url`) and the repository's read-only `verify_test` commands, then
+    walks the package's acceptance criteria as a live scenario. PASS gives `VERIFIED_TEST` (after a
+    release, `--env prod` gives `PROD`); FAIL keeps the status and writes a defect to `bugs/`.
+    `orch.py verify --list` shows what waits; only `VERIFIED_TEST` packages go into a release.
+12. **A stream got a refusal.** The session does not work around it: it sends
     `QUESTION <WP> :: denied: <exact text> :: ref=<command>`. The orchestrator answers on the facts:
     a narrow rule that is missing (a test command, a generator) goes into `orch.yaml` and
     `orch.py settings <module>`, then the session is restarted with the same command (or you answer
@@ -138,8 +146,8 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
   becomes your default for every new session. Use the start flags or the `/model` picker with `s`.
   Do not set `ANTHROPIC_MODEL` in a cloud environment shared with the orchestrator, and keep
   secrets out of environment variables.
-- Agents: `orchestrator-scout` runs on Opus; `orchestrator-reviewer` runs on the orchestrator's
-  model.
+- Agents: `orchestrator-scout` runs on Opus; `orchestrator-reviewer` and `orchestrator-verifier`
+  run on the orchestrator's model.
 
 ## Cloud sessions
 
@@ -186,9 +194,10 @@ boundaries: [concept](skills/pepper-orchestrator/references/concept.md).
 | Skill (core) | `skills/pepper-orchestrator/` | any agent that reads files and runs Python 3 |
 | Workspace CLI | `skills/pepper-orchestrator/scripts/orch.py`, `safe_edit.py` | standard library + git |
 | Templates (en, ru) | `skills/pepper-orchestrator/templates/` | portable |
+| Verification | `scripts/verification.py`, `templates/<lang>/verify-report.md` -> `reports/verify-*.md` | standard library + git; gh for runs |
 | Session settings | `scripts/session_settings.py`, `templates/settings/*.json` -> `orchestration/settings/*.json` | Claude Code settings format |
 | Short commands | `commands/` | Claude Code adapter |
-| Agents `orchestrator-reviewer`, `orchestrator-scout` | `agents/` | Claude Code adapter; elsewhere the same brief goes to any subagent |
+| Agents `orchestrator-reviewer`, `orchestrator-verifier`, `orchestrator-scout` | `agents/` | Claude Code adapter; elsewhere the same brief goes to any subagent |
 | Plugin manifest | `plugin.json` | canonical; client manifests are generated |
 
 Clients without cross-session messaging work too: the owner relays the one-line pointers, and

@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.5 · 2026-09-29 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12) · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.6 · 2026-09-30 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12; 1.6: verification by facts, section 9) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -237,6 +237,14 @@ CI: usually only a few lines.
   first live case (or asks the owner for a log line).
 - Live-check tools degrade (precedent: a Docker Playwright MCP failed with EOF). Keep a fallback in
   the scenario (local Chromium over CDP) and do not treat tool degradation as a product defect.
+- **By facts, in a fixed order** (`orch.py verify <WP> --env test|prod`): the deploy run for the
+  expected SHA (the merge commit) on the environment's branch finished with success; the served
+  version is that SHA; the repository's read-only verify commands pass (health, migration journal,
+  smoke); then the live scenario of the package's acceptance criteria. The report goes to
+  `reports/verify-<WP>-<env>-<date>.md`. PASS gives `VERIFIED_TEST` (test) or `PROD` (prod); FAIL
+  keeps the status, writes a defect to `bugs/`, and asks the owner only when the next step needs
+  their rights. This works the same whoever merged and deployed. Only `VERIFIED_TEST` packages go
+  into a release sheet.
 
 ## 10. Owner queue and talking to the owner
 

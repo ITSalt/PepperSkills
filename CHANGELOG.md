@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.7.0 (preview)
+
+Verification by facts: `verify` mode and `orch.py verify <WP> --env test|prod` (deploy run for the
+merge commit, served version, read-only verify commands, report, `VERIFIED_TEST`/`PROD`, defects),
+a read-only verifier agent and a live-scenario brief. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.6.0 (preview)
 
 Session permissions: generated settings files for module and orchestrator sessions (narrow allow,
