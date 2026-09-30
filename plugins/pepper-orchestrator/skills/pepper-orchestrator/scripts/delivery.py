@@ -12,6 +12,7 @@ import re
 import subprocess
 import time
 
+import release
 import safe_edit
 import streams
 
@@ -73,6 +74,19 @@ def errors(config, decision_ids):
     if d['prod'] == 'orchestrator' and d['merge'] == 'owner':
         found.append('orch.yaml: delivery.prod: orchestrator needs delivery.merge: orchestrator (a prod release '
                      'without its own merge and stand makes no sense)')
+    if d['prod_migrations'] == 'orchestrator' and d['prod'] != 'orchestrator':
+        found.append('orch.yaml: delivery.prod_migrations: orchestrator needs delivery.prod: orchestrator')
+    if d['release_policy'] is not None and d['release_policy'] not in release.POLICIES:
+        found.append('orch.yaml: delivery.release_policy must be batch or per_package')
+    if d['release_window']:
+        try:
+            release.parse_window(d['release_window'])
+        except release.WindowError as error:
+            found.append(f'orch.yaml: delivery.{error}' if str(error).startswith('release_window') else
+                         f'orch.yaml: delivery.release_window: {error}')
+    limit = d['max_prod_releases_per_day']
+    if limit is not None and not (isinstance(limit, int) and not isinstance(limit, bool) and limit > 0):
+        found.append('orch.yaml: delivery.max_prod_releases_per_day must be a positive number')
     for kind, items in (('repo', config.get('repos') or []), ('module', config.get('modules') or [])):
         for item in items:
             if not isinstance(item, dict):
@@ -80,6 +94,12 @@ def errors(config, decision_ids):
             method = item.get('merge_method')
             if method is not None and method not in MERGE_METHODS:
                 found.append(f'orch.yaml: {kind} {item.get("id")}: merge_method must be merge, squash or rebase')
+            promote = item.get('promote')
+            if promote is not None and promote not in release.PROMOTES:
+                found.append(f'orch.yaml: {kind} {item.get("id")}: promote must be pr or ff')
+            if promote == 'ff' and not item.get('release_clone'):
+                found.append(f'orch.yaml: {kind} {item.get("id")}: promote: ff needs release_clone (a clean clone '
+                             'the fast-forward push goes from)')
             timeout = item.get('run_timeout')
             if timeout is not None and not (isinstance(timeout, int) and not isinstance(timeout, bool) and timeout > 0):
                 found.append(f'orch.yaml: {kind} {item.get("id")}: run_timeout must be a positive number of seconds')

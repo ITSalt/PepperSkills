@@ -13,7 +13,7 @@ By default the owner merges and deploys; every workspace before 0.9.0 behaves th
 > the orchestrator merges each accepted PR with the repository's method, waits for the stand deploy,
 > verifies it by facts and stops at the first failure (recommended for a new program after two clean
 > batches); (b) merge only: you deploy and verify the stand; (c) nothing: you merge and deploy, as
-> now. Production stays yours in this version.
+> now. Production is a separate decision later (`release` mode).
 
 Record the answer (`orch.py decide D "..." --closes P-n`), then
 `orch.py delivery set merge orchestrator --decision D-n` (and `stand`). A level goes back with

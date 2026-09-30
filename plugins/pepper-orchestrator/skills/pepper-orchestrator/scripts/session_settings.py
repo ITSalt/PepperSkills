@@ -381,14 +381,17 @@ def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, wor
 
 def delivery_rules(config, modules, perms):
     """Trusted delivery (orch.yaml delivery levels set to orchestrator by a decision D-n): the commands
-    the orchestrator may run itself (runs, PR facts, the stand commands). The merge itself happens only
-    inside `orch.py deliver --apply` (a subprocess, not a Bash call), so `gh pr merge` stays denied."""
+    the orchestrator may run itself (runs, PR facts, the stand and prod commands). The merge, the promote
+    PR and the promote push happen only inside `orch.py deliver --apply` / `orch.py release --apply` (a
+    subprocess, not a Bash call), so `gh pr merge`, `gh pr create` by hand and pushes to a prod branch
+    stay without allow rules (`gh pr merge` and pushes to the base stay denied)."""
     block = config.get('delivery') if isinstance(config.get('delivery'), dict) else {}
     if not block.get('enabled_by'):
         return
     merge_level = block.get('merge') == 'orchestrator'
     stand_level = block.get('stand') == 'orchestrator'
-    if not (merge_level or stand_level):
+    prod_level = block.get('prod') == 'orchestrator'
+    if not (merge_level or stand_level or prod_level):
         return
     ask_rollback = 'rollback' in checkpoints(config)
     for module in modules.values():
@@ -400,6 +403,12 @@ def delivery_rules(config, modules, perms):
             perms['allow'] += bash_rules(streams.as_list(raw.get('verify_test')))
             if raw.get('rollback_test'):
                 rule = f'Bash({str(raw["rollback_test"]).replace("{previous_sha}", "*")})'  # the SHA varies
+                (perms['ask'] if ask_rollback else perms['allow']).append(rule)
+        if prod_level:
+            perms['allow'] += bash_rules(streams.as_list(raw.get('verify_prod')))
+            perms['allow'] += bash_rules(streams.as_list(raw.get('backup_prod')))
+            if raw.get('rollback_prod'):
+                rule = f'Bash({str(raw["rollback_prod"]).replace("{previous_sha}", "*")})'
                 (perms['ask'] if ask_rollback else perms['allow']).append(rule)
 
 

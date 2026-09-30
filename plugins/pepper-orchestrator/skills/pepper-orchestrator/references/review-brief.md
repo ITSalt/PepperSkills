@@ -71,6 +71,9 @@ Pick the lists that match the diff; turn each item into a question with concrete
   an old branch drops values added since)?
 - Backfill and defaults for existing rows; locks and runtime on large tables; reversibility.
 - Functions and views: the live definition after the migration, not only the file.
+- Verdict line for the release: `migrations: safe, reversible` only when both hold (write what does
+  not hold otherwise); with `prod_migrations: orchestrator` `orch.py release` ships migrations only
+  with this line in the report (gate P4).
 
 ### Registries and shared types
 

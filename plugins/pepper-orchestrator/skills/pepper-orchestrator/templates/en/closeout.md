@@ -12,12 +12,19 @@ Program `{{PROGRAM}}`, closed {{DATE}}. One program, one goal: a new goal is a n
 
 ## Work packages
 
-Version: fill in the release or merge commit of each package after checking it (the plugin does
-not read releases).
+Version: from the delivery ledger when the orchestrator delivered the package; otherwise fill in
+the release or merge commit after checking it.
 
 | WP | Module | Title | Status | PR | Version |
 |----|--------|-------|--------|----|---------|
 {{PACKAGES}}
+
+## Deliveries
+
+Package rows / releases in the ledger; every release with its promote, prod SHA and
+verification.
+
+{{DELIVERIES}}
 
 ## Checks without full evidence
 

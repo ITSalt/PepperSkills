@@ -360,6 +360,16 @@ Discrepancies go to the `status.md` journal first, then action.
   accumulate in the base branch, package versions are not bumped until the release decision.
 - Stores and external consoles are the owner's only; the orchestrator prepares texts (release notes
   within length limits, explanations for review, declarations).
+- **Release by the orchestrator** (plugin `release` mode), only by an explicit owner decision
+  (`delivery.prod: orchestrator`, D-n) after merge and stand were handed over: production goes in
+  batches by the release sheet (`per_package` for projects without a database or a store); the gates
+  are facts, not status fields: the same SHA that passed the stand is promoted (no cherry-pick, no
+  commit the stand never saw), every package verified on the stand, no open high defect, migrations
+  reviewed as safe and reversible with a backup in this release (database migrations stay the owner's
+  by default: `prod_migrations: owner`), the release window and the daily limit, no hold. A failure
+  on prod holds every delivery; the orchestrator runs the configured rollback only for a batch
+  without migrations and **never rolls back a database**; otherwise the owner gets the rollback
+  command. The prohibition to ask another session to merge, deploy or release stays.
 
 ## 16. Typical failures
 
