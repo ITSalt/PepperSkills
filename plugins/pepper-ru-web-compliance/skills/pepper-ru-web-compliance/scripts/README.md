@@ -19,11 +19,11 @@
 Нужен [uv](https://docs.astral.sh/uv/getting-started/installation/); Python 3.10+
 указан в PEP 723 заголовках скриптов. `uv run --no-project` использует отдельное
 окружение, не добавляя зависимости в проект сайта. Офлайн-детекторы работают на стандартной библиотеке. Сетевой сбор использует
-`h11` и Playwright; зависимости указаны в заголовках скриптов. Для браузера/PDF добавляйте `--with playwright`
+`h11` и Playwright; зависимости указаны в заголовках скриптов. Для браузера/PDF добавляйте `--with playwright==1.56.0`
 при каждом запуске. Команды выполняются из корня распакованного скилла:
 
 ```bash
-uv run --no-project --with playwright python -m playwright install chromium
+uv run --no-project --with playwright==1.56.0 python -m playwright install chromium
 ```
 
 Для разработки: `gen_checklist.py --write` требует PyYAML; `--check` проверяет
@@ -35,9 +35,9 @@ checklist и оба JSON-файла без записи. В поставке JSO
 `manifest.json`. Детекторы обязаны читать этот флаг и выставлять `UNKNOWN`
 вместо `PASS` по правилам, которые без рендера не проверяются.
 
-## Единый сетевой этап (2.3.0)
+## Единый сетевой этап (2.4.0)
 
-Шлюз `https://lts.itsalt.ru:8443` уже настроен; обычный запуск не требует
+Шлюз `https://lts.itsalt.ru/ru-audit` уже настроен; обычный запуск не требует
 переменных окружения. `PEPPER_RU_GATEWAY_URL` необязательно задаёт другой HTTPS-шлюз,
 `PEPPER_RU_AUDIT_PROXY` — собственный РФ-прокси (HTTP/HTTPS). [Транспорт, квоты и ошибки](../references/gateway.md).
 

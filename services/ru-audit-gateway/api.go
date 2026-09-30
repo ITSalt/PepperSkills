@@ -134,6 +134,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
+	g.serveAuthenticated(w, r, s, proxy, current)
+}
+func (g *Gateway) serveAuthenticated(w http.ResponseWriter, r *http.Request, s *session, proxy, current bool) {
 	if proxy {
 		if r.Method == "CONNECT" {
 			g.connect(w, r, s)

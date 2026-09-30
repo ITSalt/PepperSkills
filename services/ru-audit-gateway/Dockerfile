@@ -11,7 +11,7 @@ COPY --from=build /gateway /usr/local/bin/gateway
 COPY entrypoint.sh /usr/local/bin/entrypoint
 COPY firewall.nft /etc/gateway-firewall.nft
 RUN chmod 755 /usr/local/bin/entrypoint
-EXPOSE 8443
+EXPOSE 8443 8080
 VOLUME /data
 ENTRYPOINT ["/usr/local/bin/entrypoint"]
 CMD ["/usr/local/bin/gateway"]

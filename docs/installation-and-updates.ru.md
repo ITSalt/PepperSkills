@@ -142,7 +142,7 @@ marketplaces и публичный каталог. Документация оп
 
 - [pepper-creative-mode 2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1)
 - [pepper-prompt-engineer 2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1)
-- [pepper-ru-web-compliance 2.3.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.3.0)
+- [pepper-ru-web-compliance 2.4.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.4.0)
 
 В разделе Assets скачайте `<name>.zip` для загрузки скилла или `<name>.plugin.zip` для плагина. `SHA256SUMS` содержит контрольные суммы обоих архивов.
 
@@ -154,7 +154,7 @@ Custom skills используют ZIP с одной верхней папкой
 проверьте, что в этой среде включено выполнение кода.
 
 Архив `pepper-ru-web-compliance/pepper-ru-web-compliance.skill` обновлён
-28 сентября 2026 года до 2.3.0 и совпадает с standalone ZIP этой версии.
+29 сентября 2026 года до 2.4.0 и совпадает с standalone ZIP этой версии.
 Остальные `.skill` остаются прежними сборками из commit `4128fe6`.
 Для последующих обновлений используйте версионные ZIP или Assets релиза.
 При выпуске после сборки ZIP выполните `python3 scripts/sync-compat-archives.py --write`;

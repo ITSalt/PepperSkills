@@ -6,14 +6,59 @@ from pathlib import Path
 import tempfile
 import unittest
 from dataclasses import asdict
+from unittest.mock import patch
 
 import detect
+import collect
 import render
+import registries
 from selftest import artifacts_fixture
 from processing_basis import classify_activities
 
 
+VERIFIED_COLLECTION = {
+    'collector': {'name': 'pepper-ru-web-compliance', 'version': '2.4.0', 'observation_version': 2},
+    'started_at': '2026-09-21', 'finished_at': '2026-09-21',
+    'network': {'mode': 'managed', 'complete': True, 'egress': {'ip': '203.0.113.1', 'country': 'RU'}},
+    'network_observations': {'count': 1, 'versions': ['2']},
+}
+
+
 class AuditRegression(unittest.TestCase):
+    def test_sitemap_index_yields_pages_not_xml_files(self):
+        docs = {
+            'https://example.ru/sitemap.xml': '<sitemapindex><loc>https://example.ru/child.xml</loc></sitemapindex>',
+            'https://example.ru/child.xml': '<urlset><loc>https://example.ru/privacy</loc><loc>https://example.ru/about</loc></urlset>',
+        }
+        with patch.object(collect, 'fetch_text', side_effect=lambda url: (200, docs.get(url, ''))):
+            self.assertEqual(collect.discover_from_sitemap('https://example.ru'),
+                             ['https://example.ru/privacy', 'https://example.ru/about'])
+
+    def test_page_budget_uses_observed_links_not_guessed_paths(self):
+        with patch.object(collect, 'discover_from_sitemap', return_value=[]):
+            self.assertEqual(collect.build_page_list('https://example.ru', 20),
+                             ['https://example.ru/'])
+
+    def test_successful_registry_source_does_not_report_guidance_as_error(self):
+        spec = registries.RegistrySpec('example', 'Example', [registries.Source(
+            'https://example.ru/list', 'official',
+            lambda _: [registries.Entry('1', 'org', 'Example')],
+            note='Отвечает только с российских адресов')])
+        with patch.object(registries, 'fetch_source_bytes', return_value=b'fixture'):
+            result = registries.fetch_live(spec)
+        self.assertEqual(len(result.entries), 1)
+        self.assertIsNone(result.error)
+
+    def test_generic_registry_alias_needs_name_context(self):
+        data = registries.RegistryData(entries=[{
+            'id': 'example', 'kind': 'org', 'name': 'Служба поддержки',
+            'aliases': ['Служба поддержки']}])
+        matcher = registries.RegistryMatcher(data)
+        self.assertEqual(matcher.find('Обратитесь в службу поддержки по телефону'), [])
+        quoted = matcher.find('Организация «Служба поддержки» упомянута в статье')
+        self.assertEqual(len(quoted), 1)
+        self.assertEqual(quoted[0].confidence, 'low')
+
     def classify(self, text, observed=None):
         return classify_activities([('https://example.ru/privacy', text)], observed or [
             {'service': 'Метрика', 'purpose': 'analytics', 'requests': []}])
@@ -63,7 +108,8 @@ class AuditRegression(unittest.TestCase):
             ctx.net['before_consent'] = [{'url': 'https://mc.yandex.ru/watch/1'}]
             f = asdict(detect.detect_legitimate_interest(ctx)[0])
             f['basis_evidence'][0]['snippet'] += ' BASIS_PROOF_913'
-            data = {'target': ctx.target, 'generated_at': '2026-09-21', 'findings': [f], 'pages_analysed': 1}
+            data = {'target': ctx.target, 'generated_at': '2026-09-21', 'findings': [f], 'pages_analysed': 1,
+                    'collection': VERIFIED_COLLECTION}
             for report in (render.report_md(data), render.report_html(data), render.plan_md(data), render.plan_html(data)):
                 self.assertIn('https://example.ru/privacy', report)
             for report in (render.report_md(data), render.report_html(data)):
@@ -114,7 +160,7 @@ class AuditRegression(unittest.TestCase):
                     detect.attach_semantic_reviews(ctx, [f])
                     row = asdict(f)
                     data = {'target': ctx.target, 'generated_at': '2026-09-26',
-                            'pages_analysed': 1, 'findings': [row]}
+                            'pages_analysed': 1, 'findings': [row], 'collection': VERIFIED_COLLECTION}
                     unchanged = copy.deepcopy(data)
                     summary = render.summarise(data)
                     bucket = {'PASS': 'passes', 'FAIL': 'fails', 'UNKNOWN': 'unknowns', 'NA': 'nas'}[status]
@@ -169,7 +215,7 @@ class AuditRegression(unittest.TestCase):
                 [detect.Evidence(kind='text', detail='Цитата с условием', snippet=quote,
                                  url='https://example.ru/privacy')]))
             data = {'target': ctx.target, 'generated_at': '2026-09-26',
-                    'findings': [f], 'pages_analysed': 1}
+                    'findings': [f], 'pages_analysed': 1, 'collection': VERIFIED_COLLECTION}
             for report in (render.report_md(data), render.report_html(data)):
                 self.assertIn(quote, report)
 

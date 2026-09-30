@@ -141,7 +141,7 @@ Download the package for your product:
 
 - [pepper-creative-mode 2.0.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-creative-mode-v2.0.1)
 - [pepper-prompt-engineer 2.5.1](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-prompt-engineer-v2.5.1)
-- [pepper-ru-web-compliance 2.3.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.3.0)
+- [pepper-ru-web-compliance 2.4.0](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-ru-web-compliance-v2.4.0)
 
 Under Assets, choose `<name>.zip` for skill upload or `<name>.plugin.zip` for the plugin. `SHA256SUMS` covers both archives.
 
@@ -152,8 +152,8 @@ Local `~/.claude/skills` and account/Cowork uploads are separate installation sc
 Enable the skill on the surface you will use, then test invocation, update, and disable.
 For scripted skills, check that code execution is enabled in that environment.
 
-`pepper-ru-web-compliance/pepper-ru-web-compliance.skill` was refreshed to 2.3.0
-on 2026-09-28 and matches that version's standalone ZIP. Other `.skill` files
+`pepper-ru-web-compliance/pepper-ru-web-compliance.skill` was refreshed to 2.4.0
+on 2026-09-29 and matches that version's standalone ZIP. Other `.skill` files
 remain frozen builds from commit `4128fe6`. Use versioned ZIPs or release assets
 for subsequent updates. Before releasing, build ZIPs and run
 `python3 scripts/sync-compat-archives.py --write`; CI rejects a stale `.skill`. The previous ZIPs

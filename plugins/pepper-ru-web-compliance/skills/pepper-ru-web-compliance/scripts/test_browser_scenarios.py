@@ -21,6 +21,7 @@ import render
 HTML = '''<!doctype html><meta charset="utf-8"><title>Audit fixture</title>
 <style>#cookie-banner {width:600px;padding:30px;background:#eee}button{padding:15px}</style>
 <h1>Local consent fixture</h1><a href="/privacy">Privacy</a>
+SUBSCRIPTION
 <div id="cookie-banner">Cookie: согласие на аналитику
 <button onclick="choose('yes')">Принять</button><button DISABLED onclick="choose('no')">Отказаться</button></div>
 <script>
@@ -40,11 +41,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/track':
             body = b'ok'
-        elif self.path == '/privacy':
+        elif self.path in ('/privacy', '/privacy/'):
             body = '<meta charset="utf-8">Аналитика по согласию пользователя BASIS_PROOF_913'.encode()
         else:
-            body = HTML.replace('BROKEN', 'true' if self.mode == 'broken' else 'false').replace(
-                'DISABLED', 'disabled' if self.mode == 'disabled' else '').encode()
+            subscription = ('<div class="layout-footer__subscribe-app-form">' + '<div>' * 10 +
+                            '<input type="email" name="email">' + '</div>' * 10 +
+                            '<div><label><input type="checkbox">Принимаю политику</label></div>' +
+                            '<button>Подписаться</button></div>')
+            page = HTML.replace('SUBSCRIPTION', subscription).replace(
+                'BROKEN', 'true' if self.mode == 'broken' else 'false').replace(
+                'DISABLED', 'disabled' if self.mode == 'disabled' else '')
+            if self.mode == 'busy':
+                page = page.replace('href="/privacy"', 'href="/privacy/"')
+                page += "<script>setInterval(() => fetch('/track'), 100)</script>"
+            body = page.encode()
         self.send_response(200)
         self.send_header('Content-Type','text/html; charset=utf-8')
         self.end_headers()
@@ -82,6 +92,8 @@ def main():
                 shutil.copytree(args.out/'broken', out, dirs_exist_ok=True)
             manifest = collect.RunManifest(target=target, started_at=collect.now_iso())
             collect.browser_collect(target, [target+'/', target+'/privacy'], out, manifest, 10000)
+            assert any({f.get('type') for f in form['fields']} >= {'email', 'checkbox'}
+                       for form in manifest.pages[0]['forms']), 'synthetic subscription fields split'
             (out / 'manifest.json').write_text(json.dumps(asdict(manifest), ensure_ascii=False))
             ctx = detect.Context(out)
             # Local /track endpoint substitutes for a known analytics vendor.
@@ -112,6 +124,18 @@ def main():
             results.append({'scenario':mode,'refusal':manifest.refusal,'status':'PASS',
                             'browser':manifest.browser})
             print(f'PASS {mode}', flush=True)
+        # Analytics/long polling can keep the network permanently active. The
+        # collector still has to preserve loaded DOM, pages and refusal state.
+        Handler.mode = 'busy'
+        out = args.out / 'busy'
+        out.mkdir(parents=True, exist_ok=True)
+        manifest = collect.RunManifest(target=target, started_at=collect.now_iso())
+        collect.browser_collect(target, [target+'/'], out, manifest, 10000, max_pages=2)
+        assert len(manifest.pages) == 2 and all(p['status'] == 200 for p in manifest.pages)
+        assert any(p['url'] == target + '/privacy/' for p in manifest.pages)
+        assert manifest.refusal['revisit_completed']
+        results.append({'scenario':'busy','status':'PASS','browser':manifest.browser})
+        print('PASS busy', flush=True)
     finally:
         bridge.close()
         transport.ACTIVE = None
