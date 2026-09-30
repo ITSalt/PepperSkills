@@ -294,8 +294,9 @@ Discrepancies go to the `status.md` journal first, then action.
   `autoMode` block (trusted environment) is read from user and managed settings and from
   `--settings`, never from project settings, so it lives in the generated file. The classifier
   blocks copying secrets and editing session settings (`.claude/`) as a bypass: worktrees get
-  gitignored files through `.worktreeinclude` in the repository root and read
-  `.claude/settings.local.json` from the main checkout.
+  gitignored files through `.worktreeinclude` in the repository root; on macOS and Linux they read
+  `.claude/settings.local.json` from the main checkout (on Windows they do not), and the session
+  rules come from the generated `--settings` file on every system.
 - **A refusal is an answer.** A session never works around a denied action (`sh -c`, `git -C`,
   renamed commands, copied settings): it sends `QUESTION` with the exact refusal text and command.
   "Classifier unavailable" is not a verdict: retry later.

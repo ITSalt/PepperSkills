@@ -1772,6 +1772,93 @@ def test_verify(tmp):
           'VERIFIED_TEST, defect, owner item, timeout, dry run, redaction, lint, RU texts, prod tip')
 
 
+def settings_fixture(root, workspace, skill):
+    """The fixed module and orchestrator settings of fixtures/settings-0.7.0 for given paths."""
+    import session_settings
+    repo = orch.streams.Repo({'id': 'mono', 'path': root, 'base': 'main', 'branch_prefix': 'feature/',
+                              'worktree_setup': ['pnpm install --frozen-lockfile'], 'checks': ['./scripts/check.sh']})
+    mod = orch.streams.Module({'id': 'app', 'kind': 'area', 'repo': 'mono', 'paths': ['apps/app/**'],
+                               'tests': {'scoped': ['pnpm --filter app test']},
+                               'methodology': {'name': 'm', 'forbidden': ['m-release']}}, repo, 'shop')
+    config = {'environments': {'prod': {'db_mcp': 'example-prod'}}, 'guards': {'x': [1]},
+              'checkpoints': ['push', 'deploy_test']}
+    data, _ = session_settings.module_settings(config, workspace, mod)
+    return data, session_settings.orchestrator_settings(config, workspace, {'app': mod}, {'mono': repo}, skill)
+
+
+def test_windows_paths(tmp):
+    """0.7.1: rule paths in the documented Windows form, shell of start commands; POSIX output as in 0.7.0."""
+    import session_settings as ss
+    fixtures = HERE / 'fixtures/settings-0.7.0'
+    data, orch_data = settings_fixture('/nonexistent-fixture/mono', '/nonexistent-fixture/orch/ws',
+                                       '/nonexistent-fixture/skill')
+    assert ss.render(data) == (fixtures / 'module.json').read_text(encoding='utf-8'), 'POSIX module output changed'
+    assert ss.render(orch_data) == (fixtures / 'orchestrator.json').read_text(encoding='utf-8'), 'orchestrator changed'
+    real = ss.is_windows
+    ss.is_windows = lambda: True
+    try:
+        assert ss.abs_rule_path('C:\\a\\b') == '//c/a/b' and ss.abs_rule_path('D:/x') == '//d/x'
+        for bad in ('\\\\server\\share\\x', '//server/share', 'relative\\x', 'C:x'):
+            try:
+                ss.abs_rule_path(bad)
+            except ss.PathError:
+                pass
+            else:
+                raise AssertionError(f'{bad} must be refused')
+        win, win_orch = settings_fixture('C:\\projects\\mono', 'C:\\projects\\home-orch\\ws',
+                                         'C:\\tools\\skill')
+        for item in (win, win_orch):
+            assert not ss.settings_errors(item), ss.settings_errors(item)
+        perms = win['permissions']
+        for rule in ('Read(//c/projects/mono/**)', 'Read(//c/projects/mono/apps/app/**)',
+                     'Read(//c/projects/home-orch/ws/**)'):
+            assert rule in perms['allow'], (rule, perms['allow'])
+        assert 'Edit(//c/projects/home-orch/ws/**)' in perms['deny'], perms['deny']
+        assert not any('\\' in r for r in perms['allow'] + perms['deny']), 'no backslashes in rules'
+        allow = win_orch['permissions']['allow']
+        for rule in ('Bash(python3 C:/tools/skill/scripts/orch.py *)', 'Bash(python C:/tools/skill/scripts/orch.py *)',
+                     'Bash(py -3 C:/tools/skill/scripts/orch.py *)', 'Bash(py -3 C:/tools/skill/scripts/safe_edit.py *)'):
+            assert rule in allow, (rule, allow)
+        try:
+            settings_fixture('C:\\projects\\mono', '\\\\server\\share\\ws', 'C:\\s')
+        except ss.PathError as error:
+            assert 'network (UNC) paths' in str(error)
+        else:
+            raise AssertionError('a UNC workspace must be refused')
+        assert ss.apply_flags('cd C:\\r && claude --name s "p"', 'C:\\ws\\s.json', 'auto') == \
+            'cd C:\\r && claude --permission-mode auto --settings C:/ws/s.json --name s "p"'
+        refused = None
+        try:
+            orch.cmd_init(orch.build_parser().parse_args(['init', 'w', '--lang', 'en', '--sessions', 'local',
+                                                          '--permission-mode', 'auto']))
+        except orch.OrchError as error:
+            refused = str(error)
+        assert refused and '--shell powershell|bash' in refused, refused
+    finally:
+        ss.is_windows = real
+    assert ss.shell_command('cd C:\\p\\m && claude -w a --name s "x && y"', 'powershell') == \
+        'cd "C:/p/m"; claude -w a --name s "x && y"'
+    assert ss.shell_command('cd /r && claude --name s "p"', 'bash') == 'cd /r && claude --name s "p"'
+    # PowerShell start commands end to end (on any host).
+    mono = make_monorepo(tmp / 'pwsh')
+    home = tmp / 'pwsh/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    out = run(home, 'init', 'win', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
+              '--shell', 'powershell', '--module', f'db={mono}').stdout
+    assert '"; claude --name win-coord --permission-mode auto --settings orchestration/settings/orchestrator.json' \
+        in out, out
+    ws = home / 'features/win'
+    assert orch.parse_yaml((ws / 'orch.yaml').read_text(encoding='utf-8'))['shell'] == 'powershell'
+    run(home, 'new-wp', 'db', 'schema')
+    run(home, 'set', 'WP-DB-01', 'status', 'READY')
+    dry = run(home, 'dispatch', 'WP-DB-01', '--dry-run').stdout
+    assert f'cd "{mono}"; claude --permission-mode auto --settings ' in dry, dry
+    safe_edit.replace_once(ws / 'orch.yaml', '\nshell: powershell\n', '\nshell: cmd\n')
+    assert 'shell must be one of bash, powershell' in lint_errors(home)
+    print('PASS windows paths: //c/... rules, UNC refused, python/py forms, PowerShell commands, POSIX as in 0.7.0')
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -1799,6 +1886,7 @@ def main():
         test_settings(tmp)
         test_deploy_override_first_candidate(tmp)
         test_verify(tmp)
+        test_windows_paths(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.1 — preview, unreleased
+
+Hotfix for Windows: generated settings were rejected by their own validator, so no settings files
+were written and `dispatch` refused.
+
+- One function builds the absolute path of a rule (`session_settings.abs_rule_path`): `//<path>` on
+  macOS and Linux (unchanged output, compared byte for byte with 0.7.0 on a fixture); on Windows the
+  documented POSIX form `//<drive letter>/<path with forward slashes>`; network (UNC) and relative
+  paths are refused with a clear error. Used for the repository, module paths, workspace and both
+  templates.
+- Bash rules with paths use forward slashes; on Windows the orchestrator's settings also allow the
+  `python ...` and `py -3 ...` forms of its scripts. `--settings` paths in start commands use forward
+  slashes on Windows.
+- `shell: bash|powershell` in `orch.yaml` (default bash; `init --shell`, asked explicitly on
+  Windows): with PowerShell, `init` and `dispatch` print `cd "<dir>"; claude ...`.
+- Texts: on Windows a worktree does not read `.claude/settings.local.json` of the main checkout
+  (the 0.6.0 statement held for macOS and Linux only); the plugin passes the rules with `--settings`
+  on every system. README (EN/RU) section "Windows".
+- Backlog: a Windows runner in CI; PowerShell-specific forms of Bash rules.
+
 ## 0.7.0 — preview, unreleased
 
 Preview of stage 3b: verification of the stand and production by facts, whoever merged and deployed.
