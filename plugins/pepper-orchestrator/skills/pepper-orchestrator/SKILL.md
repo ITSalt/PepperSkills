@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, deliver, resume, owner, decide, close, reopen, report. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.9.0
+  version: 0.9.1
 ---
 
 # Pepper Orchestrator
@@ -89,7 +89,7 @@ Without a clear mode: if a workspace exists, run `resume`; otherwise propose `in
 (recommended) or in the cloud (with a named cloud environment); a cloud orchestrator works only
 with cloud sessions. Every package carries a recommended implementer model and effort (default
 `sonnet`; `opus` + `high` for risky packages; `review` suggests a restart on the escalation model
-from round 3). Locally never suggest `/model <name>` with an argument: it becomes the owner's
+from round 3, and `set <WP> status REVISE` from round 3 opens the owner item). Locally never suggest `/model <name>` with an argument: it becomes the owner's
 default for all new sessions.
 
 **One program, one goal.** `PLAN.md` states the goal and its completion condition. When the

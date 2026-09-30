@@ -29,7 +29,7 @@ GIT_ENV = {
 def run(cwd, *args, ok=True, extra_env=None):
     env = {**os.environ, **GIT_ENV, 'PYTHONDONTWRITEBYTECODE': '1', **(extra_env or {})}
     env.pop('ORCH_WORKSPACE', None)
-    result = subprocess.run([*ORCH, *args], cwd=cwd, env=env, text=True, capture_output=True)
+    result = subprocess.run([*ORCH, *args], cwd=cwd, env=env, encoding='utf-8', errors='replace', capture_output=True)
     if ok and result.returncode:
         raise AssertionError(f'orch {args} failed: {result.stderr}')
     if not ok and not result.returncode:
@@ -39,7 +39,7 @@ def run(cwd, *args, ok=True, extra_env=None):
 
 def git(cwd, *args):
     env = {**os.environ, **GIT_ENV}
-    return subprocess.run(['git', *args], cwd=cwd, env=env, text=True, capture_output=True,
+    return subprocess.run(['git', *args], cwd=cwd, env=env, encoding='utf-8', errors='replace', capture_output=True,
                           check=True).stdout
 
 
@@ -90,10 +90,10 @@ def test_safe_edit(tmp):
     safe_edit.create(tmp / 'sub/new.md', 'Юникод\n')
     assert (tmp / 'sub/new.md').read_text(encoding='utf-8') == 'Юникод\n'
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target),
-                          '--old', 'gamma', '--new', 'delta'], capture_output=True, text=True)
+                          '--old', 'gamma', '--new', 'delta'], capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 0 and target.read_text(encoding='utf-8').startswith('delta')
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target),
-                          '--old', 'beta', '--new', 'x'], capture_output=True, text=True)
+                          '--old', 'beta', '--new', 'x'], capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 1 and 'found 2' in cli.stderr
     print('PASS safe_edit: single match, backup, refusal, create-only, CLI')
 
@@ -184,7 +184,9 @@ def test_workflow(tmp, lang):
     run(repo, 'set', 'WP-DB-01', 'status', 'READY', '--evidence', 'reviewed')
     run(repo, 'set', 'WP-DB-01', 'status', 'BLOCKED', ok=False)
     run(repo, 'set', 'WP-DB-02', 'status', 'CANCELLED (hypothesis refuted by measurement)')
-    run(repo, 'set', 'WP-WEB-01', 'pr', 'https://example.com/pull/7 | draft')
+    run(repo, 'set', 'WP-WEB-01', 'title', 'Orders page | draft')
+    run(repo, 'set', 'WP-WEB-01', 'pr', 'https://example.com/pull/7')
+    run(repo, 'set', 'WP-WEB-01', 'pr', 'draft PR', ok=False)  # 0.9.1: only a URL or a number
     run(repo, 'set', 'WP-WEB-01', 'module', 'db', ok=False)
     run(repo, 'set', 'WP-NONE-01', 'status', 'READY', ok=False)
     run(repo, 'owner', 'add', 'P', 'Export needed? (a) yes (b) no; recommend (b)')
@@ -201,7 +203,7 @@ def test_workflow(tmp, lang):
     run(repo, 'decide', 'A', 'Staging mirrors production schema')
     assert 'empty' in run(repo, 'queue').stdout
     status = (ws / 'status.md').read_text(encoding='utf-8')
-    assert 'https://example.com/pull/7 \\| draft' in status
+    assert 'Orders page \\| draft' in status and '| https://example.com/pull/7 |' in status
     assert '| ~~P-1~~ |' in status and 'answered by D-1' in status
     assert 'dropped: superseded by D-1' in status
     decisions = (ws / 'decisions.md').read_text(encoding='utf-8')
@@ -299,39 +301,39 @@ def test_safe_edit_stdin(tmp):
     target.write_text('alpha\nbeta\n', encoding='utf-8')
     block = '<<<<<<< OLD\nbeta\n=======\ngamma\ndelta\n>>>>>>> NEW\n'
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                         input=block, capture_output=True, text=True)
+                         input=block, capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 0, cli.stderr
     assert target.read_text(encoding='utf-8') == 'alpha\ngamma\ndelta\n'
     two = ('<<<<<<< OLD\nalpha\n=======\nALPHA\n>>>>>>> NEW\n'
            '<<<<<<< OLD\ndelta\n=======\nDELTA\n>>>>>>> NEW\n')
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                         input=two, capture_output=True, text=True)
+                         input=two, capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 0, cli.stderr
     assert target.read_text(encoding='utf-8') == 'ALPHA\ngamma\nDELTA\n'
     atomic = ('<<<<<<< OLD\nALPHA\n=======\nx\n>>>>>>> NEW\n'
               '<<<<<<< OLD\nmissing\n=======\ny\n>>>>>>> NEW\n')
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                         input=atomic, capture_output=True, text=True)
+                         input=atomic, capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 1 and 'block 2' in cli.stderr
     assert target.read_text(encoding='utf-8') == 'ALPHA\ngamma\nDELTA\n', 'partial multi-block edit'
     for broken in ('<<<<<<< OLD\nALPHA\n=======\n<<<<<<< OLD\n>>>>>>> NEW\n',
                    '<<<<<<< OLD\nALPHA\n=======\nx\n', 'stray\n<<<<<<< OLD\nALPHA\n=======\nx\n>>>>>>> NEW\n'):
         cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                             input=broken, capture_output=True, text=True)
+                             input=broken, capture_output=True, encoding='utf-8', errors='replace')
         assert cli.returncode == 1, broken
     assert target.read_text(encoding='utf-8') == 'ALPHA\ngamma\nDELTA\n'
     target.write_text('alpha\ngamma\ndelta\n', encoding='utf-8')
     bad = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                         input='no markers', capture_output=True, text=True)
+                         input='no markers', capture_output=True, encoding='utf-8', errors='replace')
     assert bad.returncode == 1 and 'OLD' in bad.stderr
     created = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(tmp / 'c.md'),
-                              '--create', '--stdin'], input='new file\n', capture_output=True, text=True)
+                              '--create', '--stdin'], input='new file\n', capture_output=True, encoding='utf-8', errors='replace')
     assert created.returncode == 0 and (tmp / 'c.md').read_text(encoding='utf-8') == 'new file\n'
     blocker = tmp / 'not-a-dir'
     blocker.write_text('x\n', encoding='utf-8')
     env = {**os.environ, 'ORCH_BACKUP_DIR': str(blocker / 'sub')}
     fallback = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target),
-                               '--old', 'alpha', '--new', 'omega'], env=env, capture_output=True, text=True)
+                               '--old', 'alpha', '--new', 'omega'], env=env, capture_output=True, encoding='utf-8', errors='replace')
     assert fallback.returncode == 0, fallback.stderr
     print('PASS safe_edit: stdin block, create from stdin, backup fallback')
 
@@ -866,7 +868,7 @@ def test_cloud_deploy_scan(tmp):
     assert 'not a non-hidden directory that every push workflow ignores' in refused, refused
     assert run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', '--dir', 'notes/orchestration/y').returncode == 0
     tracking = subprocess.run(['git', 'config', '--get', 'branch.orch/y.merge'], cwd=clone2,
-                              capture_output=True, text=True)
+                              capture_output=True, encoding='utf-8', errors='replace')
     assert tracking.returncode != 0, 'orch/ must not track the base'
     # M5: repository names from GitHub URLs and the cloud git proxy.
     assert streams.normalize_url('https://github.com/Owner/Repo.git') == 'github.com/owner/repo'
@@ -978,7 +980,7 @@ def test_review(tmp):
     # The review command runs the clone exactly as printed (review_setup with ORCH_MAIN_CHECKOUT).
     printed = subprocess.run(['bash', '-c', result['clone_command'].replace("'test -f apps/app/src/page.tsx'",
                                                                             "'test -f copied.yaml'", 1)],
-                             capture_output=True, text=True)
+                             capture_output=True, encoding='utf-8', errors='replace')
     assert 'setup: cp' in printed.stdout and 'test: test -f copied.yaml -> exit 0' in printed.stdout, printed.stdout
     # M2: an unpushed local commit on the branch is not reviewed; the default is origin/<branch>.
     (wt / 'apps/app/src/local.tsx').write_text('local only\n', encoding='utf-8')
@@ -1009,39 +1011,46 @@ def test_review(tmp):
                            '--json').stdout)
     esc = [w for w in third['warnings'] if w.startswith('round 3:')]
     assert esc and f'cd {mono} && claude --resume rv-app --model opus' in esc[0], third['warnings']
-    assert 'restart the module session on opus' in (home / 'features/rv/status.md').read_text(encoding='utf-8')
+    assert 'if the same REVISE items are still open' in esc[0], esc  # 0.9.1 (#21): conditional before reading
+
+    def escalations():
+        return [q for q in json.loads(run(home, 'queue', '--json').stdout) if 'restart the module session' in q['text']]
+    assert escalations() == [], 'no owner item before the round is reviewed'
+    assert 'if the same REVISE items are still open' in Path(third['report']).read_text(encoding='utf-8')
+    run(home, 'set', 'WP-APP-01', 'status', 'REVISE', '--evidence', 'round 3: items 2 and 3 again')
+    assert len(escalations()) == 1 and 'round 3: the same REVISE items are still open' in escalations()[0]['text']
     again = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', third['sha'], '--round', '4', '--json').stdout)
     assert any(w.startswith('round 4:') for w in again['warnings']), 'the hint is printed every round'
-    open_escalations = [q for q in json.loads(run(home, 'queue', '--json').stdout) if 'restart the module session' in q['text']]
-    assert len(open_escalations) == 1, open_escalations
+    run(home, 'set', 'WP-APP-01', 'status', 'REVISE')
+    assert len(escalations()) == 1, escalations()
     command = third['revision_diff']
     assert f'range-diff origin/main..{second["sha"]} origin/main..{third["sha"]}' in command, command
-    rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, text=True)
+    rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, encoding='utf-8', errors='replace')
     assert rd.returncode == 0 and 'resubmission 1' in rd.stdout, rd.stdout
     assert 'base moves on' not in rd.stdout, 'base commits must not show up in the revision diff'
-    sym = subprocess.run(command.replace('..', '...').split(), capture_output=True, text=True)
+    sym = subprocess.run(command.replace('..', '...').split(), capture_output=True, encoding='utf-8', errors='replace')
     assert 'base moves on' in sym.stdout, 'control: the symmetric form would show the base commit'
     # The disposable clone: tests pass at the new head, fail at the old one, cleanup is guarded.
     clone = [sys.executable, '-c', 'import sys, subprocess; sys.exit(subprocess.call(sys.argv[1:]))',
              'bash', str(HERE / 'review_clone.sh'), '--repo', str(tmp / 'review/mono.git')]
     ok = subprocess.run(clone + ['--sha', second['sha'], '--test', 'test -f apps/app/src/page.tsx',
-                                 '--test', 'grep -q fixed apps/app/src/page.tsx'], capture_output=True, text=True)
+                                 '--test', 'grep -q fixed apps/app/src/page.tsx'], capture_output=True, encoding='utf-8', errors='replace')
     assert ok.returncode == 0 and 'test: grep -q fixed apps/app/src/page.tsx -> exit 0' in ok.stdout, ok.stdout
     bad = subprocess.run(clone + ['--sha', old_sha, '--test', 'grep -q fixed apps/app/src/page.tsx'],
-                         capture_output=True, text=True)
+                         capture_output=True, encoding='utf-8', errors='replace')
     assert bad.returncode == 1 and '-> exit 1' in bad.stdout, bad.stdout
-    kept = subprocess.run(clone + ['--sha', old_sha, '--keep'], capture_output=True, text=True)
+    kept = subprocess.run(clone + ['--sha', old_sha, '--keep'], capture_output=True, encoding='utf-8', errors='replace')
     kept_dir = kept.stdout.split('--cleanup ')[1].split('\n')[0].strip()
     assert Path(kept_dir, 'repo/apps/app/src/page.tsx').is_file()
     refused = subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--cleanup', str(tmp)], capture_output=True,
-                             text=True)
+                             encoding='utf-8', errors='replace')
     assert refused.returncode == 2 and Path(tmp).is_dir(), 'cleanup only removes marked clone directories'
     subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--cleanup', kept_dir], check=True, capture_output=True)
     assert not Path(kept_dir).exists()
-    missing = subprocess.run(clone + ['--sha', 'deadbeef'], capture_output=True, text=True)
+    missing = subprocess.run(clone + ['--sha', 'deadbeef'], capture_output=True, encoding='utf-8', errors='replace')
     assert missing.returncode == 2
     dangling = subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--repo', 'x', '--sha'], capture_output=True,
-                              text=True, timeout=10)
+                              encoding='utf-8', errors='replace', timeout=10)
     assert dangling.returncode == 2 and 'needs a value' in dangling.stderr
     print('PASS review: automatic findings (outside paths, unlocked/undeclared shared, stale merge-base), '
           'report, rounds, disposable clone')
@@ -1126,11 +1135,11 @@ def test_close(tmp):
     status_file = archived / 'status.md'
     original = status_file.read_text(encoding='utf-8')
     status_file.write_text(original.replace('| DONE |', '| MERGED |', 1), encoding='utf-8')
-    closed_lint = subprocess.run([*ORCH, '--workspace', str(archived), 'lint'], capture_output=True, text=True)
+    closed_lint = subprocess.run([*ORCH, '--workspace', str(archived), 'lint'], capture_output=True, encoding='utf-8', errors='replace')
     assert 'program is closed but WP-CORE-01 is MERGED' in closed_lint.stderr, closed_lint.stderr
     status_file.write_text(original, encoding='utf-8')
     run(home, 'init', 'next', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'core={mono}')
-    found = subprocess.run([*ORCH, 'queue'], cwd=home, capture_output=True, text=True, env={**os.environ, **GIT_ENV})
+    found = subprocess.run([*ORCH, 'queue'], cwd=home, capture_output=True, encoding='utf-8', errors='replace', env={**os.environ, **GIT_ENV})
     assert found.returncode == 0, 'only the active workspace is picked automatically'
     reopened = run(home, *wsarg, 'reopen', 'import is needed after all').stdout
     assert 'reopened' in reopened and 'git mv' in reopened
@@ -1180,7 +1189,7 @@ def test_close_in_repo(tmp):
     git(tmp, 'clone', '-q', str(remote), str(owner_clone))
     start = status.index('git push origin ' + closeout_sha)
     command = status[start:status.index(' ; expected', start)]
-    ran = subprocess.run(command, shell=True, cwd=owner_clone, capture_output=True, text=True,
+    ran = subprocess.run(command, shell=True, cwd=owner_clone, capture_output=True, encoding='utf-8', errors='replace',
                          env={**os.environ, **GIT_ENV})
     assert ran.returncode == 0, (command, ran.stdout, ran.stderr)
     assert git(remote, 'tag', '-l').strip().startswith('orch-demo-closed-')
@@ -2222,6 +2231,145 @@ def test_deliver(tmp):
           'method, ledger, run watch, verify, hold on failure, unhold, GitHub refusal -> owner item, settings')
 
 
+def test_encoding_and_pr_cell(tmp):
+    """0.9.1: UTF-8 output through a pipe under a non-UTF-8 locale, unreadable workflows refused, PR cells."""
+    import io
+    import threading
+    import streams
+    # Illustration of CPython behaviour, not a guard of the fix (the fix is guarded by the pipe checks
+    # below): on Windows subprocess reads pipes in a reader thread; a decoding error kills only that
+    # thread and communicate() returns None (#20).
+    raw = io.TextIOWrapper(io.BytesIO('Проверка деплоя'.encode('utf-8')), encoding='cp1252')
+    buffer = []
+    thread = threading.Thread(target=lambda: buffer.append(raw.read()))
+    hook, threading.excepthook = threading.excepthook, lambda args: None
+    thread.start()
+    thread.join()
+    threading.excepthook = hook
+    assert buffer == [], 'the reader thread dies; communicate() would return stdout=None'
+    try:
+        streams.parse_push_trigger(None, 'ci.yml')
+    except streams.DeployFormError as error:
+        assert 'could not be read' in str(error)
+    else:
+        raise AssertionError('None must be a refusal')
+    real = streams.workflow_texts
+    streams.workflow_texts = lambda root, ref: {'ci.yml': None, 'other.yml': 'on: [pull_request]\n'}
+    try:
+        candidates, _, refusals, any_dir = streams.deploy_safe_dirs(tmp, 'orch/x', 'x', 'HEAD')
+    finally:
+        streams.workflow_texts = real
+    assert refusals and candidates == [] and not any_dir, (candidates, refusals)
+    # A repository with Russian text in a workflow and in a commit message, a Russian workspace.
+    mono = make_monorepo(tmp / 'enc')
+    with_workflow(mono, "# Выкладка стенда\non:\n  push:\n    paths-ignore: ['docs/**']\njobs: {}\n")
+    (mono / 'apps/app/src/page.tsx').write_text('// страница\n', encoding='utf-8')
+    git(mono, 'commit', '-qam', 'Правка страницы: кириллица в сообщении')
+    git(mono, 'push', '-q', 'origin', 'main')
+    clone = tmp / 'enc/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'enc/mono.git'), str(clone))
+    git(clone, 'config', f'url.{tmp / "enc/mono.git"}.insteadOf', 'https://github.com/example/mono.git')
+    git(clone, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
+    run(clone, 'init', 'enc', '--lang', 'ru', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app',
+        '--area', 'shop=app:apps/app/**')
+    run(clone, 'owner', 'add', 'P', 'Нужен ли экспорт заказов? (а) да (б) нет; рекомендую (б)')
+    run(clone, 'new-wp', 'shop', 'orders', '--title', 'Заказы')
+    wt = branch_with(clone, 'feature/wp-shop-01-orders', ['apps/app/src/page.tsx'])
+    git(wt, 'commit', '-q', '--allow-empty', '-m', 'Пакет: заказы — готово')
+    git(wt, 'push', '-q', 'origin', 'feature/wp-shop-01-orders')
+    env = {**os.environ, **GIT_ENV, 'PYTHONIOENCODING': 'cp1252', 'LC_ALL': 'C', 'LANG': 'C', 'PYTHONUTF8': '0'}
+    env.pop('ORCH_WORKSPACE', None)
+    for args in (['queue'], ['lint'], ['ready'], ['overlap', '--planned'], ['review-start', 'WP-SHOP-01', '--no-fetch']):
+        result = subprocess.run([*ORCH, *args], cwd=clone, env=env, capture_output=True)
+        assert result.returncode == 0, (args, result.stderr.decode('utf-8', 'replace'))
+        out = (result.stdout + result.stderr).decode('utf-8')  # strict: valid UTF-8
+        if args == ['queue']:
+            assert 'Нужен ли экспорт заказов' in out, out
+    # PR cells (#24): a URL or a number expanded by origin; anything else refused.
+    ws = clone / 'docs/orchestration/enc'
+    run(clone, 'set', 'WP-SHOP-01', 'pr', '#87')
+    assert '| https://github.com/example/mono/pull/87 |' in (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'takes a pull request URL or number' in run(clone, 'set', 'WP-SHOP-01', 'pr', 'мусор', ok=False).stderr
+    run(clone, 'new-wp', 'shop', 'cart')
+    run(clone, 'merge', 'add', 'WP-SHOP-02', '--pr', 'https://github.com/example/mono/pull/88')
+    assert '| https://github.com/example/mono/pull/88 |' in (ws / 'status.md').read_text(encoding='utf-8')
+    # A cell written before 0.9.1 ("#87") still resolves for verify.
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    (ws / 'status.md').write_text(status.replace('| https://github.com/example/mono/pull/87 |', '| #87 |'),
+                                  encoding='utf-8')
+    orch_ws = orch.Workspace(ws)
+    _, module, _ = orch.wp_context(orch_ws, 'WP-SHOP-01')
+    assert orch.pr_url('#87', module.repo) == 'https://github.com/example/mono/pull/87'
+    assert orch.pr_url('#87 (accepted abcdef1)', module.repo) == 'https://github.com/example/mono/pull/87'
+    assert orch.pr_url('3 commits behind', module.repo) is None, 'a number must be the whole cell (L1)'
+    # M1/I3: a URL with a tail is normalized before anything is written; a bad value writes nothing.
+    reports_before = sorted(p.name for p in (ws / 'reports').iterdir())
+    bad = run(clone, 'review-start', 'WP-SHOP-01', '--no-fetch', '--round', '2', '--pr', 'see the PR', ok=False)
+    assert 'takes a pull request URL or number' in bad.stderr and \
+        sorted(p.name for p in (ws / 'reports').iterdir()) == reports_before, 'no partial state'
+    run(clone, 'review-start', 'WP-SHOP-01', '--no-fetch', '--round', '2',
+        '--pr', 'https://github.com/example/mono/pull/87/files?w=1')
+    status_now = (ws / 'status.md').read_text(encoding='utf-8')
+    assert '| https://github.com/example/mono/pull/87 |' in status_now and '/files' not in status_now
+    report2 = next((ws / 'reports').glob('wp-shop-01-review-*-r2.md')).read_text(encoding='utf-8')
+    assert 'https://github.com/example/mono/pull/87' in report2 and '/files' not in report2
+    # L2: merge add validates first.
+    run(clone, 'new-wp', 'shop', 'tax')
+    rows_before = (ws / 'status.md').read_text(encoding='utf-8').count('| queued |')
+    assert 'takes a pull request URL' in run(clone, 'merge', 'add', 'WP-SHOP-03', '--pr', 'draft', ok=False).stderr
+    assert (ws / 'status.md').read_text(encoding='utf-8').count('| queued |') == rows_before
+    # M2: accept never refuses because of an older free-text cell; the journal line is written.
+    head = git(clone, 'rev-parse', 'origin/main').strip()
+    text = (ws / 'status.md').read_text(encoding='utf-8')
+    row = next(l for l in text.split('\n') if l.startswith('| [WP-SHOP-03]'))
+    cells = row.split(' | ')
+    cells[5] = 'PR https://github.com/example/mono/pull/90 \\| draft'
+    (ws / 'status.md').write_text(text.replace(row, ' | '.join(cells)), encoding='utf-8')
+    run(clone, 'set', 'WP-SHOP-03', 'status', 'REVIEW')
+    (ws / 'reports/wp-shop-03-review.md').write_text('# Review\n', encoding='utf-8')
+    run(clone, 'accept', 'WP-SHOP-03', head, '--report', 'reports/wp-shop-03-review.md')
+    after = (ws / 'status.md').read_text(encoding='utf-8')
+    assert f'WP-SHOP-03: accepted at {head}' in after, 'journal line written'
+    assert f'| https://github.com/example/mono/pull/90 (accepted {head[:10]}) |' in after
+    assert orch.accepted_revision(orch.Workspace(ws), 'WP-SHOP-03')[0] == head
+    stub = tmp / 'enc/stub'
+    (stub / 'bin').mkdir(parents=True)
+    (stub / 'bin/gh').write_text(GH_STUB, encoding='utf-8')
+    (stub / 'bin/gh').chmod(0o755)
+    head = git(clone, 'rev-parse', 'origin/main').strip()
+    (stub / 'pr.json').write_text(json.dumps({'state': 'MERGED', 'mergeCommit': {'oid': head}}), encoding='utf-8')
+    (stub / 'runs.json').write_text('[]', encoding='utf-8')
+    safe_edit.replace_once(ws / 'orch.yaml', '    checks: []\n', '    checks: []\n    verify_test: ["true"]\n')
+    run(clone, 'set', 'WP-SHOP-01', 'status', 'MERGED')
+    gh_env = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(stub), 'PATH': f'{stub / "bin"}{os.pathsep}{os.environ["PATH"]}'}
+    assert 'PASS' in run(clone, 'verify', 'WP-SHOP-01', '--env', 'test', extra_env=gh_env).stdout
+    assert 'pr view https://github.com/example/mono/pull/87' in (stub / 'calls.log').read_text(encoding='utf-8')
+    local = make_monorepo(tmp / 'enc-local')
+    home = tmp / 'enc-local/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'loc', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'db={local}')
+    run(home, 'new-wp', 'db', 'schema')
+    assert 'cannot be expanded' in run(home, 'set', 'WP-DB-01', 'pr', '#5', ok=False).stderr
+    # M3: the loopback git proxy of a cloud session is not a forge: no plausible wrong URL.
+    git(local, 'remote', 'set-url', 'origin', 'http://proxy@127.0.0.1:43123/git/example/mono')
+    assert orch.pr_from_number(orch.streams.Repo({'id': 'r', 'path': str(local)}), 5) is None
+    assert 'cannot be expanded' in run(home, 'set', 'WP-DB-01', 'pr', '#5', ok=False).stderr
+    assert not orch.forge_host('10.0.0.5') and orch.forge_host('github.com') and orch.forge_host('git.example.org')
+    # L4: a workflow that is not UTF-8 is unreadable: refused, no candidate with a replaced character.
+    bad_repo = make_monorepo(tmp / 'enc-latin')
+    wf = bad_repo / '.github/workflows/deploy.yml'
+    wf.parent.mkdir(parents=True)
+    wf.write_bytes("# d\xe9ploiement\non:\n  push:\n    paths-ignore: ['caf\xe9/**']\njobs: {}\n".encode('latin-1'))
+    git(bad_repo, 'add', '-A')
+    git(bad_repo, 'commit', '-qm', 'latin-1 workflow')
+    candidates, _, refusals, _ = streams.deploy_safe_dirs(bad_repo, 'orch/x', 'x', 'HEAD')
+    assert refusals and 'not valid UTF-8' in refusals[0] and candidates == [], (candidates, refusals)
+    # L3: the self-test reads child output as UTF-8 itself (it runs the install checks on Windows too).
+    assert ('text' + '=True') not in Path(__file__).read_text(encoding='utf-8')
+    print('PASS encoding and PR cell: UTF-8 through a pipe under cp1252/C, unreadable workflow refused, #87 expanded')
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -2252,6 +2400,7 @@ def main():
         test_windows_paths(tmp)
         test_report(tmp)
         test_deliver(tmp)
+        test_encoding_and_pr_cell(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

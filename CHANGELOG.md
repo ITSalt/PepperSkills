@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.9.1 (preview)
+
+Fixes from field reports: UTF-8 output and process text on Windows (#20), no owner escalation item
+before a round is reviewed (#21), PR cells take only a URL or a number (#24). Preview, not yet
+released.
+
 ## Unreleased — pepper-orchestrator 0.9.0 (preview)
 
 Trusted delivery: by an explicit owner decision the orchestrator merges accepted packages and runs
