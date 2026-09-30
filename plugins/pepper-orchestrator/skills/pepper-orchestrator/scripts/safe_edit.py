@@ -191,6 +191,11 @@ def create(path, content: str) -> None:
 
 
 def main(argv=None) -> int:
+    for stream in (sys.stdout, sys.stderr):  # UTF-8 through pipes whatever the locale (Windows: cp1252)
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError):
+            pass
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('file', type=Path)
     parser.add_argument('--old')

@@ -899,6 +899,84 @@ OLD_SETTINGS_NOTES = (
 )
 
 
+def escalation_restart(ws, module):
+    """(model, how): the restart of a module session on the escalation model."""
+    models = ws.config.get('models') if isinstance(ws.config.get('models'), dict) else {}
+    target = str(models.get('escalate') or 'opus')
+    target_effort = models.get('escalate_effort')
+    flags = f'--model {target}' + (f' --effort {target_effort}' if target_effort else '')
+    if module.cloud:
+        return target, (f'in the same cloud session choose {target} in the model list (or send `/model {target}`'
+                        + (f' and `/effort {target_effort}`' if target_effort else '') + ')')
+    where = module.repo.path if module.repo.path.startswith(('/', '~')) else str(module.repo.local)
+    return target, f'cd {where} && claude --resume {module.session} {flags}'
+
+
+def review_round(ws, wp):
+    """(round, report) of the most recently written review report of wp (`<wp>-review-<date>[-r<n>].md`)."""
+    reports = sorted((ws.root / 'reports').glob(f'{wp.lower()}-review-*.md'),
+                     key=lambda p: (p.stat().st_mtime_ns, p.name))
+    if not reports:
+        return 0, None
+    match = re.search(r'-r(\d+)\.md$', reports[-1].name)
+    return (int(match.group(1)) if match else 1), reports[-1].name
+
+
+def escalate_on_revise(ws, wp):
+    """REVISE from round 3: the same items came back, so the restart on the stronger model is confirmed."""
+    number, report = review_round(ws, wp)
+    if number < 3:
+        return
+    try:
+        _, module, _ = wp_context(ws, wp)
+    except OrchError:
+        return
+    if any(item['text'].startswith(f'{wp}: round ') and 'restart the module session' in item['text']
+           for item in open_owner_items(ws)):
+        return
+    target, how = escalation_restart(ws, module)
+    cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where=f'reports/{report}',
+                                 quiet=True, text=f'{wp}: round {number}: the same REVISE items are still open - '
+                                                  f'restart the module session on {target}: {how} ; expected: the '
+                                                  'session continues on the stronger model with its context'))
+    print(f'escalation: {wp} REVISE at round {number}: owner item to restart the session on {target}', file=sys.stderr)
+
+
+PR_NUMBER = re.compile(r'^#?(\d+)$')
+
+
+def pr_from_number(repo, number):
+    """The PR URL of number in the repository's hosted origin, or None."""
+    origin = streams.normalized_origin(repo.local) if repo.local.is_dir() else None
+    if not origin or origin.startswith('/') or origin.count('/') < 2:
+        return None
+    return f'https://{origin}/pull/{number}'
+
+
+def pr_cell(ws, wp, value):
+    """The normalized PR cell: a pull request URL (a number is expanded by origin), optionally followed by
+    the accepted-revision note; '—' clears it. Anything else is refused."""
+    value = ' '.join(value.split())
+    if value in ('—', '-', ''):
+        return '—'
+    match = re.fullmatch(r'(\S+)?\s*(\(accepted [0-9a-f]{7,40}\))?', value)
+    head, note = (match.group(1), match.group(2)) if match else (value, None)
+    if head is None and note:
+        return note
+    if head and re.fullmatch(r'https?://\S+/pull/\d+', head):
+        return head + (f' {note}' if note else '')
+    number = PR_NUMBER.match(head or '')
+    if number:
+        _, module, _ = wp_context(ws, wp)
+        url = pr_from_number(module.repo, number.group(1))
+        if not url:
+            raise OrchError(f'{wp}: #{number.group(1)} cannot be expanded: repository {module.repo.id} has no hosted '
+                            'origin; record the full URL, for example https://github.com/<owner>/<repo>/pull/87')
+        return url + (f' {note}' if note else '')
+    raise OrchError(f'{wp}: the PR cell takes a pull request URL or number, for example '
+                    'https://github.com/<owner>/<repo>/pull/87 or #87; got ' + repr(value))
+
+
 def cmd_set(args):
     ws = Workspace(find_workspace(args.workspace))
     ws.require_open('set')
@@ -906,6 +984,8 @@ def cmd_set(args):
     if column not in SETTABLE:
         raise OrchError(f'column must be one of: {", ".join(SETTABLE)}')
     value = ' '.join(args.text.split())
+    if column == 'pr':
+        value = pr_cell(ws, args.wp, value)
     if column == 'status' and not valid_status(value):
         raise OrchError(f'invalid status {value!r}; allowed: {", ".join(STATUSES)}, '
                         'BLOCKED (reason), CANCELLED (reason)')
@@ -931,6 +1011,8 @@ def cmd_set(args):
                    evidence=args.evidence or '—')
         if value in ('REVIEW', 'DONE') or value.startswith('CANCELLED'):
             release_on_demand(ws, args.wp)
+        if value == 'REVISE':
+            escalate_on_revise(ws, args.wp)
     if not getattr(args, 'quiet', False):
         print(f'{args.wp} {column} = {value}')
     return 0
@@ -1435,7 +1517,7 @@ def cmd_lint(args):
 
 
 def git(root, *args, check=True):
-    return subprocess.run(['git', '-C', str(root), *args], check=check, text=True,
+    return subprocess.run(['git', '-C', str(root), *args], check=check, encoding='utf-8', errors='replace',
                           capture_output=True)
 
 
@@ -1948,6 +2030,9 @@ def cmd_merge(args):
         ws.rewrite_table(ws.status, 'merge', lambda body: body + [line])
         ws.journal(f'{args.wp} queued for merge ({module.repo.merge_policy})', wp=args.wp,
                    evidence=args.pr or '—')
+        if args.pr and ws.wp_rows().get(args.wp, {}).get('pr') in ('—', '', None):
+            cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='pr', text=args.pr, quiet=True,
+                                       evidence=None))
         print(f'{args.wp}: merge queue position {number}' + (f', rebase after {after}' if after != '—' else ''))
         return 0
     queued = [q for q in rows if q['wp'] == args.wp and q['status'] == 'queued']
@@ -2014,7 +2099,7 @@ def run_checks(repo, branches):
     env = {**os.environ, 'ORCH_BASE_REF': streams.base_ref(repo), 'ORCH_BRANCHES': ' '.join(branches)}
     for check in repo.checks:
         try:
-            result = subprocess.run(check, shell=True, cwd=repo.local, env=env, text=True,
+            result = subprocess.run(check, shell=True, cwd=repo.local, env=env, encoding='utf-8', errors='replace',
                                     capture_output=True, timeout=300)
         except subprocess.TimeoutExpired:
             found.append(f'{repo.id}: `{check}` timed out')
@@ -2104,19 +2189,10 @@ def cmd_review_start(args):
     path = reports / name
     template = (TEMPLATES / ws.lang / 'review-report.md').read_text(encoding='utf-8')
     escalation = None
-    if (args.round or 1) >= 3:
-        models = ws.config.get('models') if isinstance(ws.config.get('models'), dict) else {}
-        target = str(models.get('escalate') or 'opus')
-        target_effort = models.get('escalate_effort')
-        flags = f'--model {target}' + (f' --effort {target_effort}' if target_effort else '')
-        if module.cloud:
-            how = (f'in the same cloud session choose {target} in the model list (or send `/model {target}`'
-                   + (f' and `/effort {target_effort}`' if target_effort else '') + ')')
-        else:
-            where = module.repo.path if module.repo.path.startswith(('/', '~')) else str(module.repo.local)
-            how = f'cd {where} && claude --resume {module.session} {flags}'
-        escalation = (f'round {args.round}: the same REVISE items are still open - restart the module session on '
-                      f'{target}: {how}')
+    if (args.round or 1) >= 3:  # the resubmission is not read yet: the escalation is conditional
+        target, how = escalation_restart(ws, module)
+        escalation = (f'round {args.round}: if the same REVISE items are still open after this review, restart the '
+                      f'module session on {target}: {how} (setting the package to REVISE opens the owner item)')
         warnings.append(escalation)
     base_label = f'{module.repo.base} @ {base_sha[:10]}'
     if escalation:
@@ -2128,12 +2204,6 @@ def cmd_review_start(args):
     if args.pr:
         cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='pr', text=args.pr, quiet=True,
                                    evidence=None))
-    already = any(item['text'].startswith(f'{wp}: round ') and 'restart the module session' in item['text']
-                  for item in open_owner_items(ws))
-    if escalation and not already:
-        cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where=f'reports/{name}',
-                                     quiet=True, text=f'{wp}: {escalation} ; expected: the session continues on the stronger '
-                                          'model with its context'))
     if r['status'] in ('DISPATCHING', 'IN_PROGRESS', 'REVISE'):
         cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='REVIEW', quiet=True,
                                    evidence=f'{sha[:10]}; report reports/{name}'))
@@ -2179,9 +2249,14 @@ def redact(text):
     return text
 
 
-def pr_url(value):
+def pr_url(value, repo=None):
+    """The PR URL in a WP row cell; a bare number (`#87`, `87`) is expanded by the repository's origin, so
+    cells written before 0.9.1 work as they are."""
     match = re.search(r'https?://\S+/pull/\d+', value or '')
-    return match.group(0) if match else None
+    if match:
+        return match.group(0)
+    number = re.match(r'^\s*#?(\d+)\b', value or '')
+    return pr_from_number(repo, number.group(1)) if number and repo is not None else None
 
 
 def verify_plan(ws, module, env):
@@ -2242,7 +2317,7 @@ def cmd_verify(args):
                         f'{", ".join(verification.VERIFIABLE[env])}'
                         + (' (or ACCEPTED with a merged PR)' if env == 'test' else ''))
     branch = verification.branch(module, env)
-    pr = pr_url(r['pr'])
+    pr = pr_url(r['pr'], module.repo)
     target = verification.TARGET[env]
     if args.dry_run:  # never runs a check, never calls gh, never writes
         sha = args.sha or (f'merge commit of {pr} (gh)' if pr else 'unknown: pass --sha')
@@ -2706,7 +2781,7 @@ def ledger(ws, wp, pr, sha, stand_run='—', stand_verify='—', note='—'):
 
 
 def owner_delivery_command(ws, module, r):
-    pr = pr_url(r['pr']) or '<PR URL>'
+    pr = pr_url(r['pr'], module.repo) or '<PR URL>'
     return (f'gh pr merge {pr} --{delivery.merge_method(module)}'
             + (' --delete-branch' if delivery.repo_setting(module, 'delete_branch', True) is not False else ''))
 
@@ -2722,7 +2797,7 @@ def delivery_gates(ws, wp, args):
                   f'status {r["status"]}; accepted revision {sha[:10] if sha else "none (orch.py accept)"}; '
                   f'report {report or "none"}'))
     name = streams.origin_name(repo)
-    pr = pr_url(r['pr'])
+    pr = pr_url(r['pr'], repo)
     facts = None
     if not pr or not name:
         gates.append(('G2', False, 'no PR link in the WP table or no hosted origin'))
@@ -3057,7 +3132,7 @@ def cmd_ready(args):
                 if name and shutil_which('gh'):
                     prs = subprocess.run(['gh', 'pr', 'list', '--repo', name, '--head', meta['branch'],
                                           '--state', 'open', '--json', 'url,body'],
-                                         text=True, capture_output=True)
+                                         encoding='utf-8', errors='replace', capture_output=True)
                     try:
                         found = json.loads(prs.stdout or '[]')
                     except ValueError:
@@ -3140,8 +3215,8 @@ def close_blockers(ws, prs_verified=None):
         branch = meta['branch']
         url = r['pr'] if re.match(r'https?://', r['pr'] or '') else None
         if url and gh:
-            state = subprocess.run(['gh', 'pr', 'view', url, '--json', 'state', '-q', '.state'], text=True,
-                                   capture_output=True)
+            state = subprocess.run(['gh', 'pr', 'view', url, '--json', 'state', '-q', '.state'], encoding='utf-8',
+                                   errors='replace', capture_output=True)
             if state.returncode:
                 unverified.append(f'{wp}: cannot read {url} with gh')
             elif state.stdout.strip() == 'OPEN':
@@ -3156,7 +3231,8 @@ def close_blockers(ws, prs_verified=None):
         name = streams.origin_name(module.repo)
         if name and gh:
             prs = subprocess.run(['gh', 'pr', 'list', '--repo', name, '--head', branch, '--state', 'open',
-                                  '--json', 'url', '-q', '.[].url'], text=True, capture_output=True)
+                                  '--json', 'url', '-q', '.[].url'], encoding='utf-8', errors='replace',
+                                 capture_output=True)
             if prs.returncode:
                 unverified.append(f'{wp}: cannot list PRs of {branch} with gh')
             elif prs.stdout.strip():
@@ -3576,7 +3652,18 @@ def build_parser():
     return parser
 
 
+def utf8_output():
+    """stdout/stderr in UTF-8 whatever the locale: an agent session reads them through a pipe, where
+    Windows would use the ANSI code page (cp1252) and fail on non-ASCII text."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, ValueError):  # replaced or detached streams have no reconfigure
+            pass
+
+
 def main(argv=None):
+    utf8_output()
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)

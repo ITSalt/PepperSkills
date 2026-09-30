@@ -60,7 +60,8 @@ def claude_version():
     if os.environ.get('ORCH_NO_CLAUDE') == '1' or not shutil.which('claude'):
         return 'unknown (not queried)'
     try:
-        result = subprocess.run(['claude', '--version'], text=True, capture_output=True, timeout=15)
+        result = subprocess.run(['claude', '--version'], encoding='utf-8', errors='replace', capture_output=True,
+                                timeout=15)
     except (OSError, subprocess.TimeoutExpired):
         return 'unknown'
     return (result.stdout.strip().split('\n') or ['unknown'])[0] or 'unknown'
@@ -252,7 +253,7 @@ def search_query(fp):
 
 
 def gh(args):
-    result = subprocess.run(['gh', *args], text=True, capture_output=True)
+    result = subprocess.run(['gh', *args], encoding='utf-8', errors='replace', capture_output=True)
     if result.returncode:
         raise ReportError((result.stderr or result.stdout).strip().split('\n')[0] or f'gh exited {result.returncode}')
     return result.stdout

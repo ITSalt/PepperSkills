@@ -43,9 +43,10 @@ merge (for example `mcp__github__merge_pull_request`): never call them.
    search) and forbids `merge_pull_request`, `update_pull_request_branch`, `push_files`,
    `create_or_update_file`, `create_branch`, creating or updating pull requests, reviews and
    comments.
-3a. **Escalation.** From round 3 (`--round 3`: the same REVISE items are still open) `review-start`
-   prints and adds to the report and the owner queue a restart on the `models.escalate` model
-   (default `opus`): locally `cd <repo> && claude --resume <session> --model <escalate> [--effort
+3a. **Escalation.** From round 3 `review-start` prints and writes into the report a conditional
+   restart on the `models.escalate` model (default `opus`), since the resubmission is not read yet;
+   setting the package to `REVISE` again from round 3 (the same items came back) opens the owner
+   item, once. The restart: locally `cd <repo> && claude --resume <session> --model <escalate> [--effort
    <e>]` (works for sessions started with `claude -w`, from the repository root or the worktree);
    in the cloud, in the same session, choose the model in the list or send `/model <escalate>`.
    The orchestrator never changes a module session's model itself and never asks the session to.

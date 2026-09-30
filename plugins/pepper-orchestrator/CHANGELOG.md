@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.9.1 — preview, unreleased
+
+Hotfix for three field reports (Issues #20, #21, #24).
+
+- **#20, output through a pipe.** `orch.py` and `safe_edit.py` reconfigure stdout and stderr to UTF-8
+  (`errors='replace'`) at start: an agent session reads them through a pipe, where Windows uses the
+  ANSI code page (cp1252) and `queue` failed with `UnicodeEncodeError` on Russian text. `PYTHONUTF8` is
+  no longer needed.
+- **#20, process output.** All 16 `subprocess.run(..., text=True)` calls read with
+  `encoding='utf-8', errors='replace'` (git, gh, `claude --version`, check, verify and delivery
+  commands).
+- **#20, the `None` in `parse_push_trigger` - cause established.** On Windows `subprocess`
+  `communicate()` reads pipes in reader threads (`Popen._readerthread`: `buffer.append(fh.read())`). A
+  `UnicodeDecodeError` there (UTF-8 Cyrillic in a workflow decoded as cp1252, whose bytes 0x81, 0x8D,
+  0x8F, 0x90, 0x9D are undefined) kills only that thread; `communicate()` then returns
+  `stdout = stdout[0] if stdout else None`. On POSIX the same decoding happens in the main thread and
+  raises instead, which is why it did not reproduce there. Fixed by the UTF-8 reading above; besides,
+  `parse_push_trigger` refuses a non-string text (`DeployFormError`: "could not be read") and
+  `deploy_safe_dirs` offers no directory at all when a workflow could not be read. A test reproduces
+  the thread mechanism.
+- **#21, escalation.** `review-start --round 3+` prints and writes a conditional line ("if the same
+  REVISE items are still open after this review, restart ..."); the owner item opens only when the
+  package is set to `REVISE` again from round 3 (the round comes from the newest review report),
+  once per open item.
+- **#24, PR cell.** `set <WP> pr` takes a pull request URL or a number (`#87`, `87`), expanded by the
+  module repository's hosted origin; anything else, or a number without a hosted origin, is refused
+  with an example. `pr_url()` expands such numbers too, so cells written before 0.9.1 work as they
+  are. `merge add --pr` also fills an empty PR cell of the package.
+
 ## 0.9.0 — preview, unreleased
 
 Preview of stage 3c: trusted delivery of merges and the stand, only by an explicit owner decision.

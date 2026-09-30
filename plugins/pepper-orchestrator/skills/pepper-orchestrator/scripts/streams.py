@@ -618,7 +618,7 @@ def wp_meta(path, module):
 
 def git(root, *args):
     # --no-optional-locks: never race a session's own git for index.lock in its worktree.
-    return subprocess.run(['git', '--no-optional-locks', '-C', str(root), *args], text=True,
+    return subprocess.run(['git', '--no-optional-locks', '-C', str(root), *args], encoding='utf-8', errors='replace',
                           capture_output=True)
 
 
@@ -878,8 +878,13 @@ def _pattern_list(key, value, following):
 def parse_push_trigger(text, name):
     """(runs_on_push, branches, branches_ignore, paths_ignore, paths) or DeployFormError.
 
+    A text that is not a string (git output lost on Windows: a decoding error in the reader thread of
+    subprocess leaves stdout None) is a refusal, never 'safe'.
+
     A positive `paths` filter is returned as given (a list, or the DeployFormError of an unsupported
     list): it only matters when the push runs on the workspace branch at all."""
+    if not isinstance(text, str):
+        raise DeployFormError(f'{name}: could not be read (git returned no text)')
     lines = text.split('\n')
     for line in lines:
         code = '' if line.lstrip().startswith('#') else line.split(' #')[0]
@@ -971,7 +976,7 @@ def deploy_safe_dirs(repo_root, branch, program, ref):
 
     Candidates are non-hidden directories every push workflow running on branch ignores,
     `docs` first. Any workflow in an unknown form is a refusal, never 'safe'."""
-    notes, refusals, candidates, relevant = [], [], None, []
+    notes, refusals, candidates, relevant, unreadable = [], [], None, [], False
     try:
         texts = workflow_texts(repo_root, ref)
     except DeployFormError as error:
@@ -979,6 +984,8 @@ def deploy_safe_dirs(repo_root, branch, program, ref):
     if not texts:
         notes.append(f'{ref} has no .github/workflows: no push workflow runs')
     for name, text in sorted(texts.items()):
+        if not isinstance(text, str):
+            unreadable = True
         try:
             on_push, branches, branches_ignore, paths_ignore, paths = parse_push_trigger(text, name)
         except DeployFormError as error:
@@ -1003,6 +1010,8 @@ def deploy_safe_dirs(repo_root, branch, program, ref):
                 and not any(part.startswith('.') for part in p[:-3].split('/'))]
         notes.append(f'{name}: runs on push to {branch}; ignored directories: {", ".join(dirs) or "none"}')
         candidates = dirs if candidates is None else [d for d in candidates if d in dirs]
+    if unreadable:  # a workflow that could not be read at all: no directory is offered, even after D-n
+        return [], notes, refusals, False
     if refusals:
         # Candidates from the workflows that could be read: used only after an owner decision (D-n).
         if not relevant:

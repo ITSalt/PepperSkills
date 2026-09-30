@@ -127,7 +127,7 @@ def set_key(path, key, value):
 # ---------------------------------------------------------------- facts through gh
 
 def gh_json(args):
-    result = subprocess.run(['gh', *args], text=True, capture_output=True)
+    result = subprocess.run(['gh', *args], encoding='utf-8', errors='replace', capture_output=True)
     if result.returncode:
         raise DeliveryError((result.stderr or result.stdout).strip().split('\n')[0] or f'gh exited {result.returncode}')
     try:
@@ -144,7 +144,7 @@ def pr_facts(repo_name, pr):
 def pr_checks(repo_name, number):
     """(verdict, detail) of the PR's checks: all passed or skipped is green."""
     result = subprocess.run(['gh', 'pr', 'checks', str(number), '--repo', repo_name, '--json', 'name,bucket'],
-                            text=True, capture_output=True)
+                            encoding='utf-8', errors='replace', capture_output=True)
     if result.returncode and 'no checks' in (result.stderr + result.stdout).lower():
         return True, 'no checks reported'
     try:
@@ -163,7 +163,7 @@ def merge(repo_name, number, method, delete_branch):
     args = ['gh', 'pr', 'merge', str(number), '--repo', repo_name, f'--{method}']
     if delete_branch:
         args.append('--delete-branch')
-    result = subprocess.run(args, text=True, capture_output=True)
+    result = subprocess.run(args, encoding='utf-8', errors='replace', capture_output=True)
     if result.returncode:
         raise DeliveryError((result.stderr or result.stdout).strip().split('\n')[0] or 'gh pr merge failed')
     return ' '.join(args[:1] + args[1:])
@@ -186,7 +186,7 @@ def wait_run(repo_name, workflow, sha, branch_name, timeout, interval):
     remaining = max(1, int(deadline - time.monotonic()))
     try:
         watched = subprocess.run(['gh', 'run', 'watch', str(run['databaseId']), '--repo', repo_name, '--exit-status'],
-                                 text=True, capture_output=True, timeout=remaining)
+                                 encoding='utf-8', errors='replace', capture_output=True, timeout=remaining)
     except subprocess.TimeoutExpired:
         return False, f'{workflow}: run {run["databaseId"]} did not finish within {timeout} s'
     if watched.returncode:
@@ -198,8 +198,8 @@ def run_command(command, cwd, timeout):
     """(ok, detail) of a configured command (deploy_test, rollback_test); stdin is closed, so a script that
     asks for a TTY confirmation fails instead of waiting."""
     try:
-        result = subprocess.run(command, shell=True, cwd=cwd, text=True, capture_output=True, timeout=timeout,
-                                stdin=subprocess.DEVNULL)
+        result = subprocess.run(command, shell=True, cwd=cwd, encoding='utf-8', errors='replace',
+                                capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return False, f'`{command}` timed out after {timeout} s'
     tail = (result.stdout + result.stderr).strip().split('\n')[-1:]
@@ -213,7 +213,7 @@ def previous_sha(repo, sha):
     result = streams.git(repo.local, 'rev-parse', '--verify', '-q', f'{sha}^1')
     if result.returncode:
         import os
-        subprocess.run(['git', '-C', str(repo.local), 'fetch', '-q', 'origin'], capture_output=True, text=True,
-                       env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'}, timeout=120)
+        subprocess.run(['git', '-C', str(repo.local), 'fetch', '-q', 'origin'], capture_output=True,
+                       encoding='utf-8', errors='replace', env={**os.environ, 'GIT_TERMINAL_PROMPT': '0'}, timeout=120)
         result = streams.git(repo.local, 'rev-parse', '--verify', '-q', f'{sha}^1')
     return result.stdout.strip() if result.returncode == 0 else None

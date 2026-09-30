@@ -184,7 +184,9 @@ def test_workflow(tmp, lang):
     run(repo, 'set', 'WP-DB-01', 'status', 'READY', '--evidence', 'reviewed')
     run(repo, 'set', 'WP-DB-01', 'status', 'BLOCKED', ok=False)
     run(repo, 'set', 'WP-DB-02', 'status', 'CANCELLED (hypothesis refuted by measurement)')
-    run(repo, 'set', 'WP-WEB-01', 'pr', 'https://example.com/pull/7 | draft')
+    run(repo, 'set', 'WP-WEB-01', 'title', 'Orders page | draft')
+    run(repo, 'set', 'WP-WEB-01', 'pr', 'https://example.com/pull/7')
+    run(repo, 'set', 'WP-WEB-01', 'pr', 'draft PR', ok=False)  # 0.9.1: only a URL or a number
     run(repo, 'set', 'WP-WEB-01', 'module', 'db', ok=False)
     run(repo, 'set', 'WP-NONE-01', 'status', 'READY', ok=False)
     run(repo, 'owner', 'add', 'P', 'Export needed? (a) yes (b) no; recommend (b)')
@@ -201,7 +203,7 @@ def test_workflow(tmp, lang):
     run(repo, 'decide', 'A', 'Staging mirrors production schema')
     assert 'empty' in run(repo, 'queue').stdout
     status = (ws / 'status.md').read_text(encoding='utf-8')
-    assert 'https://example.com/pull/7 \\| draft' in status
+    assert 'Orders page \\| draft' in status and '| https://example.com/pull/7 |' in status
     assert '| ~~P-1~~ |' in status and 'answered by D-1' in status
     assert 'dropped: superseded by D-1' in status
     decisions = (ws / 'decisions.md').read_text(encoding='utf-8')
@@ -1009,11 +1011,18 @@ def test_review(tmp):
                            '--json').stdout)
     esc = [w for w in third['warnings'] if w.startswith('round 3:')]
     assert esc and f'cd {mono} && claude --resume rv-app --model opus' in esc[0], third['warnings']
-    assert 'restart the module session on opus' in (home / 'features/rv/status.md').read_text(encoding='utf-8')
+    assert 'if the same REVISE items are still open' in esc[0], esc  # 0.9.1 (#21): conditional before reading
+
+    def escalations():
+        return [q for q in json.loads(run(home, 'queue', '--json').stdout) if 'restart the module session' in q['text']]
+    assert escalations() == [], 'no owner item before the round is reviewed'
+    assert 'if the same REVISE items are still open' in Path(third['report']).read_text(encoding='utf-8')
+    run(home, 'set', 'WP-APP-01', 'status', 'REVISE', '--evidence', 'round 3: items 2 and 3 again')
+    assert len(escalations()) == 1 and 'round 3: the same REVISE items are still open' in escalations()[0]['text']
     again = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', third['sha'], '--round', '4', '--json').stdout)
     assert any(w.startswith('round 4:') for w in again['warnings']), 'the hint is printed every round'
-    open_escalations = [q for q in json.loads(run(home, 'queue', '--json').stdout) if 'restart the module session' in q['text']]
-    assert len(open_escalations) == 1, open_escalations
+    run(home, 'set', 'WP-APP-01', 'status', 'REVISE')
+    assert len(escalations()) == 1, escalations()
     command = third['revision_diff']
     assert f'range-diff origin/main..{second["sha"]} origin/main..{third["sha"]}' in command, command
     rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, text=True)
@@ -2222,6 +2231,96 @@ def test_deliver(tmp):
           'method, ledger, run watch, verify, hold on failure, unhold, GitHub refusal -> owner item, settings')
 
 
+def test_encoding_and_pr_cell(tmp):
+    """0.9.1: UTF-8 output through a pipe under a non-UTF-8 locale, unreadable workflows refused, PR cells."""
+    import io
+    import threading
+    import streams
+    # The Windows mechanism behind "git output comes back as None" (#20): subprocess reads pipes in a
+    # reader thread there; a decoding error kills only that thread and communicate() returns None.
+    raw = io.TextIOWrapper(io.BytesIO('Проверка деплоя'.encode('utf-8')), encoding='cp1252')
+    buffer = []
+    thread = threading.Thread(target=lambda: buffer.append(raw.read()))
+    hook, threading.excepthook = threading.excepthook, lambda args: None
+    thread.start()
+    thread.join()
+    threading.excepthook = hook
+    assert buffer == [], 'the reader thread dies; communicate() would return stdout=None'
+    try:
+        streams.parse_push_trigger(None, 'ci.yml')
+    except streams.DeployFormError as error:
+        assert 'could not be read' in str(error)
+    else:
+        raise AssertionError('None must be a refusal')
+    real = streams.workflow_texts
+    streams.workflow_texts = lambda root, ref: {'ci.yml': None, 'other.yml': 'on: [pull_request]\n'}
+    try:
+        candidates, _, refusals, any_dir = streams.deploy_safe_dirs(tmp, 'orch/x', 'x', 'HEAD')
+    finally:
+        streams.workflow_texts = real
+    assert refusals and candidates == [] and not any_dir, (candidates, refusals)
+    # A repository with Russian text in a workflow and in a commit message, a Russian workspace.
+    mono = make_monorepo(tmp / 'enc')
+    with_workflow(mono, "# Выкладка стенда\non:\n  push:\n    paths-ignore: ['docs/**']\njobs: {}\n")
+    (mono / 'apps/app/src/page.tsx').write_text('// страница\n', encoding='utf-8')
+    git(mono, 'commit', '-qam', 'Правка страницы: кириллица в сообщении')
+    git(mono, 'push', '-q', 'origin', 'main')
+    clone = tmp / 'enc/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'enc/mono.git'), str(clone))
+    git(clone, 'config', f'url.{tmp / "enc/mono.git"}.insteadOf', 'https://github.com/example/mono.git')
+    git(clone, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
+    run(clone, 'init', 'enc', '--lang', 'ru', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app',
+        '--area', 'shop=app:apps/app/**')
+    run(clone, 'owner', 'add', 'P', 'Нужен ли экспорт заказов? (а) да (б) нет; рекомендую (б)')
+    run(clone, 'new-wp', 'shop', 'orders', '--title', 'Заказы')
+    wt = branch_with(clone, 'feature/wp-shop-01-orders', ['apps/app/src/page.tsx'])
+    git(wt, 'commit', '-q', '--allow-empty', '-m', 'Пакет: заказы — готово')
+    git(wt, 'push', '-q', 'origin', 'feature/wp-shop-01-orders')
+    env = {**os.environ, **GIT_ENV, 'PYTHONIOENCODING': 'cp1252', 'LC_ALL': 'C', 'LANG': 'C', 'PYTHONUTF8': '0'}
+    env.pop('ORCH_WORKSPACE', None)
+    for args in (['queue'], ['lint'], ['ready'], ['overlap', '--planned'], ['review-start', 'WP-SHOP-01', '--no-fetch']):
+        result = subprocess.run([*ORCH, *args], cwd=clone, env=env, capture_output=True)
+        assert result.returncode == 0, (args, result.stderr.decode('utf-8', 'replace'))
+        out = (result.stdout + result.stderr).decode('utf-8')  # strict: valid UTF-8
+        if args == ['queue']:
+            assert 'Нужен ли экспорт заказов' in out, out
+    # PR cells (#24): a URL or a number expanded by origin; anything else refused.
+    ws = clone / 'docs/orchestration/enc'
+    run(clone, 'set', 'WP-SHOP-01', 'pr', '#87')
+    assert '| https://github.com/example/mono/pull/87 |' in (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'takes a pull request URL or number' in run(clone, 'set', 'WP-SHOP-01', 'pr', 'мусор', ok=False).stderr
+    run(clone, 'new-wp', 'shop', 'cart')
+    run(clone, 'merge', 'add', 'WP-SHOP-02', '--pr', 'https://github.com/example/mono/pull/88')
+    assert '| https://github.com/example/mono/pull/88 |' in (ws / 'status.md').read_text(encoding='utf-8')
+    # A cell written before 0.9.1 ("#87") still resolves for verify.
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    (ws / 'status.md').write_text(status.replace('| https://github.com/example/mono/pull/87 |', '| #87 |'),
+                                  encoding='utf-8')
+    orch_ws = orch.Workspace(ws)
+    _, module, _ = orch.wp_context(orch_ws, 'WP-SHOP-01')
+    assert orch.pr_url('#87', module.repo) == 'https://github.com/example/mono/pull/87'
+    stub = tmp / 'enc/stub'
+    (stub / 'bin').mkdir(parents=True)
+    (stub / 'bin/gh').write_text(GH_STUB, encoding='utf-8')
+    (stub / 'bin/gh').chmod(0o755)
+    head = git(clone, 'rev-parse', 'origin/main').strip()
+    (stub / 'pr.json').write_text(json.dumps({'state': 'MERGED', 'mergeCommit': {'oid': head}}), encoding='utf-8')
+    (stub / 'runs.json').write_text('[]', encoding='utf-8')
+    safe_edit.replace_once(ws / 'orch.yaml', '    checks: []\n', '    checks: []\n    verify_test: ["true"]\n')
+    run(clone, 'set', 'WP-SHOP-01', 'status', 'MERGED')
+    gh_env = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(stub), 'PATH': f'{stub / "bin"}{os.pathsep}{os.environ["PATH"]}'}
+    assert 'PASS' in run(clone, 'verify', 'WP-SHOP-01', '--env', 'test', extra_env=gh_env).stdout
+    assert 'pr view https://github.com/example/mono/pull/87' in (stub / 'calls.log').read_text(encoding='utf-8')
+    local = make_monorepo(tmp / 'enc-local')
+    home = tmp / 'enc-local/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'loc', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'db={local}')
+    run(home, 'new-wp', 'db', 'schema')
+    assert 'cannot be expanded' in run(home, 'set', 'WP-DB-01', 'pr', '#5', ok=False).stderr
+    print('PASS encoding and PR cell: UTF-8 through a pipe under cp1252/C, unreadable workflow refused, #87 expanded')
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -2252,6 +2351,7 @@ def main():
         test_windows_paths(tmp)
         test_report(tmp)
         test_deliver(tmp)
+        test_encoding_and_pr_cell(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

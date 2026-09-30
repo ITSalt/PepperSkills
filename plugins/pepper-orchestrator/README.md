@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.9.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `resume`, `owner`, `decide`,
+> **Preview (0.9.1).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
@@ -37,7 +37,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 | `/pepper-orchestrator:report [what]` | report a defect of the plugin: anonymized record, Issue after your yes |
 
-Version 0.9.0 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c). Modules can be whole repositories or areas and
+Version 0.9.1 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
@@ -164,6 +164,8 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
   `shell: powershell` for PowerShell; `init` and `dispatch` then print `cd "<dir>"; claude ...`.
 - **Worktrees.** On Windows a worktree does not read `.claude/settings.local.json` of the main
   checkout; the plugin passes every session's rules with `--settings`, so nothing is to be copied.
+- Output and process text are UTF-8 whatever the code page (since 0.9.1): `PYTHONUTF8` and
+  `PYTHONIOENCODING` are no longer needed.
 - Not yet: a Windows runner in CI and PowerShell-specific forms of Bash rules (backlog).
 
 ## Models and environment
