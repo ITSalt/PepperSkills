@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.9.0 (preview)
+
+Trusted delivery: by an explicit owner decision the orchestrator merges accepted packages and runs
+the stand through gates by facts (`deliver` mode, `orch.py accept`, `delivery`, `deliver`, `hold`),
+with a ledger of deliveries and a stop at the first failure. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.8.0 (preview)
 
 Plugin defect channel: `report` mode and `orch.py report` (anonymized record, Issue in this

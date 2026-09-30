@@ -56,6 +56,11 @@ repos: []
 #    deploy_workflows: [deploy.yml]   # or {test: [...], prod: [...]}: resume (who holds the stand) and verify (run for the SHA)
 #    integration_branch: main         # branch the stand deploys from (verify --env test; default: base)
 #    prod_branch: main                # branch production deploys from (verify --env prod; default: base)
+#    merge_method: merge              # merge | squash | rebase: the repository's own method (deliver; never --admin)
+#    delete_branch: true              # deliver deletes the merged PR branch
+#    deploy_test: ./scripts/deploy.sh --target test   # non-interactive; only when a merge does not deploy the stand
+#    rollback_test: "./scripts/deploy.sh --target test --ref {previous_sha}"   # optional; run on a stand failure
+#    run_timeout: 1800                # seconds to wait for a deploy run (deliver)
 #    verify_test: ["curl -fsS https://test.example.com/health"]   # read-only; env ORCH_ENV, ORCH_SHA, ORCH_WP, ORCH_BASE_URL
 #    verify_prod: ["curl -fsS https://example.com/health"]        # secrets only as $VARIABLE references
 #    version_url: "{base_url}/version.json"   # served version ({base_url} from web_urls, {env}); or {test: ..., prod: ...}
@@ -105,6 +110,15 @@ modules: []
 #    effort: high
 
 # verify_timeout: 300              # seconds per verify command (orch.py verify)
+# Trusted delivery (orch.py deliver): by default the owner merges and deploys. Each level is handed to
+# the orchestrator only by an owner decision: orch.py delivery set <level> orchestrator --decision D-n.
+# delivery:
+#   merge: owner                    # owner | orchestrator: merging accepted PRs into the integration branch
+#   stand: owner                    # owner | orchestrator: stand deploy (run or deploy_test) and verification
+#   prod: owner                     # production (a later version)
+#   prod_migrations: owner
+#   enabled_by: D-n                 # written by delivery set; lint refuses orchestrator without it
+#   hold: "<reason>"                # orch.py hold / unhold: stops every delivery
 environments: {}
 guards: {}
 # Optional source of facts: none | nacl. Tasks and statuses always stay in files.

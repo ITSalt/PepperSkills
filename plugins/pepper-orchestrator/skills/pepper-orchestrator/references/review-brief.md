@@ -40,6 +40,10 @@ mutations; cleanup.
 
 ## Always ask
 
+- If the package has a Specification or Graph row: did the implementer update the graph (the PR
+  report carries the output of the methodology's status command)? Write `graph: checked` in the
+  review report, or a finding; a mismatch between the graph and the package is a REVISE item.
+  `orch.py deliver` refuses a merge without `graph: checked` (gate G9).
 - What did the base allow or show that the change removes? Name each removed branch, state,
   transition, permission, UI action or API field, and whether the package asked for its removal.
 - Does every acceptance criterion have a test or a live check, and does the test fail when the key

@@ -2013,6 +2013,170 @@ def test_report(tmp):
           'auto by decision, no-gh instructions, update line')
 
 
+DELIVER_GH_STUB = """#!/usr/bin/env python3
+import json, os, sys
+root = os.environ['GH_STUB_DIR']
+args = sys.argv[1:]
+with open(os.path.join(root, 'calls.log'), 'a') as log:
+    log.write(json.dumps(args) + '\\n')
+def load(name):
+    return open(os.path.join(root, name)).read()
+if args[:2] == ['pr', 'view']:
+    print(load('pr.json'))
+elif args[:2] == ['pr', 'checks']:
+    print(load('checks.json'))
+elif args[:2] == ['pr', 'merge']:
+    if os.path.exists(os.path.join(root, 'fail_merge')):
+        sys.stderr.write('GraphQL: At least 1 approving review is required\\n')
+        sys.exit(1)
+    pr = json.loads(load('pr.json'))
+    pr['state'] = 'MERGED'
+    pr['mergeCommit'] = {'oid': load('merge_sha.txt').strip()}
+    open(os.path.join(root, 'pr.json'), 'w').write(json.dumps(pr))
+    print('Merged pull request #%s' % pr['number'])
+elif args[:2] == ['run', 'list']:
+    print(load('runs.json'))
+elif args[:2] == ['run', 'watch']:
+    sys.exit(int(load('watch_rc.txt').strip() or 0))
+else:
+    sys.exit(3)
+"""
+
+
+def test_deliver(tmp):
+    """3c: trusted delivery with a stub gh (view, checks, merge, run) and stub commands."""
+    mono = make_monorepo(tmp / 'deliver')
+    stub = tmp / 'deliver/stub'
+    (stub / 'bin').mkdir(parents=True)
+    (stub / 'bin/gh').write_text(DELIVER_GH_STUB, encoding='utf-8')
+    (stub / 'bin/gh').chmod(0o755)
+    head = git(mono, 'rev-parse', 'HEAD').strip()
+    merge_sha = 'ab' * 20
+
+    def pr(wp, number):
+        (stub / 'pr.json').write_text(json.dumps({
+            'number': number, 'url': f'https://github.com/example/mono/pull/{number}', 'state': 'OPEN',
+            'headRefOid': head, 'mergeable': 'MERGEABLE', 'baseRefName': 'main',
+            'title': f'[SHOP] {wp}: work', 'mergeCommit': None}), encoding='utf-8')
+    pr('WP-APP-01', 5)
+    (stub / 'checks.json').write_text(json.dumps([{'name': 'ubuntu', 'bucket': 'pass'}]), encoding='utf-8')
+    (stub / 'merge_sha.txt').write_text(merge_sha, encoding='utf-8')
+    (stub / 'runs.json').write_text(json.dumps([{'databaseId': 9, 'status': 'completed', 'conclusion': 'success',
+                                                 'headBranch': 'main', 'url': 'https://example.invalid/runs/9'}]),
+                                    encoding='utf-8')
+    (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
+    env = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(stub), 'ORCH_POLL_INTERVAL': '0',
+           'PATH': f'{stub / "bin"}{os.pathsep}{os.environ["PATH"]}'}
+    home = tmp / 'deliver/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
+        '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
+    ws = home / 'features/shop'
+    config = ws / 'orch.yaml'
+    safe_edit.replace_once(config, '    checks: []\n', '    checks: []\n    merge_method: squash\n'
+                           '    deploy_workflows: [deploy.yml]\n    verify_test: ["echo stand ok"]\n'
+                           '    rollback_test: "echo rollback {previous_sha}"\n')
+    git(mono, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
+    for slug in ('orders', 'cart', 'fees'):
+        run(home, 'new-wp', 'app', slug)
+    for n, wp in enumerate(('WP-APP-01', 'WP-APP-02', 'WP-APP-03'), 5):
+        run(home, 'set', wp, 'pr', f'https://github.com/example/mono/pull/{n}')
+        run(home, 'set', wp, 'status', 'REVIEW')
+    # Default (and every workspace before 0.9.0): the owner delivers.
+    owner = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stderr
+    assert 'delivery is done by the owner' in owner and \
+        'gh pr merge https://github.com/example/mono/pull/5 --squash --delete-branch' in owner, owner
+    assert 'decision' in run(home, 'delivery', 'set', 'merge', 'orchestrator', ok=False).stderr
+    run(home, 'decide', 'D', 'The orchestrator merges accepted packages and runs the stand')
+    run(home, 'delivery', 'set', 'merge', 'orchestrator', '--decision', 'D-1')
+    run(home, 'delivery', 'set', 'stand', 'orchestrator', '--decision', 'D-1')
+    parsed = orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']
+    assert parsed == {'enabled_by': 'D-1', 'merge': 'orchestrator', 'stand': 'orchestrator'}, parsed
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '  enabled_by: D-1\n', '')
+    assert 'orchestrator needs enabled_by: D-n' in lint_errors(home)
+    config.write_text(original, encoding='utf-8')
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    # G1: not accepted; G2: accepted at another SHA; then every gate green.
+    g1 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
+    assert '| G1 | RED |' in g1, g1
+    review = ws / 'reports/wp-app-01-review.md'
+    review.parent.mkdir(exist_ok=True)
+    review.write_text('# Review\n\n**Decision: ACCEPTED**\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-01', 'c' * 40, '--report', 'reports/wp-app-01-review.md')
+    g2 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
+    assert '| G2 | RED |' in g2 and 'new commits need a new review' in g2, g2
+    run(home, 'accept', 'WP-APP-01', head, '--report', 'reports/wp-app-01-review.md')
+    g5 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
+    assert '| G5 | RED |' in g5 and 'merge queue' in g5, g5  # sequential policy: the queue first
+    run(home, 'merge', 'add', 'WP-APP-01', '--pr', 'https://github.com/example/mono/pull/5')
+    green = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env).stdout
+    assert 'RED' not in green and '| G10 | green |' in green, green
+    applied = run(home, 'deliver', '--apply', 'WP-APP-01', extra_env=env).stdout
+    assert f'merged (squash) at {merge_sha[:10]}' in applied and 'VERIFIED_TEST' in applied, applied
+    calls = [json.loads(line) for line in (stub / 'calls.log').read_text(encoding='utf-8').splitlines()]
+    assert ['pr', 'merge', '5', '--repo', 'example/mono', '--squash', '--delete-branch'] in calls, calls
+    assert any(c[:2] == ['run', 'watch'] for c in calls) and not any('--admin' in c for c in calls)
+    assert all(tuple(c[:2]) in {('pr', 'view'), ('pr', 'checks'), ('pr', 'merge'), ('run', 'list'), ('run', 'watch')}
+               for c in calls), 'no command outside the delivery commands'
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'WP-APP-01: MERGED -> VERIFIED_TEST' in status, status
+    ledger = (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    assert f'| WP-APP-01 | https://github.com/example/mono/pull/5 | {merge_sha[:12]} |' in ledger and '| PASS |' in ledger
+    # A failed stand run: hold, defect, rollback, the queue stops.
+    pr('WP-APP-02', 6)
+    review2 = ws / 'reports/wp-app-02-review.md'
+    review2.write_text('# Review\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-02', head, '--report', 'reports/wp-app-02-review.md')
+    run(home, 'merge', 'add', 'WP-APP-02')
+    (stub / 'watch_rc.txt').write_text('1', encoding='utf-8')
+    failed = run(home, 'deliver', '--apply', 'WP-APP-02', extra_env=env, ok=False).stderr
+    assert 'delivery is on hold' in failed and 'REVISE text for the module session' in failed, failed
+    assert 'WP-APP-02' in orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']['hold']
+    assert list((ws / 'bugs').glob('BUG-*-verify-wp-app-02-test.md')), 'defect written'
+    assert 'hold; ' in (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    pr('WP-APP-03', 7)
+    review3 = ws / 'reports/wp-app-03-review.md'
+    review3.write_text('# Review\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-03', head, '--report', 'reports/wp-app-03-review.md')
+    run(home, 'merge', 'add', 'WP-APP-03')
+    stopped = run(home, 'deliver', '--apply', 'WP-APP-03', extra_env=env, ok=False)
+    assert '| G10 | RED |' in stopped.stdout and 'hold' in stopped.stdout, stopped.stdout
+    assert '| G5 | RED |' in stopped.stdout and 'not VERIFIED_TEST' in stopped.stdout
+    assert 'WP-APP-03: delivery refused' in (ws / 'status.md').read_text(encoding='utf-8')
+    run(home, 'unhold', 'analysed: flaky runner, rerun is green')
+    assert 'hold' not in orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']
+    # GitHub refuses the merge: an owner item, never a bypass.
+    (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
+    (stub / 'fail_merge').write_text('x', encoding='utf-8')
+    refused = run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env, ok=False).stderr
+    assert 'GitHub refused the merge' in refused and 'owner item opened' in refused, refused
+    assert 'R-1' in run(home, 'queue').stdout
+    (stub / 'fail_merge').unlink()
+    # G9: a package with a specification reference needs "graph: checked" in its review report.
+    fill_header(ws / 'work-packages/WP-APP-03-fees.md', 'Specification', 'UC-12, FR-4')
+    g9 = run(home, 'deliver', '--check', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env, ok=False).stdout
+    assert '| G9 | RED |' in g9 and 'graph: checked' in g9, g9
+    review3.write_text('# Review\n\ngraph: checked (status command output in the PR report)\n', encoding='utf-8')
+    assert '| G9 | green |' in run(home, 'deliver', '--check', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env).stdout
+    # lint: prod by the orchestrator needs merge by the orchestrator; a hold is the first warning.
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '  merge: orchestrator\n', '  merge: owner\n  prod: orchestrator\n')
+    assert 'delivery.prod: orchestrator needs delivery.merge: orchestrator' in lint_errors(home)
+    config.write_text(original, encoding='utf-8')
+    run(home, 'hold', 'owner stop')
+    assert 'delivery is on hold: owner stop' in run(home, 'lint').stderr
+    run(home, 'unhold', 'owner resumed')
+    # The orchestrator's settings follow the delivery levels.
+    run(home, 'settings', 'orchestrator')
+    rules = json.loads((ws / 'orchestration/settings/orchestrator.json').read_text(encoding='utf-8'))['permissions']
+    assert 'Bash(gh pr merge * --repo example/mono *)' in rules['allow'] and 'Bash(gh pr merge *)' not in rules['deny']
+    assert 'Bash(echo rollback *)' in rules['allow'] and 'Bash(echo stand ok)' in rules['allow'], rules['allow']
+    print('PASS deliver: owner default, delivery set by D-n, lint, gates G1/G2/G5/G10, merge with the configured '
+          'method, ledger, run watch, verify, hold on failure, unhold, GitHub refusal -> owner item, settings')
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -2042,6 +2206,7 @@ def main():
         test_verify(tmp)
         test_windows_paths(tmp)
         test_report(tmp)
+        test_deliver(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 
