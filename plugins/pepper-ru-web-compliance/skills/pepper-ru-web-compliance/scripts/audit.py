@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["h11>=0.16,<0.17", "playwright>=1.55,<2"]
+# dependencies = ["h11>=0.16,<0.17", "playwright==1.56.0"]
 # ///
 """One explicit network launch; all later analysis uses local evidence."""
 import argparse
@@ -85,7 +85,8 @@ def main(argv=None):
                 exc.code if isinstance(exc, transport.NetworkError) else type(exc).__name__))
             print(f"Сетевой этап: {network.metadata['transport_error']}. "
                   f"Retry-After: {getattr(exc, 'retry_after', None) or 'не указан'}. "
-                  "Автоматического нового запуска нет. Можно задать PEPPER_RU_AUDIT_PROXY.", file=sys.stderr)
+                  "Автоматического нового запуска нет. Для custom-прокси нужен новый пустой --out; "
+                  "транспорт будет отмечен как custom.", file=sys.stderr)
         finally:
             collect.update_network(out, network.metadata)
         if not (out / "manifest.json").exists():

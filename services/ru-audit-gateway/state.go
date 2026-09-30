@@ -43,6 +43,7 @@ func fail(code string, status int) error { return &failure{Code: code, Status: s
 
 type session struct {
 	ID, IP, Target, Token, Reason string
+	Version                       int
 	Expires                       time.Time
 	Down, Up                      int64
 	Connections                   int
@@ -57,7 +58,9 @@ type Gateway struct {
 	db            *sql.DB
 	mu            sync.Mutex
 	sessions      map[string]*session
+	tunnels       map[string]*relayTunnel
 	boot          string
+	trustedRelay  string
 	now           func() time.Time
 	resolve       func(context.Context, string) ([]netip.Addr, error)
 	dial          func(context.Context, string, string) (net.Conn, error)
@@ -108,7 +111,7 @@ func NewGateway(path string, c Config) (*Gateway, error) {
 		return nil, err
 	}
 	d := &net.Dialer{Timeout: c.Connect}
-	g := &Gateway{registrySlots: make(chan struct{}, 2), cfg: c, db: db, sessions: map[string]*session{}, boot: randomID(), now: time.Now, dial: d.DialContext}
+	g := &Gateway{registrySlots: make(chan struct{}, 2), cfg: c, db: db, sessions: map[string]*session{}, tunnels: map[string]*relayTunnel{}, boot: randomID(), now: time.Now, dial: d.DialContext}
 	// Adapt the standard resolver to the narrower injectable interface.
 	g.resolve = func(ctx context.Context, h string) ([]netip.Addr, error) {
 		return net.DefaultResolver.LookupNetIP(ctx, "ip", h)
@@ -167,6 +170,9 @@ func (g *Gateway) trafficUsageLocked(now time.Time) (int64, error) {
 }
 
 func (g *Gateway) issue(remote, idem, target string) (*session, error) {
+	return g.issueVersion(remote, idem, target, 1)
+}
+func (g *Gateway) issueVersion(remote, idem, target string, version int) (*session, error) {
 	ip, err := ipIdentity(remote)
 	if err != nil {
 		return nil, fail("invalid_ip", 400)
@@ -180,7 +186,11 @@ func (g *Gateway) issue(remote, idem, target string) (*session, error) {
 		return nil, err
 	}
 	var id, oldTarget, boot string
-	err = g.db.QueryRow("SELECT id,target,boot FROM leases WHERE ip=? AND idem=?", key, idem).Scan(&id, &oldTarget, &boot)
+	if version == 2 {
+		err = g.db.QueryRow("SELECT id,target,boot FROM leases WHERE idem=?", idem).Scan(&id, &oldTarget, &boot)
+	} else {
+		err = g.db.QueryRow("SELECT id,target,boot FROM leases WHERE ip=? AND idem=?", key, idem).Scan(&id, &oldTarget, &boot)
+	}
 	if err == nil {
 		if oldTarget != target {
 			return nil, fail("idempotency_conflict", 409)
@@ -188,6 +198,9 @@ func (g *Gateway) issue(remote, idem, target string) (*session, error) {
 		s := g.sessions[id]
 		if boot != g.boot || s == nil {
 			return nil, fail("session_lost", 409)
+		}
+		if s.Version != version {
+			return nil, fail("idempotency_conflict", 409)
 		}
 		if s.Reason != "" {
 			return nil, fail(s.Reason, 410)
@@ -233,7 +246,7 @@ func (g *Gateway) issue(remote, idem, target string) (*session, error) {
 	}
 	id = randomID()
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &session{ID: id, IP: key, Target: target, Token: g.mac("token|" + g.boot + "|" + id), Expires: now.Add(g.cfg.Lifetime), Credit: g.cfg.Burst, Last: now, Ctx: ctx, Cancel: cancel}
+	s := &session{ID: id, IP: key, Target: target, Token: g.mac("token|" + g.boot + "|" + id), Version: version, Expires: now.Add(g.cfg.Lifetime), Credit: g.cfg.Burst, Last: now, Ctx: ctx, Cancel: cancel}
 	if _, err = g.db.Exec("INSERT INTO leases VALUES(?,?,?,?,?,?)", id, key, idem, target, now.Unix(), g.boot); err != nil {
 		cancel()
 		return nil, err
@@ -243,13 +256,20 @@ func (g *Gateway) issue(remote, idem, target string) (*session, error) {
 	return s, nil
 }
 func (g *Gateway) authenticate(remote, credential string, allowStopped bool) (*session, error) {
+	return g.authenticateToken(remote, credential, allowStopped, true)
+}
+func (g *Gateway) authenticateToken(remote, credential string, allowStopped, bindIP bool) (*session, error) {
 	id, token, ok := strings.Cut(credential, ":")
 	if !ok {
 		return nil, fail("unauthorized", 401)
 	}
-	ip, err := ipIdentity(remote)
-	if err != nil {
-		return nil, fail("unauthorized", 401)
+	ip := ""
+	if bindIP {
+		var err error
+		ip, err = ipIdentity(remote)
+		if err != nil {
+			return nil, fail("unauthorized", 401)
+		}
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -257,7 +277,7 @@ func (g *Gateway) authenticate(remote, credential string, allowStopped bool) (*s
 	if s == nil {
 		return nil, fail("session_lost", 401)
 	}
-	if subtle.ConstantTimeCompare([]byte(token), []byte(s.Token)) != 1 || s.IP != g.mac("ip|"+ip) {
+	if subtle.ConstantTimeCompare([]byte(token), []byte(s.Token)) != 1 || (bindIP && s.IP != g.mac("ip|"+ip)) {
 		return nil, fail("unauthorized", 401)
 	}
 	if !g.now().Before(s.Expires) {

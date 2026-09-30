@@ -10,11 +10,14 @@ import subprocess
 import time
 
 compose = ['docker', 'compose', '-p', 'pepper-audit-load', '-f', 'compose.load.yaml']
+service = os.environ.get('LOAD_CLIENT_SERVICE', 'client')
+if service not in ('client', 'client-v2'):
+    raise SystemExit('invalid LOAD_CLIENT_SERVICE')
 logs = pathlib.Path(os.environ.get('LOAD_LOG_DIR', '/tmp/pepper-audit-load'))
 logs.mkdir(exist_ok=True)
 started = time.monotonic()
 out = (logs / 'result.jsonl').open('w')
-process = subprocess.Popen(compose + ['run', '--rm', '--name', 'pepper-audit-load-client', 'client'], stdout=out, stderr=subprocess.STDOUT)
+process = subprocess.Popen(compose + ['run', '--rm', '--name', 'pepper-audit-load-client', service], stdout=out, stderr=subprocess.STDOUT)
 reason = None
 try:
     with (logs / 'metrics.jsonl').open('w') as f:

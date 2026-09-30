@@ -1202,6 +1202,7 @@ def detect_rkn_operator(ctx: Context) -> list[Finding]:
         return [mk(ctx, "PDN-010", "UNKNOWN",
                    "ИНН на сайте не найден — проверить оператора в реестре не по чему")]
     url = cfg["search_url"].format(inn=ctx.inn)
+    saved = {}
     try:
         saved = ctx._load_json("registries/operators.json", {})
         if saved.get("inn") == ctx.inn and saved.get("body_base64"):
@@ -1216,24 +1217,19 @@ def detect_rkn_operator(ctx: Context) -> list[Finding]:
     except Exception as exc:
         # Сообщение читает человек, который прокси ещё не настраивал. Название
         # переменной без команды, в которую её подставляют, ему ничего не даёт.
+        error_code = (saved.get('error') if isinstance(saved, dict) else None) or (
+            exc.code if isinstance(exc, transport.NetworkError) else type(exc).__name__)
         return [mk(ctx, "PDN-010", "UNKNOWN",
-                   f"Реестр операторов не ответил ({type(exc).__name__}): "
-                   f"pd.rkn.gov.ru отвечает только с российских адресов",
+                   f"Реестр операторов не дал подтверждённого ответа: {error_code}",
                    [Evidence(kind="registry", detail="запрос к реестру", url=url)],
                    manual_check=(
                        "Проверить оператора вручную: открыть "
                        "https://pd.rkn.gov.ru/operators-registry/operators-list/ и "
-                       f"ввести ИНН {ctx.inn} в поле «ИНН», нажать «Найти». Пустой "
-                       "результат означает, что уведомление в РКН не подано.\n\n"
-                       "Либо повторить автоматическую проверку через российский "
-                       "выход. Прокси задаётся переменной окружения в той же "
-                       "команде, отдельной настройки нет:\n\n"
-                       "    PEPPER_RU_REGISTRY_PROXY=http://логин:пароль@адрес:порт \\\n"
-                       "        uv run --no-project scripts/detect.py --artifacts artifacts/ "
-                       f"--out findings.json --inn {ctx.inn}\n\n"
-                       "Подойдёт любой HTTP-прокси с российским выходом — свой VPS "
-                       "или VPN-шлюз. На сам обход сайта эта переменная не влияет: "
-                       "она применяется только к запросам к госреестрам."))]
+                       f"ввести ИНН {ctx.inn} в поле «ИНН», нажать «Найти» и сохранить "
+                       "дату и результат. Пустой ответ требует проверки работоспособности поиска.\n\n"
+                       "Для нового автоматического сбора используйте scripts/audit.py "
+                       "с managed-шлюзом и пустым каталогом --out; этот detect "
+                       "повторно обрабатывает только уже сохранённые данные."))]
     text = reg.decode_best(raw)
     rows = [tr for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", text, re.S | re.I)
             if re.search(cfg["row_marker_pattern"], reg.clean_html(tr))]
@@ -1451,7 +1447,6 @@ def detect_endpoints(ctx: Context) -> list[Finding]:
         return [mk(ctx, rid, "UNKNOWN", "Без рендера приёмники форм не наблюдаются")
                 for rid in ("PDN-011", "INF-003")]
     ev = []
-    seen = set()
     for req in ctx.all_requests():
         category, basis = classify_request(req)
         # Keep same-origin and GET data flows too. A payload field is only a
@@ -1464,14 +1459,8 @@ def detect_endpoints(ctx: Context) -> list[Finding]:
         if not url:
             continue
         context = request_context(req)
-        key = (url, req.get("method"), req.get("phase"), req.get("page"), category)
-        if key in seen:
-            continue
-        seen.add(key)
         detail = f"{req.get('method', '?')}: {basis}"
-        if context['observation_version'] != 2:
-            detail += "; старый журнал без расширенных сведений о запросе"
-        elif not context['metadata_complete']:
+        if context['observation_version'] == 2 and not context['metadata_complete']:
             detail += "; часть контекста запроса недоступна"
         ev.append(Evidence(kind="request", detail=detail, url=url, context=context))
     for page in ctx.pages:
@@ -1648,14 +1637,24 @@ def run(ctx: Context) -> dict[str, Any]:
     attach_semantic_reviews(ctx, findings)
     if ctx.manifest.get("network") and not ctx.manifest["network"].get("complete"):
         for f in findings:
-            # A failed transport can hide evidence needed for applicability too.
+            # Direct observations on opened pages and independent registry/DNS
+            # checks remain usable. Absence and applicability claims need the
+            # pages that failed to load, so they stay UNKNOWN.
+            if f.rule_id in ("INF-001", "INF-002", "PDN-010") or f.group == "internal":
+                continue
+            if f.status in ("FAIL", "WARN") and f.evidence:
+                f.summary = "Неполный обход; на доступных страницах: " + f.summary
+                continue
             original = f.status
             f.status = "UNKNOWN"
             f.summary = f"Сетевой этап неполон (предварительно {original}): " + f.summary
             f.semantic_review = None
     by_status: dict[str, int] = {}
+    effective_by_status: dict[str, int] = {}
     for f in findings:
         by_status[f.status] = by_status.get(f.status, 0) + 1
+        effective = (f.semantic_review or {}).get("status") or f.status
+        effective_by_status[effective] = effective_by_status.get(effective, 0) + 1
     fails = [f for f in findings if f.status == "FAIL"]
     sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     findings.sort(key=lambda f: (0 if f.status == "FAIL" else
@@ -1666,6 +1665,21 @@ def run(ctx: Context) -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
         "producer": current_producer(),
+        "collection": {
+            "collector": ctx.manifest.get("collector"),
+            "schema_version": ctx.manifest.get("schema_version"),
+            "started_at": ctx.manifest.get("started_at"),
+            "finished_at": ctx.manifest.get("finished_at"),
+            "visual_complete": ctx.manifest.get("visual_complete"),
+            "partial_pages": ctx.manifest.get("partial_pages"),
+            "refusal": ctx.manifest.get("refusal"),
+            "network": ctx.manifest.get("network"),
+            "network_observations": {
+                "count": sum(len(rows) for rows in ctx.net.values()),
+                "versions": sorted({str(row.get("observation_version", 1))
+                                    for rows in ctx.net.values() for row in rows}),
+            },
+        },
         "artifacts_sha256": artifact_fingerprint(ctx),
         "target": ctx.target,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -1681,7 +1695,8 @@ def run(ctx: Context) -> dict[str, Any]:
                   "entries": len(d.entries), "stale_days": d.stale_days,
                   "error": d.error}
             for key, d in ctx._registries.items()},
-        "stats": {"by_status": by_status, "fail_count": len(fails),
+        "stats": {"by_status": by_status, "effective_by_status": effective_by_status,
+                  "fail_count": len(fails), "effective_fail_count": effective_by_status.get("FAIL", 0),
                   "needs_llm": sum(1 for f in findings if f.needs_llm)},
         "findings": [asdict(f) for f in findings],
     }

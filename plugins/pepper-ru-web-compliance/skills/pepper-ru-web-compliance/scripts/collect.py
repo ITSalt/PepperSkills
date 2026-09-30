@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["h11>=0.16,<0.17", "playwright>=1.55,<2"]
+# dependencies = ["h11>=0.16,<0.17", "playwright==1.56.0"]
 # ///
 """collect.py — слой сбора данных о сайте.
 
@@ -27,6 +27,7 @@ cookie-баннером. Разница между ними показывает
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import socket
@@ -47,21 +48,6 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 )
-
-# Страницы, которые почти всегда несут юридически значимый текст. Пробуем их
-# явно, потому что ссылка из футера может быть отрисована скриптом или скрыта.
-CANDIDATE_PATHS = [
-    "/privacy", "/privacy-policy", "/policy", "/politika", "/personal-data",
-    "/personalnye-dannye", "/confidentiality", "/konfidencialnost",
-    "/offer", "/oferta", "/terms", "/agreement", "/soglashenie", "/dogovor",
-    "/contacts", "/contact", "/kontakty", "/about", "/o-kompanii",
-    "/requisites", "/rekvizity",
-    "/delivery", "/dostavka", "/payment", "/oplata",
-    "/return", "/vozvrat", "/warranty", "/garantiya",
-    "/login", "/signin", "/auth", "/vhod", "/register", "/signup", "/registraciya",
-    "/cart", "/korzina", "/checkout", "/order", "/zakaz",
-    "/cookies", "/cookie-policy",
-]
 
 # Текстовые маркеры для распознавания cookie-баннера. Список намеренно широкий:
 # лучше найти лишний кандидат и отфильтровать его по кнопкам, чем пропустить
@@ -108,6 +94,8 @@ class PageArtifact:
 @dataclass
 class RunManifest:
     schema_version: int = SCHEMA_VERSION
+    collector: dict[str, Any] = field(default_factory=lambda: {
+        'name': 'pepper-ru-web-compliance', 'version': '2.4.0', 'observation_version': 2})
     # Сайт может отдавать 403 на всё подряд (антибот). Это принципиально иной
     # исход, чем «нарушений не найдено», и детекторы обязаны его различать.
     network: dict[str, Any] = field(default_factory=dict)
@@ -117,6 +105,8 @@ class RunManifest:
     finished_at: str = ""
     degraded: bool = False
     degraded_reason: str | None = None
+    partial_pages: bool = False
+    visual_complete: bool = True
     browser: str | None = None
     pages: list[dict[str, Any]] = field(default_factory=list)
     refusal: dict[str, Any] = field(default_factory=dict)
@@ -310,23 +300,34 @@ def fetch_text(url: str, timeout: int = 20) -> tuple[int | None, str]:
 
 
 def discover_from_sitemap(target: str, limit: int = 200) -> list[str]:
-    urls: list[str] = []
-    for path in ("/sitemap.xml", "/sitemap_index.xml", "/robots.txt"):
-        status, body = fetch_text(target + path)
+    host = urllib.parse.urlparse(target).hostname or ""
+    queue = [target + "/sitemap.xml", target + "/sitemap_index.xml"]
+    status, robots = fetch_text(target + "/robots.txt")
+    if status == 200:
+        queue.extend(line.split(":", 1)[1].strip() for line in robots.splitlines()
+                     if line.lower().startswith("sitemap:"))
+    seen_maps: set[str] = set()
+    pages: dict[str, None] = {}
+    while queue and len(seen_maps) < 20 and len(pages) < limit:
+        sitemap = queue.pop(0)
+        if sitemap in seen_maps or not same_host(sitemap, host):
+            continue
+        seen_maps.add(sitemap)
+        status, body = fetch_text(sitemap)
         if status != 200 or not body:
             continue
-        if path.endswith("robots.txt"):
-            for line in body.splitlines():
-                if line.lower().startswith("sitemap:"):
-                    sm = line.split(":", 1)[1].strip()
-                    st, sm_body = fetch_text(sm)
-                    if st == 200:
-                        urls += re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", sm_body)
-        else:
-            urls += re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", body)
-        if len(urls) >= limit:
-            break
-    return urls[:limit]
+        for raw in re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", body):
+            url = html.unescape(raw)
+            if not same_host(url, host):
+                continue
+            path = urllib.parse.urlparse(url).path.lower()
+            if path.endswith(".xml"):
+                queue.append(url)
+            else:
+                pages[url] = None
+            if len(pages) >= limit:
+                break
+    return list(pages)
 
 
 def score_url(url: str) -> int:
@@ -348,8 +349,6 @@ def score_url(url: str) -> int:
 def build_page_list(target: str, max_pages: int) -> list[str]:
     host = urllib.parse.urlparse(target).netloc.split(":")[0]
     seen: dict[str, None] = {target + "/": None}
-    for path in CANDIDATE_PATHS:
-        seen[target + path] = None
     for url in discover_from_sitemap(target):
         if same_host(url, host):
             seen[url] = None
@@ -358,6 +357,17 @@ def build_page_list(target: str, max_pages: int) -> list[str]:
     home = target + "/"
     ordered = [home] + [u for u in ordered if u != home]
     return ordered[:max_pages]
+
+
+def wait_for_visible_content(page, timeout_ms: int) -> bool:
+    """A navigation commit can precede a site's client-rendered body."""
+    try:
+        page.wait_for_function(
+            "() => document.body && (document.body.innerText.trim().length > 20 || "
+            "document.querySelectorAll('a[href]').length > 0)", timeout=timeout_ms)
+        return True
+    except Exception:
+        return False
 
 
 # --- JS, исполняемый в браузере ---------------------------------------------
@@ -389,7 +399,32 @@ EXTRACT_JS = r"""
     const groups = new Map();
     for (const el of loose) {
       let box = el;
-      for (let up = 0; up < 4 && box.parentElement; up += 1) box = box.parentElement;
+      let shared = null;
+      for (let up = 0; up < 20 && box.parentElement; up += 1) {
+        box = box.parentElement;
+        const count = box.querySelectorAll('input, textarea, select').length;
+        const marker = `${box.id || ''} ${typeof box.className === 'string' ? box.className : ''}`;
+        if (count > 1 && count <= 12 && /(?:^|[-_\s])form(?:$|[-_\s])/i.test(marker)) {
+          shared = box;
+          break;
+        }
+      }
+      if (!shared) {
+        box = el;
+        for (let up = 0; up < 8 && box.parentElement; up += 1) {
+          box = box.parentElement;
+          const count = box.querySelectorAll('input, textarea, select').length;
+          if (count > 1 && count <= 12 && box.querySelector('button, [type="submit"]')) {
+            shared = box;
+            break;
+          }
+        }
+      }
+      if (shared) box = shared;
+      else {
+        box = el;
+        for (let up = 0; up < 4 && box.parentElement; up += 1) box = box.parentElement;
+      }
       if (!groups.has(box)) groups.set(box, []);
       groups.get(box).push(el);
     }
@@ -639,10 +674,13 @@ def browser_collect(target: str, pages: list[str], out: Path,
         before = NetworkRecorder()
         before.attach(page, "before_consent", target + "/")
         try:
-            page.goto(target + "/", wait_until="networkidle", timeout=timeout_ms)
+            page.goto(target + "/", wait_until="commit", timeout=timeout_ms)
         except Exception as exc:
             manifest.notes.append(f"первый проход: {type(exc).__name__}: {exc}")
         page.wait_for_timeout(2500)
+        if not wait_for_visible_content(page, 30000):
+            manifest.partial_pages = True
+            manifest.notes.append("главная страница открылась без наблюдаемого текста и ссылок")
 
         # Ссылки с главной дополняют список обхода. Угадывание путей
         # (/privacy, /policy, ...) работает на типовых сайтах и промахивается на
@@ -658,18 +696,23 @@ def browser_collect(target: str, pages: list[str], out: Path,
             # из четырёх страниц выглядел как одностраничник. Берём все внутренние
             # ссылки, приоритет — по значимости, отсечение — по бюджету.
             internal = sorted(
-                {l.split("#")[0].rstrip("/") for l in (home_data.get("links") or [])
+                {l.split("#")[0] for l in (home_data.get("links") or [])
                  if same_host(l, host)},
                 key=lambda u: (-score_url(u), len(u)))
             discovered.extend(internal)
-            known = {u.rstrip("/") for u in pages}
-            for url in discovered:
-                clean = url.split("#")[0]
-                if clean.rstrip("/") not in known and len(pages) < max_pages + 10:
-                    pages.append(clean)
-                    known.add(clean.rstrip("/"))
-            manifest.notes.append(f"добавлено по ссылкам с главной: "
-                                  f"{len(pages) - len(known) + len(discovered)}")
+            home = target + "/"
+            prior = {u.rstrip("/") for u in pages}
+            candidates = {u.split("#")[0].rstrip("/"): u.split("#")[0]
+                          for u in pages + discovered if same_host(u, host)}
+            candidates[home.rstrip("/")] = home
+            ranked = sorted((u for key, u in candidates.items() if key != home.rstrip("/")),
+                            key=lambda u: (-score_url(u), len(u)))
+            pages[:] = [home] + ranked[:max_pages - 1]
+            added = sum(u.rstrip("/") not in prior for u in pages)
+            manifest.notes.append(f"добавлено по ссылкам с главной: {added}")
+            if len(ranked) > max_pages - 1:
+                manifest.notes.append(f"бюджет обхода {max_pages}: "
+                                      f"не посещено {len(ranked) - (max_pages - 1)} адресов")
         except Exception as exc:
             manifest.notes.append(f"разбор ссылок главной: {type(exc).__name__}")
 
@@ -682,8 +725,12 @@ def browser_collect(target: str, pages: list[str], out: Path,
         cookies_before = ctx.cookies()
         (out / "cookies" / "before_consent.json").write_text(
             json.dumps(cookies_before, ensure_ascii=False, indent=2), encoding="utf-8")
-        page.screenshot(path=str(out / "pages" / "home_before_consent.png"),
-                        full_page=False)
+        try:
+            page.screenshot(path=str(out / "pages" / "home_before_consent.png"),
+                            full_page=False, timeout=5000)
+        except Exception as exc:
+            manifest.visual_complete = False
+            manifest.notes.append(f"снимок до согласия: {type(exc).__name__}")
 
         banner = {
             "found": bool(banner_candidates),
@@ -711,15 +758,19 @@ def browser_collect(target: str, pages: list[str], out: Path,
                     break
 
         try:
-            page.reload(wait_until="networkidle", timeout=timeout_ms)
+            page.reload(wait_until="commit", timeout=timeout_ms)
         except Exception:
             pass
         page.wait_for_timeout(2000)
         cookies_after = ctx.cookies()
         (out / "cookies" / "after_consent.json").write_text(
             json.dumps(cookies_after, ensure_ascii=False, indent=2), encoding="utf-8")
-        page.screenshot(path=str(out / "pages" / "home_after_consent.png"),
-                        full_page=False)
+        try:
+            page.screenshot(path=str(out / "pages" / "home_after_consent.png"),
+                            full_page=False, timeout=5000)
+        except Exception as exc:
+            manifest.visual_complete = False
+            manifest.notes.append(f"снимок после согласия: {type(exc).__name__}")
         manifest.banner = banner
 
         after.detach()
@@ -738,10 +789,11 @@ def browser_collect(target: str, pages: list[str], out: Path,
             p = ctx.new_page()
             walker.attach(p, "walk", url)
             try:
-                resp = p.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                resp = p.goto(url, wait_until="commit", timeout=timeout_ms)
                 art.status = resp.status if resp else None
                 art.final_url = p.url
                 p.wait_for_timeout(1200)
+                wait_for_visible_content(p, 10000)
                 data = p.evaluate(EXTRACT_JS)
                 art.title = data["title"]
                 art.forms = data["forms"]
@@ -749,14 +801,18 @@ def browser_collect(target: str, pages: list[str], out: Path,
                 art.policy_link_hrefs = data["policy_links"]
                 art.has_policy_link = bool(data["policy_links"])
                 art.text_chars = len(data["text"])
+                if art.status == 200 and art.text_chars == 0 and not art.links and not art.forms:
+                    art.error = "empty_rendered_page"
                 page_dir = out / "pages" / art.slug
                 page_dir.mkdir(parents=True, exist_ok=True)
                 (page_dir / "dom.html").write_text(p.content(), encoding="utf-8")
                 (page_dir / "text.txt").write_text(data["text"], encoding="utf-8")
                 try:
-                    p.screenshot(path=str(page_dir / "screenshot.png"), full_page=False)
-                except Exception:
-                    pass
+                    p.screenshot(path=str(page_dir / "screenshot.png"), full_page=False,
+                                 timeout=5000)
+                except Exception as exc:
+                    manifest.visual_complete = False
+                    manifest.notes.append(f"снимок {url}: {type(exc).__name__}")
             except Exception as exc:
                 art.error = f"{type(exc).__name__}: {exc}"
             finally:
@@ -787,7 +843,7 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
     recorder = NetworkRecorder()
     recorder.attach(page, "before_reject", target + "/")
     try:
-        page.goto(target + "/", wait_until="networkidle", timeout=timeout_ms)
+        page.goto(target + "/", wait_until="commit", timeout=timeout_ms)
         page.wait_for_timeout(2500)
         candidates = page.evaluate(FIND_BANNER_JS, {
             "selectorHints": BANNER_SELECTOR_HINTS, "textMarkers": BANNER_TEXT_MARKERS,
@@ -816,7 +872,11 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
         write_jsonl(out / "network/after_reject.jsonl", recorder.requests)
         rows.extend(recorder.requests)
         (out / "cookies/after_reject.json").write_text(json.dumps(ctx.cookies(), ensure_ascii=False))
-        page.screenshot(path=str(out / "pages/home_after_reject.png"))
+        try:
+            page.screenshot(path=str(out / "pages/home_after_reject.png"), timeout=5000)
+        except Exception as exc:
+            manifest.visual_complete = False
+            manifest.notes.append(f"снимок после отказа: {type(exc).__name__}")
         if result["click_status"] != "clicked":
             return rows
         # JSON state captures cookie + localStorage; no reuse of the accepted context.
@@ -829,13 +889,17 @@ def collect_refusal(browser, target, out, manifest, timeout_ms):
         page = ctx.new_page()
         recorder = NetworkRecorder()
         recorder.attach(page, "revisit_reject", target + "/")
-        page.goto(target + "/", wait_until="networkidle", timeout=timeout_ms)
+        page.goto(target + "/", wait_until="commit", timeout=timeout_ms)
         page.wait_for_timeout(2500)
         recorder.detach()
         write_jsonl(out / "network/revisit_reject.jsonl", recorder.requests)
         rows.extend(recorder.requests)
         (out / "cookies/revisit_reject.json").write_text(json.dumps(ctx.cookies(), ensure_ascii=False))
-        page.screenshot(path=str(out / "pages/home_revisit_reject.png"))
+        try:
+            page.screenshot(path=str(out / "pages/home_revisit_reject.png"), timeout=5000)
+        except Exception as exc:
+            manifest.visual_complete = False
+            manifest.notes.append(f"снимок при повторном визите: {type(exc).__name__}")
         result["revisit_completed"] = True
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -951,7 +1015,9 @@ def collect(args):
             except Exception as exc:
                 manifest.degraded = True
                 manifest.degraded_reason = type(exc).__name__
-                transport.current().metadata["transport_error"] = "browser_collection_failed"
+                manifest.notes.append(f"браузерный сбор: {type(exc).__name__}: "
+                                      f"{str(exc).splitlines()[0][:200]}")
+                transport.current().metadata.setdefault("transport_error", "browser_collection_failed")
 
         # Ссылки на юридические документы со всех обойдённых страниц.
         doc_links: list[str] = []
@@ -968,15 +1034,24 @@ def collect(args):
         # заблокированным, если ни одна страница не открылась, а отказы были.
         statuses = [p.get("status") for p in manifest.pages]
         denied = sum(1 for st in statuses if st in (401, 403, 429))
-        if not any(st == 200 for st in statuses) and (denied or not statuses):
+        if denied:
+            manifest.partial_pages = True
+            manifest.notes.append(f"часть страниц недоступна: {denied} из {len(statuses)} "
+                                  "вернули 401, 403 или 429")
+            transport.current().metadata["coverage_reason"] = (
+                f"{denied} из {len(statuses)} страниц вернули 401, 403 или 429")
+        if not any(st == 200 for st in statuses) and denied:
             manifest.blocked = True
             manifest.notes.append(
                 f"обход заблокирован: ни одна страница не открылась "
                 f"(отказов {denied} из {len(statuses)})")
 
         transport.current().status()
+        if manifest.partial_pages and not transport.current().metadata.get("coverage_reason"):
+            transport.current().metadata["coverage_reason"] = "часть страниц недоступна или пуста"
         transport.current().metadata["complete"] = not (
-            transport.current().metadata.get("transport_error") or manifest.blocked or
+            transport.current().metadata.get("transport_error") or manifest.blocked or manifest.degraded or
+            manifest.partial_pages or
             any(p.get("error") for p in manifest.pages))
     except Exception as exc:
         transport.current().metadata.update(complete=False, transport_error=(
@@ -996,7 +1071,10 @@ def collect(args):
     print(f"  баннер: {'найден' if manifest.banner.get('found') else 'не найден'}"
           f"{', согласие нажато' if manifest.banner.get('accepted') else ''}",
           file=sys.stderr)
-    print(f"  режим: {'degraded' if manifest.degraded else 'полный'}", file=sys.stderr)
+    mode_label = ('degraded' if manifest.degraded else
+                  'частичный' if transport.current().metadata.get('complete') is False else
+                  'полный')
+    print(f"  режим: {mode_label}", file=sys.stderr)
     if manifest.blocked:
         print("  ВНИМАНИЕ: обход заблокирован сайтом — проверка невозможна",
               file=sys.stderr)

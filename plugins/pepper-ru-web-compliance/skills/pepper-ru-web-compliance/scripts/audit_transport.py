@@ -14,13 +14,14 @@ import secrets
 import socket
 import ssl
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
 ACTIVE = None
-DEFAULT_GATEWAY_URL = 'https://lts.itsalt.ru:8443'
+DEFAULT_GATEWAY_URL = 'https://lts.itsalt.ru/ru-audit'
 EGRESS_URL = 'https://ipinfo.io/json'
 
 
@@ -55,13 +56,13 @@ class ForcedProxy(urllib.request.ProxyHandler):
     """Explicit proxy: never let NO_PROXY or OS bypass lists cause direct traffic."""
     def proxy_open(self, req, proxy, type):
         p, _, user, password = proxy_parts(proxy)
-        if p.scheme != 'http':
-            raise NetworkError('https_proxy_requires_local_adapter')
+        if p.scheme not in ('http', 'https'):
+            raise NetworkError('unsupported_environment_proxy')
         if user or password:
             auth = base64.b64encode(f'{user}:{password}'.encode()).decode()
             req.add_unredirected_header('Proxy-Authorization', 'Basic ' + auth)
         host = f'[{p.hostname}]' if ':' in p.hostname else p.hostname
-        req.set_proxy(f'{host}:{p.port or 80}', 'http')
+        req.set_proxy(f'{host}:{p.port or (443 if p.scheme == "https" else 80)}', p.scheme)
         return None
 
 
@@ -94,45 +95,105 @@ def chromium_args(proxy_url):
 
 class GatewayClient:
     def __init__(self, url):
-        p, self.url, user, password = proxy_parts(url)
-        if p.scheme != 'https' or user or password:
+        p = urllib.parse.urlsplit(url)
+        if p.scheme != 'https' or not p.hostname or p.username or p.password or p.query or p.fragment or p.path not in ('', '/', '/ru-audit', '/ru-audit/'):
             raise NetworkError('gateway_requires_https')
+        self.url = url.rstrip('/')
         self.credential = None
-        self.transport = urllib.request.build_opener(NoGatewayRedirect(), urllib.request.ProxyHandler({}),
-                           urllib.request.HTTPSHandler(context=tls_context()))
 
-    def request(self, method, path, data=None, headers=None):
-        hdr = {'Content-Type': 'application/json', **(headers or {})}
+    def transport(self):
+        proxy = urllib.request.getproxies().get('https') or urllib.request.getproxies().get('all')
+        handler = ForcedProxy({'https': proxy}) if proxy else urllib.request.ProxyHandler({})
+        return urllib.request.build_opener(NoGatewayRedirect(), handler,
+                                           urllib.request.HTTPSHandler(context=tls_context()))
+
+    def raw(self, method, path, data=None, headers=None):
+        hdr = {'Content-Type': 'application/octet-stream' if isinstance(data, bytes) else 'application/json', **(headers or {})}
         if self.credential:
             hdr['Authorization'] = 'Bearer ' + self.credential
         req = urllib.request.Request(self.url + path, method=method, headers=hdr,
-                                     data=json.dumps(data).encode() if data is not None else None)
+                                     data=data if isinstance(data, bytes) else json.dumps(data).encode() if data is not None else None)
         try:
-            with self.transport.open(req, timeout=45) as r:
+            with self.transport().open(req, timeout=45) as r:
                 raw = r.read((32 << 20) + 1)
                 if len(raw) > 32 << 20:
                     raise NetworkError('gateway_response_too_large')
-                return json.loads(raw)
+                return r.status, raw, r.headers
         except urllib.error.HTTPError as e:
             try:
                 code = json.loads(e.read(8192)).get('error', 'gateway_error')
             except Exception:
-                code = 'gateway_error'
+                code = 'gateway_http_' + str(e.code)
             raise NetworkError(code, e.headers.get('Retry-After')) from None
+        except urllib.error.URLError as e:
+            reason = str(e.reason).lower()
+            if 'certificate' in reason or 'ssl' in reason:
+                raise NetworkError('gateway_tls_failed') from None
+            raise NetworkError('gateway_unreachable') from None
         except (OSError, ValueError):
             raise NetworkError('gateway_unreachable') from None
+
+    def request(self, method, path, data=None, headers=None):
+        _, raw, _ = self.raw(method, path, data, headers)
+        try:
+            return json.loads(raw)
+        except ValueError:
+            raise NetworkError('gateway_invalid_response') from None
+
+    def capabilities(self):
+        try:
+            info = self.request('GET', '/v2/capabilities')
+        except NetworkError as e:
+            if e.code in ('gateway_http_404', 'gateway_invalid_response'):
+                raise NetworkError('gateway_wrong_endpoint') from None
+            raise
+        if info.get('service') != 'pepper-ru-audit-gateway' or info.get('protocol') != 2:
+            raise NetworkError('gateway_wrong_endpoint')
+        diagnostic = self.request('GET', '/v2/diagnostic')
+        if (diagnostic.get('service') != 'pepper-ru-audit-gateway' or
+                diagnostic.get('protocol') != 2 or diagnostic.get('relay') != 'trusted'):
+            raise NetworkError('gateway_wrong_endpoint')
+        return info
 
     def create(self, target):
         key = secrets.token_hex(24)
         # A lost response may be retried once with the SAME key, never a new lease.
         for attempt in range(2):
             try:
-                result = self.request('POST', '/v1/sessions', {'target': target}, {'Idempotency-Key': key})
+                result = self.request('POST', '/v2/sessions', {'target': target}, {'Idempotency-Key': key})
                 self.credential = result.pop('credential')
                 return result
             except NetworkError as e:
                 if e.code != 'gateway_unreachable' or attempt:
                     raise
+
+    def open_tunnel(self, address):
+        return self.request('POST', '/v2/tunnels', {'address': address})['tunnel_id']
+
+    def write_tunnel(self, tid, offset, body):
+        path = f'/v2/tunnels/{tid}/write?offset={offset}'
+        for attempt in range(2):
+            try:
+                return self.request('POST', path, body)['offset']
+            except NetworkError as e:
+                if e.code != 'gateway_unreachable' or attempt:
+                    raise
+
+    def read_tunnel(self, tid, offset):
+        path = f'/v2/tunnels/{tid}/read?offset={offset}'
+        for attempt in range(2):
+            try:
+                status, body, headers = self.raw('GET', path)
+                return body, status == 204 and headers.get('X-Relay-EOF') == '1'
+            except NetworkError as e:
+                if e.code != 'gateway_unreachable' or attempt:
+                    raise
+
+    def close_tunnel(self, tid):
+        try:
+            self.request('POST', f'/v2/tunnels/{tid}/close')
+        except NetworkError:
+            pass
 
 
 class ProxyBridge:
@@ -286,6 +347,140 @@ class ProxyBridge:
         self.thread.join(timeout=10)
 
 
+class RelayBridge(ProxyBridge):
+    """Local HTTP proxy carried only by ordinary HTTPS gateway requests."""
+    def __init__(self, gateway):
+        super().__init__(gateway.url, gateway.credential)
+        self.gateway = gateway
+
+    def _run(self):
+        self.loop.set_default_executor(ThreadPoolExecutor(max_workers=72, thread_name_prefix='ru-relay'))
+        super()._run()
+
+    async def _send(self, tid, offset, body):
+        for start in range(0, len(body), 65536):
+            offset = await asyncio.to_thread(self.gateway.write_tunnel, tid, offset, body[start:start + 65536])
+        return offset
+
+    async def _receive(self, tid, offset):
+        while True:
+            data, eof = await asyncio.to_thread(self.gateway.read_tunnel, tid, offset)
+            if data or eof:
+                return data, eof
+
+    async def _duplex_relay(self, tid, reader, writer, read_offset, write_offset):
+        async def upload():
+            offset = write_offset
+            while data := await reader.read(32768):
+                offset = await self._send(tid, offset, data)
+        async def download():
+            offset = read_offset
+            while True:
+                data, eof = await self._receive(tid, offset)
+                if data:
+                    offset += len(data)
+                    writer.write(data)
+                    await writer.drain()
+                if eof:
+                    return
+        tasks = [asyncio.create_task(upload()), asyncio.create_task(download())]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for item in tasks:
+                item.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _handle(self, reader, writer):
+        task = asyncio.current_task()
+        self.tasks.add(task)
+        tid = None
+        started = False
+        try:
+            async with self.slots:
+                h = self.h11
+                conn = h.Connection(h.SERVER, max_incomplete_event_size=16384)
+                req = await self._event(conn, reader)
+                if not isinstance(req, h.Request):
+                    return
+                headers = [(k.lower(), v) for k, v in req.headers]
+                auth = next((v.decode() for k, v in headers if k == b'proxy-authorization'), '')
+                if not hmac.compare_digest(auth, self.auth):
+                    writer.write(b'HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="local-audit"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+                    await writer.drain()
+                    return
+                if req.method == b'CONNECT':
+                    address = req.target.decode('ascii')
+                else:
+                    target = urllib.parse.urlsplit(req.target.decode('ascii'))
+                    if target.scheme != 'http' or not target.hostname:
+                        raise NetworkError('invalid_proxy_target')
+                    address = f'{target.hostname}:{target.port or 80}'
+                tid = await asyncio.to_thread(self.gateway.open_tunnel, address)
+                offset = 0
+                if req.method == b'CONNECT':
+                    writer.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
+                    await writer.drain()
+                    started = True
+                    pending = conn.trailing_data[0]
+                    if pending:
+                        offset = await self._send(tid, offset, pending)
+                    await self._duplex_relay(tid, reader, writer, 0, offset)
+                    return
+                upgrade = next((v for k, v in headers if k == b'upgrade'), None)
+                clean = [(k, v) for k, v in headers if k not in (b'proxy-authorization', b'proxy-connection', b'connection', b'expect')]
+                clean.append((b'connection', b'Upgrade' if upgrade else b'close'))
+                path = urllib.parse.urlunsplit(('', '', target.path or '/', target.query, ''))
+                sender = h.Connection(h.CLIENT)
+                offset = await self._send(tid, offset, sender.send(h.Request(method=req.method, target=path.encode(), headers=clean)))
+                if any(k == b'expect' for k, _ in headers):
+                    writer.write(b'HTTP/1.1 100 Continue\r\n\r\n')
+                    await writer.drain()
+                while True:
+                    event = await self._event(conn, reader)
+                    if isinstance(event, h.EndOfMessage):
+                        end = sender.send(h.EndOfMessage())
+                        if end:
+                            offset = await self._send(tid, offset, end)
+                        break
+                    if not isinstance(event, h.Data):
+                        raise NetworkError('invalid_proxy_body')
+                    offset = await self._send(tid, offset, sender.send(event))
+                read_offset = 0
+                head = bytearray()
+                while b'\r\n\r\n' not in head:
+                    data, eof = await self._receive(tid, read_offset)
+                    if eof:
+                        raise NetworkError('upstream_closed_before_headers')
+                    read_offset += len(data)
+                    head.extend(data)
+                    if len(head) > 65536:
+                        raise NetworkError('upstream_headers_too_large')
+                code = int(head.split(b' ', 2)[1])
+                writer.write(head)
+                await writer.drain()
+                started = True
+                if code == 101:
+                    await self._duplex_relay(tid, reader, writer, read_offset, offset)
+                else:
+                    while True:
+                        data, eof = await self._receive(tid, read_offset)
+                        if data:
+                            read_offset += len(data)
+                            writer.write(data)
+                            await writer.drain()
+                        if eof:
+                            break
+        except (Exception, asyncio.CancelledError):
+            if not started and not writer.is_closing():
+                writer.write(b'HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+        finally:
+            if tid:
+                await asyncio.to_thread(self.gateway.close_tunnel, tid)
+            writer.close()
+            self.tasks.discard(task)
+
+
 class NetworkSession:
     def __init__(self, target, mode=None, proxy=None, gateway=None):
         self.target = target
@@ -306,9 +501,10 @@ class NetworkSession:
                 # Import before quota is spent.
                 import h11
                 self.gateway = GatewayClient(self.gateway_url)
+                self.gateway.capabilities()
                 info = self.gateway.create(self.target)
                 self.metadata.update({k: info[k] for k in ('session_id', 'expires_at', 'launches_remaining', 'next_launch_at') if k in info})
-                self.bridge = ProxyBridge(self.gateway.url, self.gateway.credential).start()
+                self.bridge = RelayBridge(self.gateway).start()
                 self.proxy = self.bridge.proxy_url
             elif self.mode == 'custom' and self.custom:
                 p, server, user, password = proxy_parts(self.custom)
@@ -349,7 +545,7 @@ class NetworkSession:
 
     def status(self):
         if self.gateway:
-            state = self.gateway.request('GET', '/v1/sessions/current')
+            state = self.gateway.request('GET', '/v2/sessions/current')
             if state.get('reason'):
                 raise NetworkError(state['reason'])
         return self.metadata
@@ -357,7 +553,7 @@ class NetworkSession:
     def registry(self, key, inn=None):
         if not self.gateway:
             return None
-        path = '/v1/registries/' + key
+        path = '/v2/registries/' + key
         if inn is not None:
             path += '?inn=' + urllib.parse.quote(inn)
         data = self.gateway.request('GET', path)
@@ -368,7 +564,7 @@ class NetworkSession:
 
     def probe(self, host):
         if self.gateway:
-            return self.gateway.request('POST', '/v1/probe', {'host': host})
+            return self.gateway.request('POST', '/v2/probe', {'host': host})
         # HTTPS CONNECT sends the hostname to the proxy; never resolve the target locally.
         import http.client
         p, _, user, password = proxy_parts(self.proxy)
@@ -394,15 +590,15 @@ class NetworkSession:
         if ACTIVE is self:
             ACTIVE = None
         try:
-            if self.bridge:
-                self.bridge.close()
-        finally:
             if self.gateway and self.gateway.credential:
                 try:
-                    self.gateway.request('DELETE', '/v1/sessions/current')
+                    self.gateway.request('POST', '/v2/sessions/current')
                 except NetworkError:
                     pass
                 self.gateway.credential = None
+        finally:
+            if self.bridge:
+                self.bridge.close()
             self.metadata['finished_at'] = datetime.now(timezone.utc).isoformat()
 
     def __exit__(self, exc_type, exc, tb):

@@ -68,6 +68,7 @@ def request_context(req):
         'request_id': req.get('request_id'), 'page': safe_url(req.get('page')),
         'phase': req.get('phase'), 'frame': safe_url(req.get('frame')),
         'method': req.get('method'), 'content_type': req.get('content_type'),
+        'resource_type': req.get('resource_type'), 'is_navigation': req.get('is_navigation'),
         'initiator': req.get('initiator'), 'payload_shape': req.get('payload_shape'),
         'form_relation': req.get('form_relation'), 'category': category,
         'classification_basis': basis,

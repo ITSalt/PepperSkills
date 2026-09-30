@@ -79,6 +79,7 @@ func main() {
 	if e != nil {
 		log.Fatal("database initialization failed")
 	}
+	g.trustedRelay = os.Getenv("TRUSTED_V2_PROXY_IP")
 	defer g.Close()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -94,6 +95,12 @@ func main() {
 			inbound.Add(-1)
 		}
 	}, Addr: env("LISTEN_ADDR", ":8443"), Handler: g, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: cfg.Idle, IdleTimeout: cfg.Idle, MaxHeaderBytes: 16 << 10, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}}, TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){}}
+	internal := &http.Server{Addr: env("INTERNAL_LISTEN_ADDR", ":8080"), Handler: http.HandlerFunc(g.serveV2), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: cfg.Idle, MaxHeaderBytes: 16 << 10}
+	go func() {
+		if e := internal.ListenAndServe(); e != nil && e != http.ErrServerClosed {
+			log.Fatalf("internal listener failed: %v", e)
+		}
+	}()
 	go func() {
 		<-ctx.Done()
 		g.mu.Lock()
@@ -104,6 +111,7 @@ func main() {
 		c, stop := context.WithTimeout(context.Background(), 5*time.Second)
 		defer stop()
 		server.Shutdown(c)
+		internal.Shutdown(c)
 	}()
 	// Only startup configuration is logged. No HTTP bodies, URLs or credentials.
 	b, _ := json.Marshal(map[string]any{"event": "gateway_start", "active_limit": cfg.ActiveGlobal})
