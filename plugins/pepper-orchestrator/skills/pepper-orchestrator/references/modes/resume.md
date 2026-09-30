@@ -34,6 +34,7 @@ step. No argument, or the program name when several workspaces exist.
    | the stand | `gh run list --repo <r> --workflow <deploy_workflows entry> -L 5`: which branch deployed last, is it held by the `staging` lock holder |
    | branches of main checkouts | `git -C <repo> rev-parse --abbrev-ref HEAD`, lag behind `origin/<base>` |
    | paths | `orch.py overlap`: files outside allowed paths, undeclared or unlocked shared paths, repository checks |
+   | verification | `orch.py verify --list`: merged packages without `VERIFIED_TEST` (suggest `verify <WP> --env test` once the deploy run for the merge commit succeeded) and packages verified on test waiting for prod; only `VERIFIED_TEST` packages may go to a release sheet |
    | on-demand locks | `orch.py lock list` / `lint`: a lock held longer than `lock_stale_hours` (default 4) is a warning: ask its session whether it still needs it |
    | databases | migration journal and object definitions through a read-only tool, SELECT only |
    | deployed versions | version string in the served bundle, not the browser badge |

@@ -1603,6 +1603,175 @@ def test_deploy_override_first_candidate(tmp):
     print('PASS deploy override: positive paths behind a branch filter, first candidate, --dir only without one')
 
 
+GH_STUB = """#!/usr/bin/env python3
+import os, sys
+root = os.environ['GH_STUB_DIR']
+with open(os.path.join(root, 'calls.log'), 'a') as log:
+    log.write(' '.join(sys.argv[1:]) + '\\n')
+kind = {('run', 'list'): 'runs.json', ('pr', 'view'): 'pr.json'}.get(tuple(sys.argv[1:3]))
+if not kind:
+    sys.exit(1)
+print(open(os.path.join(root, kind)).read())
+"""
+
+
+def test_verify(tmp):
+    """3b: verify by facts with a stub gh and stub verify commands (no real gh, no network)."""
+    mono = make_monorepo(tmp / 'verify')
+    stub = tmp / 'verify/stub'
+    (stub / 'bin').mkdir(parents=True)
+    (stub / 'bin/gh').write_text(GH_STUB, encoding='utf-8')
+    (stub / 'bin/gh').chmod(0o755)
+    sha = git(mono, 'rev-parse', 'HEAD').strip()
+    (stub / 'pr.json').write_text(json.dumps({'state': 'MERGED', 'mergeCommit': {'oid': sha}}), encoding='utf-8')
+    runs = [{'databaseId': 7, 'status': 'completed', 'conclusion': 'success', 'headBranch': 'main',
+             'url': 'https://example.invalid/runs/7', 'createdAt': '2026-09-30T10:00:00Z'}]
+    (stub / 'runs.json').write_text(json.dumps(runs), encoding='utf-8')
+    version = tmp / 'verify/version.json'
+    version.write_text(json.dumps({'sha': sha}), encoding='utf-8')
+    flag = tmp / 'verify/fail.flag'
+    gh_env = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(stub), 'PATH': f'{stub / "bin"}{os.pathsep}{os.environ["PATH"]}'}
+    home = tmp / 'verify/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
+        '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
+    ws = home / 'features/shop'
+    config = ws / 'orch.yaml'
+    for old, new in (
+        ('    checks: []\n', '    checks: []\n    deploy_workflows: [deploy.yml]\n'
+                           f'    version_url: "file://{version}"\n'
+                           '    version_pattern: \'"sha": "([0-9a-f]+)"\'\n'
+                           '    verify_test: ["test \\"$ORCH_ENV\\" = test && echo checked $ORCH_WP $ORCH_BASE_URL", '
+                           f'"test ! -f {flag} || (echo broken build; exit 2)", '
+                           '"printf \'pass%s=abcdefgh12345\\\\n\' word"]\n'
+                           '    verify_prod: ["sleep 3"]\n'),
+        ('    session: shop-app\n', '    session: shop-app\n    web_urls: {test: https://test.example.com}\n'),
+        ('push_after_milestone: false', 'push_after_milestone: false\nverify_timeout: 1'),
+    ):
+        safe_edit.replace_once(config, old, new)
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    git(mono, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
+    for slug in ('orders', 'cart', 'fees', 'tax'):
+        run(home, 'new-wp', 'app', slug)
+    for wp in ('WP-APP-01', 'WP-APP-02', 'WP-APP-03', 'WP-APP-04'):
+        run(home, 'set', wp, 'pr', 'https://github.com/example/mono/pull/5')
+        run(home, 'set', wp, 'status', 'MERGED' if wp != 'WP-APP-04' else 'ACCEPTED')
+    listed = run(home, 'verify', '--list').stdout
+    assert 'WP-APP-01 (MERGED): orch.py verify WP-APP-01 --env test' in listed, listed
+    # Dry run: the plan, nothing written, gh never called.
+    before = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file() and '.orch-backup' not in p.parts}
+    plan = run(home, 'verify', 'WP-APP-01', '--env', 'test', '--dry-run', extra_env=gh_env).stdout
+    assert '1. deploy: deploy.yml' in plan and '2. version: file://' in plan and 'PASS -> status VERIFIED_TEST' in plan
+    assert 'merge commit of https://github.com/example/mono/pull/5 (gh)' in plan, plan
+    after = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file() and '.orch-backup' not in p.parts}
+    assert before == after and not (stub / 'calls.log').exists(), 'dry run must not write or call gh'
+    refused = run(home, 'verify', 'WP-APP-01', '--env', 'test', ok=False).stderr
+    assert 'verify needs gh' in refused, refused
+    # PASS: merge commit from the PR, deploy run for that SHA, served version, commands -> VERIFIED_TEST.
+    out = run(home, 'verify', 'WP-APP-01', '--env', 'test', extra_env=gh_env).stdout
+    assert f'PASS at {sha[:10]}' in out and 'status VERIFIED_TEST' in out, out
+    calls = (stub / 'calls.log').read_text(encoding='utf-8')
+    assert 'pr view https://github.com/example/mono/pull/5 --repo example/mono' in calls, calls
+    assert f'run list --repo example/mono --workflow deploy.yml --commit {sha}' in calls, calls
+    report = next((ws / 'reports').glob('verify-WP-APP-01-test-*.md')).read_text(encoding='utf-8')
+    assert '| # | Check | Command or target | Exit | Output (first lines) | Verdict |' in report, report
+    assert 'checked WP-APP-01 https://test.example.com' in report and '[redacted]' in report, report
+    assert 'password=abcdefgh12345' not in report and '## Live scenario' in report and '**Verdict: PASS**' in report
+    assert '| VERIFIED_TEST |' in (ws / 'status.md').read_text(encoding='utf-8')
+    # FAIL: a failing command -> status kept, defect, journal; no owner item (the deploy run is fine).
+    flag.write_text('x', encoding='utf-8')
+    failed = run(home, 'verify', 'WP-APP-02', '--env', 'test', extra_env=gh_env, ok=False).stderr
+    assert 'FAIL at' in failed and 'status stays MERGED' in failed and 'owner item' not in failed, failed
+    bug = ws / 'bugs/BUG-1-verify-wp-app-02-test.md'
+    assert bug.is_file() and 'broken build' in bug.read_text(encoding='utf-8')
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'WP-APP-02: verification on test failed' in status, status
+    flag.unlink()
+    # --sha that the environment does not serve -> FAIL.
+    other = '0123456789abcdef0123456789abcdef01234567'
+    mismatch = run(home, 'verify', 'WP-APP-02', '--env', 'test', '--sha', other, extra_env=gh_env, ok=False).stderr
+    assert 'served version `file://' in mismatch and 'bugs/BUG-2-verify-wp-app-02-test.md' in mismatch, mismatch
+    text = (ws / 'bugs/BUG-2-verify-wp-app-02-test.md').read_text(encoding='utf-8')
+    assert f'serves {sha}, expected {other[:10]}' in text, text
+    # No deploy run for the SHA -> FAIL and an owner item (a deploy needs the owner's rights).
+    (stub / 'runs.json').write_text('[]', encoding='utf-8')
+    nodeploy = run(home, 'verify', 'WP-APP-03', '--env', 'test', extra_env=gh_env, ok=False).stderr
+    assert 'owner item: WP-APP-03: no successful deploy run on test' in nodeploy, nodeploy
+    assert 'R-1' in run(home, 'queue').stdout
+    # WAIT (rev.2 M1): a queued or running deploy run -> exit 2, journal, no defect, no owner item.
+    running = [dict(runs[0], status='in_progress', conclusion=None)]
+    (stub / 'runs.json').write_text(json.dumps(running), encoding='utf-8')
+    bugs_before = sorted(p.name for p in (ws / 'bugs').glob('BUG-*.md'))
+    owner_before = run(home, 'queue').stdout
+    waited = run(home, 'verify', 'WP-APP-03', '--env', 'test', extra_env=gh_env, ok=False)
+    assert waited.returncode == 2 and 'WAIT at' in waited.stderr and 'no defect' in waited.stderr, waited.stderr
+    assert sorted(p.name for p in (ws / 'bugs').glob('BUG-*.md')) == bugs_before
+    assert run(home, 'queue').stdout == owner_before
+    assert 'WP-APP-03: verify on test waits for the deploy run' in (ws / 'status.md').read_text(encoding='utf-8')
+    (stub / 'runs.json').write_text(json.dumps(runs), encoding='utf-8')
+    # L4: ACCEPTED -> gh confirms the merge, MERGED, then PASS; an open PR or no gh refuses.
+    assert 'verify needs gh' in run(home, 'verify', 'WP-APP-04', '--env', 'test', ok=False).stderr
+    (stub / 'pr.json').write_text(json.dumps({'state': 'OPEN', 'mergeCommit': None}), encoding='utf-8')
+    assert 'is OPEN, not merged' in run(home, 'verify', 'WP-APP-04', '--env', 'test', extra_env=gh_env, ok=False).stderr
+    (stub / 'pr.json').write_text(json.dumps({'state': 'MERGED', 'mergeCommit': {'oid': sha}}), encoding='utf-8')
+    run(home, 'verify', 'WP-APP-04', '--env', 'test', extra_env=gh_env)
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'WP-APP-04: ACCEPTED -> MERGED' in status and 'WP-APP-04: MERGED -> VERIFIED_TEST' in status, status
+    run(home, 'new-wp', 'app', 'draft')
+    assert 'needs one of MERGED' in run(home, 'verify', 'WP-APP-05', '--env', 'test', extra_env=gh_env, ok=False).stderr
+    # Timeout of a verify command -> FAIL with a note; the status stays VERIFIED_TEST.
+    slow = run(home, 'verify', 'WP-APP-01', '--env', 'prod', extra_env=gh_env, ok=False).stderr
+    assert 'status stays VERIFIED_TEST' in slow, slow
+    prod_report = next((ws / 'reports').glob('verify-WP-APP-01-prod-*.md')).read_text(encoding='utf-8')
+    assert 'timed out after 1 s' in prod_report and '| timeout |' in prod_report, prod_report
+    assert 'WP-APP-01 (VERIFIED_TEST): orch.py verify WP-APP-01 --env prod' in run(home, 'verify', '--list').stdout
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    # A secret-looking string in a verify command is a lint error.
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '    verify_prod: ["sleep 3"]', '    verify_prod: ["curl -H api_key=abcdefgh12345678 x"]')
+    assert 'orch.yaml: looks like a secret' in lint_errors(home)
+    config.write_text(original, encoding='utf-8')
+    # L2: an invalid version_pattern and verify_timeout are lint errors; a bad pattern is a FAIL, not a crash.
+    safe_edit.replace_once(config, 'verify_timeout: 1', 'verify_timeout: soon')
+    safe_edit.replace_once(config, '\n    version_pattern: \'"sha"', '\n    version_pattern: "([0-9" # \'"sha"')
+    errors = lint_errors(home)
+    assert 'verify_timeout must be a positive whole number' in errors and 'version_pattern is not a valid' in errors
+    config.write_text(original, encoding='utf-8')
+    import verification
+    assert verification.served_version(f'file://{version}', '([0-9', sha)[0] == 'FAIL'
+    # L3: Russian table head, summary texts and defect headings.
+    assert '| # | Проверка | Команда или цель | Код |' in verification.table([], 'ru')
+    ru_home = tmp / 'verify/ru-home'
+    ru_home.mkdir()
+    git(ru_home, 'init', '-q')
+    run(ru_home, 'init', 'ru', '--lang', 'ru', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'db={mono}')
+    ru_ws = orch.Workspace(ru_home / 'features/ru')
+    rel = orch.write_bug(ru_ws, 'WP-DB-01', ru_ws.streams()[1]['db'], 'test', sha, 'reports/x.md',
+                         [{'kind': 'команда проверки', 'target': 'false', 'exit': '1', 'output': []}])
+    bug_ru = (ru_ws.root / rel).read_text(encoding='utf-8')
+    assert '## Подтверждение' in bug_ru and '| Статус | открыт (WP-DB-01) |' in bug_ru and 'Field' not in bug_ru, bug_ru
+    # L5: prod with its own branch: the tip of origin/<prod_branch> containing the merge commit.
+    prod_repo = make_monorepo(tmp / 'verify-prod')
+    merge = git(prod_repo, 'rev-parse', 'HEAD').strip()
+    git(prod_repo, 'commit', '-q', '--allow-empty', '-m', 'release')
+    git(prod_repo, 'push', '-q', 'origin', 'HEAD:refs/heads/prod')
+    tip = git(prod_repo, 'rev-parse', 'HEAD').strip()
+    repo_obj = orch.streams.Repo({'id': 'p', 'path': str(prod_repo), 'base': 'main'})
+    assert verification.prod_tip(repo_obj, 'prod', merge) == tip
+    git(prod_repo, 'switch', '-q', '-c', 'side', 'main~0')
+    git(prod_repo, 'commit', '-q', '--allow-empty', '-m', 'not released')
+    stray = git(prod_repo, 'rev-parse', 'HEAD').strip()
+    try:
+        verification.prod_tip(repo_obj, 'prod', stray)
+    except RuntimeError as error:
+        assert 'does not contain the merge commit' in str(error)
+    else:
+        raise AssertionError('a merge commit outside the prod branch must be refused')
+    print('PASS verify: stub gh, merge commit, deploy run, WAIT, ACCEPTED->MERGED, served version, commands, report, '
+          'VERIFIED_TEST, defect, owner item, timeout, dry run, redaction, lint, RU texts, prod tip')
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -1629,6 +1798,7 @@ def main():
         test_local_cloud_matrix(tmp)
         test_settings(tmp)
         test_deploy_override_first_candidate(tmp)
+        test_verify(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.7.0 — preview, unreleased
+
+Preview of stage 3b: verification of the stand and production by facts, whoever merged and deployed.
+
+- `orch.py verify <WP> --env test|prod [--sha <sha>] [--expect-version <v>]`: the expected SHA is
+  the merge commit of the package PR (through `gh`) or `--sha`; checks in order: the run of each
+  `deploy_workflows` entry (a list or `{test, prod}`) for that SHA on the environment's branch
+  (`integration_branch`/`prod_branch`, default the base) finished with `success`; `version_url`
+  (with `{base_url}`/`{env}`, or per environment) serves the SHA (`version_pattern` with one group)
+  or `--expect-version`; `verify_test`/`verify_prod` commands run through the shell in the main
+  checkout with `ORCH_ENV`, `ORCH_SHA`, `ORCH_WP`, `ORCH_BASE_URL`, timeout `verify_timeout`
+  (default 300 s). Report `reports/verify-<WP>-<env>-<date>.md` with a table (check, command or
+  target, exit, first output lines with secret-looking fragments redacted, verdict) and a "Live
+  scenario" section. PASS: status `VERIFIED_TEST` or `PROD` (a later status is kept). FAIL: status
+  kept, journal, `bugs/BUG-<n>-verify-<wp>-<env>.md`; an owner item only when the deploy run is
+  missing or failed. WAIT (exit code 2): the deploy run is still queued or running - a journal line,
+  no report, no defect, no owner item. Test needs `MERGED` or later; an `ACCEPTED` package is set to
+  `MERGED` after `gh pr view` confirms the merge. On prod with a separate `prod_branch` the expected
+  SHA is the tip of `origin/<prod_branch>` that contains the merge commit, else a refusal asking for
+  `--sha`. `lint` checks `version_pattern` (compiles) and `verify_timeout` (positive integer); an
+  invalid pattern at run time is a FAIL. Reports and defects follow the owner language. `--dry-run` prints the plan and neither runs, calls `gh` nor writes; without
+  `gh` it refuses with a hint when a run or a merge commit is needed. `verify --list` shows packages
+  waiting for test or prod verification.
+- Status vocabulary: `VERIFIED_TEST` (satisfies dependencies like `MERGED`).
+- `verify` mode (`references/modes/verify.md`, command `/pepper-orchestrator:verify`), brief
+  `references/verify-brief.md`, agent `orchestrator-verifier` (Read, Grep, Glob, Bash; read-only;
+  no `model`, runs on the orchestrator's model); `resume` lists what waits for verification.
+- README (EN/RU): "Checking the stand and production by facts"; concept 1.6, section 9.
+
 ## 0.6.0 — preview, unreleased
 
 Preview of stage 3a: session permissions, worktree preparation, message delivery, on-demand locks.

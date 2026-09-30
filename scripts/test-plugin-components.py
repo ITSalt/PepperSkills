@@ -116,6 +116,8 @@ def test_orchestrator_modes():
     agents = ROOT / 'plugins/pepper-orchestrator/agents'
     scout, _ = frontmatter(agents / 'orchestrator-scout.md')
     reviewer, _ = frontmatter(agents / 'orchestrator-reviewer.md')
+    verifier, _ = frontmatter(agents / 'orchestrator-verifier.md')
+    assert 'model' not in verifier and verifier.get('tools') == 'Read, Grep, Glob, Bash', 'verifier: read-only tools'
     assert scout.get('model') == 'opus', 'orchestrator-scout runs on opus (owner decision)'
     assert 'model' not in reviewer, 'orchestrator-reviewer inherits the orchestrator model'
     print(f'PASS pepper-orchestrator: modes, mode files and commands agree ({len(modes)}); agent models')

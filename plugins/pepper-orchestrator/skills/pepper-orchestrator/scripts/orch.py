@@ -30,6 +30,7 @@ Commands:
   close --check | --apply                completion check; closeout report, state: closed
   reopen "<reason>"                      make a closed program active again
   settings <module|all|orchestrator>     Claude Code settings files of the sessions (--settings)
+  verify <WP> --env test|prod            deploy run, served version, verify commands; report, status
 """
 import argparse
 import datetime as dt
@@ -44,13 +45,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import safe_edit  # noqa: E402
 import session_settings  # noqa: E402
 import streams  # noqa: E402
+import verification  # noqa: E402
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = SKILL_DIR / 'templates'
 LANGUAGES = ('en', 'ru')
 
 STATUSES = ('DRAFT', 'READY', 'DISPATCHING', 'IN_PROGRESS', 'REVIEW', 'REVISE', 'ACCEPTED',
-            'MERGED', 'TEST-APPLIED', 'DEPLOYED_TEST', 'VERIFYING', 'PROD', 'DONE')
+            'MERGED', 'TEST-APPLIED', 'DEPLOYED_TEST', 'VERIFYING', 'VERIFIED_TEST', 'PROD', 'DONE')
 REASON_STATUSES = ('BLOCKED', 'CANCELLED')
 
 # Machine markers: tables are located by these comments, never by localized headings.
@@ -1133,6 +1135,13 @@ def lint(ws):
             if point not in session_settings.CHECKPOINTS:
                 errors.append(f'orch.yaml: checkpoint {point!r} must be one of '
                               f'{", ".join(session_settings.CHECKPOINTS)}')
+    vtimeout = config.get('verify_timeout')
+    if vtimeout is not None and not (isinstance(vtimeout, int) and not isinstance(vtimeout, bool) and vtimeout > 0):
+        errors.append('orch.yaml: verify_timeout must be a positive whole number of seconds')
+    for kind, items in (('repo', config.get('repos') or []), ('module', config.get('modules') or [])):
+        for item in items:
+            if isinstance(item, dict):
+                errors.extend(verification.pattern_errors(item, f'{kind} {item.get("id")}'))
     stale = config.get('lock_stale_hours')
     if stale is not None and not (isinstance(stale, int) and stale > 0):
         errors.append('orch.yaml: lock_stale_hours must be a positive whole number')
@@ -2128,6 +2137,226 @@ def cmd_review_start(args):
     return 0
 
 
+def redact(text):
+    """Mask secret-looking fragments in command output before it reaches a report."""
+    for pattern in SECRET_PATTERNS:
+        text = pattern.sub('[redacted]', text)
+    return text
+
+
+def pr_url(value):
+    match = re.search(r'https?://\S+/pull/\d+', value or '')
+    return match.group(0) if match else None
+
+
+def verify_plan(ws, module, env):
+    """(checks, notes): the planned checks of one environment, in order."""
+    checks = [('deploy', wf) for wf in verification.workflows(module, env)]
+    url, pattern = verification.version_source(module, env)
+    if url:
+        checks.append(('version', url + (f' ~ /{pattern}/' if pattern else '')))
+    checks += [('command', c) for c in verification.commands(module, env)]
+    return checks
+
+
+def repo_base(module):
+    return module.repo.base
+
+
+def next_bug(ws):
+    numbers = [int(m.group(1)) for p in (ws.root / 'bugs').glob('BUG-*.md')
+               if (m := re.match(r'BUG-(\d+)', p.name))]
+    return max(numbers, default=0) + 1
+
+
+def write_bug(ws, wp, module, env, sha, report_rel, failed):
+    t = verification.TEXT[ws.lang]
+    number = next_bug(ws)
+    rel = f'bugs/BUG-{number}-verify-{wp.lower()}-{env}.md'
+    fmt = {'wp': wp, 'env': env, 'sha': sha[:10] if sha else '?', 'date': today(), 'report': report_rel}
+    field, *heads = t['heads']
+    lines = [f'# BUG-{number} — {t["bug_title"].format(**fmt)}', '', f'| {field} |', '|------|----------|',
+             f'| {heads[0]} | {t["bug_found"].format(**fmt)} |', f'| {heads[1]} | {env.upper()}, `{fmt["sha"]}` |',
+             f'| {heads[2]} | {module.id} |', f'| {heads[3]} | {t["bug_severity"]} |',
+             f'| {heads[4]} | {t["bug_status"]} ({wp}) |', '', f'## {heads[5]}', '', t['bug_symptom'], '']
+    lines += [f'- {r["kind"]}: `{r["target"]}` -> {r["exit"]}: ' + (' / '.join(r['output']) or '—') for r in failed]
+    lines += ['', f'## {heads[6]}', '', '1. ' + t['bug_repro'].format(**fmt), '', f'## {heads[7]}', '',
+              t['bug_expected'].format(**fmt), '', f'## {heads[8]}', '', f'[{report_rel}](../{report_rel})', '',
+              f'## {heads[9]}', '', t['bug_cause'], '']
+    safe_edit.create(ws.root / rel, '\n'.join(lines))
+    return rel
+
+
+def cmd_verify(args):
+    """Verify a package on test or prod by facts: deploy run for the SHA, served version, verify commands."""
+    ws = Workspace(find_workspace(args.workspace))
+    if args.list:
+        return verify_list(ws)
+    if not args.wp or not args.env:
+        raise OrchError('verify needs a WP and --env test|prod (or --list)')
+    ws.require_open('verify')
+    wp, env = args.wp, args.env
+    r, module, meta = wp_context(ws, wp)
+    checks = verify_plan(ws, module, env)
+    if not checks:
+        raise OrchError(f'nothing to verify on {env} for module {module.id}: set verify_{env} (read-only commands), '
+                        f'version_url or deploy_workflows in orch.yaml')
+    accepted = env == 'test' and r['status'] == 'ACCEPTED'
+    if r['status'] not in verification.VERIFIABLE[env] and not accepted:
+        raise OrchError(f'{wp} is {r["status"]}: verify --env {env} needs one of '
+                        f'{", ".join(verification.VERIFIABLE[env])}'
+                        + (' (or ACCEPTED with a merged PR)' if env == 'test' else ''))
+    branch = verification.branch(module, env)
+    pr = pr_url(r['pr'])
+    target = verification.TARGET[env]
+    if args.dry_run:  # never runs a check, never calls gh, never writes
+        sha = args.sha or (f'merge commit of {pr} (gh)' if pr else 'unknown: pass --sha')
+        print(f'verify {wp} --env {env} (dry run): SHA {sha}, branch {branch}, '
+              f'timeout {verification.timeout(ws.config)} s')
+        for i, (kind, what) in enumerate(checks, 1):
+            print(f'{i}. {kind}: {what}')
+        if accepted:
+            print(f'{wp} is ACCEPTED: first confirms through gh that {pr or "its PR"} is merged, then sets MERGED')
+        if env == 'prod' and branch != repo_base(module):
+            print(f'expected SHA on prod: the tip of origin/{branch} when it contains the merge commit (else pass --sha)')
+        print(f'PASS -> status {target}' + (' (kept: already later)' if r['status'] in verification.LATER[env] else '')
+              + f'; FAIL -> status stays {r["status"]}, a defect in bugs/, a journal line')
+        return 0
+    repo = module.repo
+    if not repo.local.is_dir():
+        raise OrchError(f'{repo.path} is not available locally: verify runs in the repository\'s main checkout')
+    needs_gh = any(k == 'deploy' for k, _ in checks) or not args.sha or accepted
+    name = streams.origin_name(repo)
+    if needs_gh and not shutil_which('gh'):
+        raise OrchError('verify needs gh for workflow runs and merge commits (gh auth login), or: pass --sha <sha> '
+                        'and leave deploy_workflows empty for this environment; runs can also be read with the '
+                        'session\'s GitHub tools and recorded by hand')
+    if needs_gh and not name:
+        raise OrchError(f'{repo.path} has no hosted origin: deploy runs and merge commits need one; pass --sha')
+    if accepted:
+        if not pr:
+            raise OrchError(f'{wp} is ACCEPTED and has no PR link: record it (orch.py set {wp} pr <url>) or set MERGED '
+                            'with evidence first')
+        try:
+            state, oid = verification.pr_state(name, pr)
+        except RuntimeError as error:
+            raise OrchError(f'{wp}: cannot read {pr}: {error}')
+        if state != 'MERGED':
+            raise OrchError(f'{wp} is ACCEPTED and {pr} is {state or "unknown"}, not merged: verify after the merge')
+        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='MERGED', quiet=True,
+                                   evidence=f'gh pr view {pr}: MERGED at {(oid or "?")[:10]}'))
+        r = dict(r, status='MERGED')
+    sha = args.sha
+    if not sha:
+        if not pr:
+            raise OrchError(f'{wp} has no PR link in the WP table: pass --sha <deployed sha>')
+        try:
+            sha = verification.merge_commit(name, pr)
+            if env == 'prod' and branch != repo_base(module):
+                sha = verification.prod_tip(repo, branch, sha)
+        except RuntimeError as error:
+            raise OrchError(f'{wp}: {error}; pass --sha <deployed sha>')
+    url = verification.base_url(module, env)
+    rows, limit = [], verification.timeout(ws.config)
+    t = verification.TEXT[ws.lang]
+    for kind, what in checks:
+        if kind == 'deploy':
+            try:
+                verdict, detail = verification.deploy_run(name, what, sha, branch)
+            except RuntimeError as error:
+                verdict, detail = 'FAIL', f'gh: {error}'
+            if verdict == 'WAIT':  # the deploy is under way: later checks would see the old version
+                ws.journal(f'{wp}: verify on {env} waits for the deploy run ({detail})', wp=wp,
+                           evidence='orch.py verify')
+                print(f'verify {wp} --env {env}: WAIT at {sha[:10]}: {detail}; status stays {r["status"]}, '
+                      'no defect; run verify again when the run has finished', file=sys.stderr)
+                return 2
+            rows.append({'kind': t['deploy'], 'target': what, 'exit': '—', 'output': [detail], 'verdict': verdict,
+                         'deploy': True})
+        elif kind == 'version':
+            vurl, pattern = verification.version_source(module, env)
+            verdict, detail = verification.served_version(vurl, pattern, sha, args.expect_version)
+            rows.append({'kind': t['version'], 'target': vurl, 'exit': '—', 'output': [redact(detail)],
+                         'verdict': verdict})
+        else:
+            verdict, code, output = verification.run_command(
+                what, repo.local, verification.command_env(env, sha, wp, url), limit, redact)
+            rows.append({'kind': t['command'], 'target': what, 'exit': code, 'output': output, 'verdict': verdict})
+    failed = [x for x in rows if x['verdict'] != 'PASS']
+    verdict = 'FAIL' if failed else 'PASS'
+    date = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
+    reports = ws.root / 'reports'
+    stem = f'verify-{wp}-{env}-{date}'
+    path = reports / f'{stem}.md'
+    n = 2
+    while path.exists():
+        path = reports / f'{stem}-{n}.md'
+        n += 1
+    rel = str(path.relative_to(ws.root))
+    summary = (t['passed'].format(n=len(rows)) if not failed else t['failed'].format(
+        n=len(failed), total=len(rows), items=', '.join(f'{x["kind"]} `{x["target"]}`' for x in failed)))
+    note = '' if env == 'test' or r['status'] in ('VERIFIED_TEST', 'PROD', 'DONE') else \
+        t['no_vtest'].format(status=r['status'])
+    template = (TEMPLATES / ws.lang / 'verify-report.md').read_text(encoding='utf-8')
+    safe_edit.create(path, fill(template, {
+        'WP': wp, 'ENV': env, 'SHA': sha[:12], 'DATE': today(), 'VERDICT': verdict, 'SUMMARY': summary + note,
+        'BRANCH': branch, 'BASE_URL': url or '—', 'STATUS': r['status'], 'ROWS': verification.table(rows, ws.lang)}))
+    if not failed:
+        if r['status'] in verification.LATER[env]:
+            ws.journal(f'{wp}: verified on {env} at {sha[:10]} (status {r["status"]} kept)', wp=wp, evidence=rel)
+        else:
+            cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text=target, quiet=True,
+                                       evidence=f'verify --env {env} {sha[:10]}: {rel}'))
+        print(f'verify {wp} --env {env}: PASS at {sha[:10]} ({summary}); status '
+              f'{r["status"] if r["status"] in verification.LATER[env] else target}')
+        print(f'report: {path}')
+        print('next: the live scenario of the package (verify mode), recorded in the report\'s "Live scenario" section')
+        return 0
+    bug = write_bug(ws, wp, module, env, sha, rel, failed)
+    ws.journal(f'{wp}: verification on {env} failed at {sha[:10]}: {summary}', wp=wp, evidence=f'{rel}; {bug}')
+    owner = None
+    deploy_failed = [x for x in failed if x.get('deploy')]
+    if deploy_failed:
+        owner = (f'{wp}: no successful deploy run on {env} for {sha[:10]} ({deploy_failed[0]["output"][0]}); a deploy '
+                 f'or a re-run needs your rights ; expected: the run succeeds, then orch.py verify {wp} --env {env}')
+        if not any(item['text'].startswith(f'{wp}: no successful deploy run on {env}') for item in open_owner_items(ws)):
+            cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', text=owner, where=rel,
+                                         quiet=True))
+    print(f'verify {wp} --env {env}: FAIL at {sha[:10]} ({summary}); status stays {r["status"]}', file=sys.stderr)
+    print(f'report: {path}', file=sys.stderr)
+    print(f'defect: {ws.root / bug}', file=sys.stderr)
+    if owner:
+        print(f'owner item: {owner}', file=sys.stderr)
+    return 1
+
+
+def verify_list(ws):
+    """Packages waiting for verification: merged or on the stand without VERIFIED_TEST, and verified on test."""
+    rows = ws.wp_rows()
+    found = False
+    for wp, r in rows.items():
+        if r['status'] in ('MERGED', 'TEST-APPLIED', 'DEPLOYED_TEST', 'VERIFYING'):
+            env = 'test'
+        elif r['status'] == 'VERIFIED_TEST':
+            env = 'prod'
+        else:
+            continue
+        try:
+            _, module, _ = wp_context(ws, wp)
+        except OrchError:
+            continue
+        found = True
+        hint = f'orch.py verify {wp} --env {env}'
+        if env == 'prod':
+            hint += ' (after the owner\'s release)'
+        if not verify_plan(ws, module, env):
+            hint += f' - configure verify_{env}, version_url or deploy_workflows first'
+        print(f'{wp} ({r["status"]}): {hint}')
+    if not found:
+        print('verify: no package waits for verification')
+    return 0
+
+
 def shlex_quote(text):
     import shlex
     return shlex.quote(text)
@@ -2655,6 +2884,15 @@ def build_parser():
     p.add_argument('--no-settings', action='store_true',
                    help='local module: start command without --settings (the pre-0.6.0 form)')
     p.set_defaults(func=cmd_dispatch)
+
+    p = sub.add_parser('verify', parents=[common], help='verify a package on test or prod by facts')
+    p.add_argument('wp', nargs='?')
+    p.add_argument('--env', choices=verification.ENVS)
+    p.add_argument('--sha', help='expected deployed SHA (default: the merge commit of the package PR, through gh)')
+    p.add_argument('--expect-version', help='package version the version_url may serve instead of the SHA')
+    p.add_argument('--dry-run', action='store_true', help='print the plan; run nothing, write nothing')
+    p.add_argument('--list', action='store_true', help='packages waiting for verification')
+    p.set_defaults(func=cmd_verify)
 
     p = sub.add_parser('settings', parents=[common],
                        help='write orchestration/settings/<name>.json for session start commands')

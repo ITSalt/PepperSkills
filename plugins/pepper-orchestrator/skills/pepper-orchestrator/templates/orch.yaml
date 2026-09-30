@@ -51,7 +51,13 @@ repos: []
 #    resources: [staging, migrations, {name: ci-gate, mode: on-demand}]   # on-demand: LOCK/UNLOCK messages
 #    checks: ["./scripts/check-migration-order.sh"]   # read-only commands; see below
 #    review_setup: ["cp \"$ORCH_MAIN_CHECKOUT/.env\" .env", "pnpm install --frozen-lockfile"]  # review clones
-#    deploy_workflows: [deploy.yml]   # read by resume to see who holds the stand
+#    deploy_workflows: [deploy.yml]   # or {test: [...], prod: [...]}: resume (who holds the stand) and verify (run for the SHA)
+#    integration_branch: main         # branch the stand deploys from (verify --env test; default: base)
+#    prod_branch: main                # branch production deploys from (verify --env prod; default: base)
+#    verify_test: ["curl -fsS https://test.example.com/health"]   # read-only; env ORCH_ENV, ORCH_SHA, ORCH_WP, ORCH_BASE_URL
+#    verify_prod: ["curl -fsS https://example.com/health"]        # secrets only as $VARIABLE references
+#    version_url: "{base_url}/version.json"   # served version ({base_url} from web_urls, {env}); or {test: ..., prod: ...}
+#    version_pattern: '"sha": "([0-9a-f]+)"'  # one group, compared with the SHA (7+ characters) or --expect-version
 #    base_deploys: prod               # prod | staging | none: what a merge into base deploys
 #    sessions: cloud                  # local | cloud: module sessions are cloud sessions (own clones)
 #    cloud_environment: Project env   # name of the owner's cloud environment (never variable values)
@@ -95,6 +101,7 @@ modules: []
 #    model: opus                      # overrides models.implement for this module
 #    effort: high
 
+# verify_timeout: 300              # seconds per verify command (orch.py verify)
 environments: {}
 guards: {}
 # Optional source of facts: none | nacl. Tasks and statuses always stay in files.
