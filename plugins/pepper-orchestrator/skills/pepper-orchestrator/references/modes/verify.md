@@ -23,12 +23,21 @@ deploy, whoever made it (the owner, or a delivery mode later). Arguments: `<WP> 
      as a reference to an environment variable of the owner (`$STAND_TOKEN`), never literally: `lint`
      refuses secret-looking strings, and output lines that look like secrets are redacted in the
      report.
+   **Which SHA.** Without `--sha`: on test, the merge commit of the package PR; on prod with a
+   separate `prod_branch`, the tip of `origin/<prod_branch>` when it contains that merge commit
+   (`git merge-base --is-ancestor`: a promote, never a cherry-pick), otherwise a refusal asking for
+   `--sha`. **Which status.** Test needs `MERGED` or later; an `ACCEPTED` package is first checked with
+   `gh pr view` and set to `MERGED` when its PR is merged (without `gh`, or with an open PR, it
+   refuses). Prod needs `MERGED` or later.
 2. **Run.** `orch.py verify <WP> --env <env> [--sha <sha>]`. Without `gh` it refuses when it needs a
    workflow run or a merge commit: read the run with the session's GitHub tools and pass `--sha`,
    or ask the owner. It writes `reports/verify-<WP>-<env>-<date>.md` (table: check, command or target,
    exit, first lines of output, verdict).
    - **PASS:** status `VERIFIED_TEST` (test) or `PROD` (prod); a package already past it keeps its
      status. `DONE` stays the orchestrator's decision after prod.
+   - **WAIT** (exit code 2): the deploy run for the SHA is still queued or running. Nothing else is
+     checked, no report and no defect are written, the journal gets one line: verify again when the
+     run has finished.
    - **FAIL:** the status stays, a journal line, a defect file `bugs/BUG-<n>-verify-<wp>-<env>.md`
      with the failed checks. An owner item is opened only when the next step needs the owner's
      rights (no successful deploy run: a deploy or a re-run). A failing command or a wrong served

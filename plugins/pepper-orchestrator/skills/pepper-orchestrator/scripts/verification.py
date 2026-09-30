@@ -15,7 +15,7 @@ ENVS = ('test', 'prod')
 DEFAULT_TIMEOUT = 300
 OUTPUT_LINES = 5
 # Statuses a package may be verified from, per environment.
-VERIFIABLE = {'test': ('ACCEPTED',) + streams.SATISFIED, 'prod': streams.SATISFIED}
+VERIFIABLE = {'test': streams.SATISFIED, 'prod': streams.SATISFIED}
 TARGET = {'test': 'VERIFIED_TEST', 'prod': 'PROD'}
 # A package already past the target keeps its status on PASS (never a downgrade).
 LATER = {'test': ('PROD', 'DONE'), 'prod': ('DONE',)}
@@ -29,6 +29,11 @@ TEXT = {
         'bug_symptom': 'Failed checks:', 'bug_repro': 'Run `orch.py verify {wp} --env {env} --sha {sha}`.',
         'bug_expected': 'Every check passes for `{sha}`.', 'bug_cause': 'Not established yet.',
         'bug_status': 'open', 'bug_severity': 'high',
+        'table_head': ('#', 'Check', 'Command or target', 'Exit', 'Output (first lines)', 'Verdict'),
+        'passed': '{n} checks passed', 'failed': '{n} of {total} checks failed: {items}',
+        'no_vtest': ' The package reached prod without VERIFIED_TEST (status {status}).',
+        'heads': ('Field | Value', 'Found', 'Environment', 'Module', 'Severity', 'Status', 'Symptom',
+                  'Reproduction', 'Expected and actual', 'Evidence', 'Cause'),
     },
     'ru': {
         'deploy': 'run деплоя', 'version': 'отдаваемая версия', 'command': 'команда проверки',
@@ -37,7 +42,12 @@ TEXT = {
         'bug_found': '{date}, orch.py verify --env {env} (отчёт {report})',
         'bug_symptom': 'Проваленные проверки:', 'bug_repro': 'Запусти `orch.py verify {wp} --env {env} --sha {sha}`.',
         'bug_expected': 'Все проверки проходят для `{sha}`.', 'bug_cause': 'Пока не установлена.',
-        'bug_status': 'open', 'bug_severity': 'high',
+        'bug_status': 'открыт', 'bug_severity': 'high',
+        'table_head': ('#', 'Проверка', 'Команда или цель', 'Код', 'Вывод (первые строки)', 'Вердикт'),
+        'passed': 'пройдено проверок: {n}', 'failed': 'провалено {n} из {total}: {items}',
+        'no_vtest': ' Пакет попал в прод без VERIFIED_TEST (статус {status}).',
+        'heads': ('Поле | Значение', 'Найден', 'Окружение', 'Модуль', 'Серьёзность', 'Статус', 'Симптом',
+                  'Воспроизведение', 'Ожидалось и получено', 'Подтверждение', 'Причина'),
     },
 }
 
@@ -120,8 +130,8 @@ def deploy_run(repo_name, workflow, sha, branch_name):
     if ok:
         return 'PASS', f'{workflow}: success {ok[0].get("url") or ok[0].get("databaseId")}'
     running = [r for r in runs if r.get('status') in ('queued', 'in_progress', 'waiting', 'pending', 'requested')]
-    if running:
-        return 'FAIL', f'{workflow}: still {running[0].get("status")} for {sha[:10]} on {branch_name}; verify again later'
+    if running:  # not a failure: the deploy is under way
+        return 'WAIT', f'{workflow}: still {running[0].get("status")} for {sha[:10]} on {branch_name}; verify again later'
     if runs:
         return 'FAIL', f'{workflow}: {runs[0].get("conclusion") or runs[0].get("status")} for {sha[:10]} on {branch_name}'
     return 'FAIL', f'{workflow}: no run for {sha[:10]} on {branch_name}'
@@ -135,7 +145,10 @@ def served_version(url, pattern, sha, expect_version=None):
     except Exception as error:  # network, HTTP or URL errors are a failed check, never a crash
         return 'FAIL', f'{url}: {type(error).__name__}: {error}'
     if pattern:
-        match = re.search(pattern, body)
+        try:
+            match = re.search(pattern, body)
+        except re.error as error:
+            return 'FAIL', f'version_pattern /{pattern}/ is not a valid regular expression: {error}'
         if not match:
             return 'FAIL', f'{url}: version_pattern not found'
         found = (match.group(1) if match.groups() else match.group(0)).strip()
@@ -173,10 +186,40 @@ def cell(text):
     return text or '—'
 
 
-def table(rows):
+def pr_state(repo_name, pr):
+    data = gh_json(['pr', 'view', pr, '--repo', repo_name, '--json', 'state,mergeCommit'])
+    return (data or {}).get('state'), ((data or {}).get('mergeCommit') or {}).get('oid')
+
+
+def prod_tip(repo, prod_branch, merge_sha):
+    """The tip of origin/<prod_branch> when it contains merge_sha (a promote, not a cherry-pick)."""
+    fetched = streams.git(repo.local, 'fetch', '-q', 'origin', prod_branch)
+    if fetched.returncode:
+        raise RuntimeError(f'git fetch origin {prod_branch} failed: {fetched.stderr.strip()}')
+    tip = streams.git(repo.local, 'rev-parse', f'origin/{prod_branch}').stdout.strip()
+    if streams.git(repo.local, 'merge-base', '--is-ancestor', merge_sha, tip).returncode:
+        raise RuntimeError(f'origin/{prod_branch} ({tip[:10]}) does not contain the merge commit {merge_sha[:10]}')
+    return tip
+
+
+def pattern_errors(module_or_repo_raw, where):
+    errors = []
+    value = module_or_repo_raw.get('version_pattern')
+    for env, pattern in (value.items() if isinstance(value, dict) else [('', value)]):
+        if pattern is None:
+            continue
+        try:
+            re.compile(str(pattern))
+        except re.error as error:
+            errors.append(f'orch.yaml: {where}: version_pattern{"." + env if env else ""} is not a valid regular '
+                          f'expression: {error}')
+    return errors
+
+
+def table(rows, lang='en'):
     """Markdown table of check rows {kind, target, exit, output, verdict}."""
-    lines = ['| # | Check | Command or target | Exit | Output (first lines) | Verdict |',
-             '|---|-------|-------------------|------|----------------------|---------|']
+    head = TEXT[lang]['table_head']
+    lines = ['| ' + ' | '.join(head) + ' |', '|' + '|'.join('-' * (len(h) + 2) for h in head) + '|']
     for i, r in enumerate(rows, 1):
         lines.append('| ' + ' | '.join([str(i), cell(r['kind']), cell(f'`{r["target"]}`'), cell(r['exit']),
                                         cell(' / '.join(r['output']) or '—'), cell(r['verdict'])]) + ' |')

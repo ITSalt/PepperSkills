@@ -15,7 +15,12 @@ Preview of stage 3b: verification of the stand and production by facts, whoever 
   target, exit, first output lines with secret-looking fragments redacted, verdict) and a "Live
   scenario" section. PASS: status `VERIFIED_TEST` or `PROD` (a later status is kept). FAIL: status
   kept, journal, `bugs/BUG-<n>-verify-<wp>-<env>.md`; an owner item only when the deploy run is
-  missing or failed. `--dry-run` prints the plan and neither runs, calls `gh` nor writes; without
+  missing or failed. WAIT (exit code 2): the deploy run is still queued or running - a journal line,
+  no report, no defect, no owner item. Test needs `MERGED` or later; an `ACCEPTED` package is set to
+  `MERGED` after `gh pr view` confirms the merge. On prod with a separate `prod_branch` the expected
+  SHA is the tip of `origin/<prod_branch>` that contains the merge commit, else a refusal asking for
+  `--sha`. `lint` checks `version_pattern` (compiles) and `verify_timeout` (positive integer); an
+  invalid pattern at run time is a FAIL. Reports and defects follow the owner language. `--dry-run` prints the plan and neither runs, calls `gh` nor writes; without
   `gh` it refuses with a hint when a run or a merge commit is needed. `verify --list` shows packages
   waiting for test or prod verification.
 - Status vocabulary: `VERIFIED_TEST` (satisfies dependencies like `MERGED`).

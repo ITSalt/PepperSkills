@@ -1652,11 +1652,11 @@ def test_verify(tmp):
         safe_edit.replace_once(config, old, new)
     assert run(home, 'lint').returncode == 0, lint_errors(home)
     git(mono, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
-    for slug in ('orders', 'cart', 'fees'):
+    for slug in ('orders', 'cart', 'fees', 'tax'):
         run(home, 'new-wp', 'app', slug)
-    for wp in ('WP-APP-01', 'WP-APP-02', 'WP-APP-03'):
+    for wp in ('WP-APP-01', 'WP-APP-02', 'WP-APP-03', 'WP-APP-04'):
         run(home, 'set', wp, 'pr', 'https://github.com/example/mono/pull/5')
-        run(home, 'set', wp, 'status', 'MERGED')
+        run(home, 'set', wp, 'status', 'MERGED' if wp != 'WP-APP-04' else 'ACCEPTED')
     listed = run(home, 'verify', '--list').stdout
     assert 'WP-APP-01 (MERGED): orch.py verify WP-APP-01 --env test' in listed, listed
     # Dry run: the plan, nothing written, gh never called.
@@ -1699,7 +1699,27 @@ def test_verify(tmp):
     nodeploy = run(home, 'verify', 'WP-APP-03', '--env', 'test', extra_env=gh_env, ok=False).stderr
     assert 'owner item: WP-APP-03: no successful deploy run on test' in nodeploy, nodeploy
     assert 'R-1' in run(home, 'queue').stdout
+    # WAIT (rev.2 M1): a queued or running deploy run -> exit 2, journal, no defect, no owner item.
+    running = [dict(runs[0], status='in_progress', conclusion=None)]
+    (stub / 'runs.json').write_text(json.dumps(running), encoding='utf-8')
+    bugs_before = sorted(p.name for p in (ws / 'bugs').glob('BUG-*.md'))
+    owner_before = run(home, 'queue').stdout
+    waited = run(home, 'verify', 'WP-APP-03', '--env', 'test', extra_env=gh_env, ok=False)
+    assert waited.returncode == 2 and 'WAIT at' in waited.stderr and 'no defect' in waited.stderr, waited.stderr
+    assert sorted(p.name for p in (ws / 'bugs').glob('BUG-*.md')) == bugs_before
+    assert run(home, 'queue').stdout == owner_before
+    assert 'WP-APP-03: verify on test waits for the deploy run' in (ws / 'status.md').read_text(encoding='utf-8')
     (stub / 'runs.json').write_text(json.dumps(runs), encoding='utf-8')
+    # L4: ACCEPTED -> gh confirms the merge, MERGED, then PASS; an open PR or no gh refuses.
+    assert 'verify needs gh' in run(home, 'verify', 'WP-APP-04', '--env', 'test', ok=False).stderr
+    (stub / 'pr.json').write_text(json.dumps({'state': 'OPEN', 'mergeCommit': None}), encoding='utf-8')
+    assert 'is OPEN, not merged' in run(home, 'verify', 'WP-APP-04', '--env', 'test', extra_env=gh_env, ok=False).stderr
+    (stub / 'pr.json').write_text(json.dumps({'state': 'MERGED', 'mergeCommit': {'oid': sha}}), encoding='utf-8')
+    run(home, 'verify', 'WP-APP-04', '--env', 'test', extra_env=gh_env)
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'WP-APP-04: ACCEPTED -> MERGED' in status and 'WP-APP-04: MERGED -> VERIFIED_TEST' in status, status
+    run(home, 'new-wp', 'app', 'draft')
+    assert 'needs one of MERGED' in run(home, 'verify', 'WP-APP-05', '--env', 'test', extra_env=gh_env, ok=False).stderr
     # Timeout of a verify command -> FAIL with a note; the status stays VERIFIED_TEST.
     slow = run(home, 'verify', 'WP-APP-01', '--env', 'prod', extra_env=gh_env, ok=False).stderr
     assert 'status stays VERIFIED_TEST' in slow, slow
@@ -1712,8 +1732,44 @@ def test_verify(tmp):
     safe_edit.replace_once(config, '    verify_prod: ["sleep 3"]', '    verify_prod: ["curl -H api_key=abcdefgh12345678 x"]')
     assert 'orch.yaml: looks like a secret' in lint_errors(home)
     config.write_text(original, encoding='utf-8')
-    print('PASS verify: stub gh, merge commit, deploy run, served version, commands, report, VERIFIED_TEST, '
-          'defect, owner item, timeout, dry run, redaction')
+    # L2: an invalid version_pattern and verify_timeout are lint errors; a bad pattern is a FAIL, not a crash.
+    safe_edit.replace_once(config, 'verify_timeout: 1', 'verify_timeout: soon')
+    safe_edit.replace_once(config, '\n    version_pattern: \'"sha"', '\n    version_pattern: "([0-9" # \'"sha"')
+    errors = lint_errors(home)
+    assert 'verify_timeout must be a positive whole number' in errors and 'version_pattern is not a valid' in errors
+    config.write_text(original, encoding='utf-8')
+    import verification
+    assert verification.served_version(f'file://{version}', '([0-9', sha)[0] == 'FAIL'
+    # L3: Russian table head, summary texts and defect headings.
+    assert '| # | Проверка | Команда или цель | Код |' in verification.table([], 'ru')
+    ru_home = tmp / 'verify/ru-home'
+    ru_home.mkdir()
+    git(ru_home, 'init', '-q')
+    run(ru_home, 'init', 'ru', '--lang', 'ru', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'db={mono}')
+    ru_ws = orch.Workspace(ru_home / 'features/ru')
+    rel = orch.write_bug(ru_ws, 'WP-DB-01', ru_ws.streams()[1]['db'], 'test', sha, 'reports/x.md',
+                         [{'kind': 'команда проверки', 'target': 'false', 'exit': '1', 'output': []}])
+    bug_ru = (ru_ws.root / rel).read_text(encoding='utf-8')
+    assert '## Подтверждение' in bug_ru and '| Статус | открыт (WP-DB-01) |' in bug_ru and 'Field' not in bug_ru, bug_ru
+    # L5: prod with its own branch: the tip of origin/<prod_branch> containing the merge commit.
+    prod_repo = make_monorepo(tmp / 'verify-prod')
+    merge = git(prod_repo, 'rev-parse', 'HEAD').strip()
+    git(prod_repo, 'commit', '-q', '--allow-empty', '-m', 'release')
+    git(prod_repo, 'push', '-q', 'origin', 'HEAD:refs/heads/prod')
+    tip = git(prod_repo, 'rev-parse', 'HEAD').strip()
+    repo_obj = orch.streams.Repo({'id': 'p', 'path': str(prod_repo), 'base': 'main'})
+    assert verification.prod_tip(repo_obj, 'prod', merge) == tip
+    git(prod_repo, 'switch', '-q', '-c', 'side', 'main~0')
+    git(prod_repo, 'commit', '-q', '--allow-empty', '-m', 'not released')
+    stray = git(prod_repo, 'rev-parse', 'HEAD').strip()
+    try:
+        verification.prod_tip(repo_obj, 'prod', stray)
+    except RuntimeError as error:
+        assert 'does not contain the merge commit' in str(error)
+    else:
+        raise AssertionError('a merge commit outside the prod branch must be refused')
+    print('PASS verify: stub gh, merge commit, deploy run, WAIT, ACCEPTED->MERGED, served version, commands, report, '
+          'VERIFIED_TEST, defect, owner item, timeout, dry run, redaction, lint, RU texts, prod tip')
 
 
 def main():

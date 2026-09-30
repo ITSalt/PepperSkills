@@ -1135,6 +1135,13 @@ def lint(ws):
             if point not in session_settings.CHECKPOINTS:
                 errors.append(f'orch.yaml: checkpoint {point!r} must be one of '
                               f'{", ".join(session_settings.CHECKPOINTS)}')
+    vtimeout = config.get('verify_timeout')
+    if vtimeout is not None and not (isinstance(vtimeout, int) and not isinstance(vtimeout, bool) and vtimeout > 0):
+        errors.append('orch.yaml: verify_timeout must be a positive whole number of seconds')
+    for kind, items in (('repo', config.get('repos') or []), ('module', config.get('modules') or [])):
+        for item in items:
+            if isinstance(item, dict):
+                errors.extend(verification.pattern_errors(item, f'{kind} {item.get("id")}'))
     stale = config.get('lock_stale_hours')
     if stale is not None and not (isinstance(stale, int) and stale > 0):
         errors.append('orch.yaml: lock_stale_hours must be a positive whole number')
@@ -2152,6 +2159,10 @@ def verify_plan(ws, module, env):
     return checks
 
 
+def repo_base(module):
+    return module.repo.base
+
+
 def next_bug(ws):
     numbers = [int(m.group(1)) for p in (ws.root / 'bugs').glob('BUG-*.md')
                if (m := re.match(r'BUG-(\d+)', p.name))]
@@ -2163,12 +2174,8 @@ def write_bug(ws, wp, module, env, sha, report_rel, failed):
     number = next_bug(ws)
     rel = f'bugs/BUG-{number}-verify-{wp.lower()}-{env}.md'
     fmt = {'wp': wp, 'env': env, 'sha': sha[:10] if sha else '?', 'date': today(), 'report': report_rel}
-    heads = {'en': ('Found', 'Environment', 'Module', 'Severity', 'Status', 'Symptom', 'Reproduction',
-                    'Expected and actual', 'Evidence', 'Cause'),
-             'ru': ('Найден', 'Окружение', 'Модуль', 'Серьёзность', 'Статус', 'Симптом', 'Воспроизведение',
-                    'Ожидалось и получено', 'Доказательства', 'Причина')}[ws.lang]
-    field = 'Field | Value' if ws.lang == 'en' else 'Поле | Значение'
-    lines = [f'# BUG-{number} — {t["bug_title"].format(**fmt)}', '', f'| {field} |', '|-------|-------|',
+    field, *heads = t['heads']
+    lines = [f'# BUG-{number} — {t["bug_title"].format(**fmt)}', '', f'| {field} |', '|------|----------|',
              f'| {heads[0]} | {t["bug_found"].format(**fmt)} |', f'| {heads[1]} | {env.upper()}, `{fmt["sha"]}` |',
              f'| {heads[2]} | {module.id} |', f'| {heads[3]} | {t["bug_severity"]} |',
              f'| {heads[4]} | {t["bug_status"]} ({wp}) |', '', f'## {heads[5]}', '', t['bug_symptom'], '']
@@ -2194,9 +2201,11 @@ def cmd_verify(args):
     if not checks:
         raise OrchError(f'nothing to verify on {env} for module {module.id}: set verify_{env} (read-only commands), '
                         f'version_url or deploy_workflows in orch.yaml')
-    if r['status'] not in verification.VERIFIABLE[env]:
+    accepted = env == 'test' and r['status'] == 'ACCEPTED'
+    if r['status'] not in verification.VERIFIABLE[env] and not accepted:
         raise OrchError(f'{wp} is {r["status"]}: verify --env {env} needs one of '
-                        f'{", ".join(verification.VERIFIABLE[env])}')
+                        f'{", ".join(verification.VERIFIABLE[env])}'
+                        + (' (or ACCEPTED with a merged PR)' if env == 'test' else ''))
     branch = verification.branch(module, env)
     pr = pr_url(r['pr'])
     target = verification.TARGET[env]
@@ -2206,13 +2215,17 @@ def cmd_verify(args):
               f'timeout {verification.timeout(ws.config)} s')
         for i, (kind, what) in enumerate(checks, 1):
             print(f'{i}. {kind}: {what}')
+        if accepted:
+            print(f'{wp} is ACCEPTED: first confirms through gh that {pr or "its PR"} is merged, then sets MERGED')
+        if env == 'prod' and branch != repo_base(module):
+            print(f'expected SHA on prod: the tip of origin/{branch} when it contains the merge commit (else pass --sha)')
         print(f'PASS -> status {target}' + (' (kept: already later)' if r['status'] in verification.LATER[env] else '')
               + f'; FAIL -> status stays {r["status"]}, a defect in bugs/, a journal line')
         return 0
     repo = module.repo
     if not repo.local.is_dir():
         raise OrchError(f'{repo.path} is not available locally: verify runs in the repository\'s main checkout')
-    needs_gh = any(k == 'deploy' for k, _ in checks) or not args.sha
+    needs_gh = any(k == 'deploy' for k, _ in checks) or not args.sha or accepted
     name = streams.origin_name(repo)
     if needs_gh and not shutil_which('gh'):
         raise OrchError('verify needs gh for workflow runs and merge commits (gh auth login), or: pass --sha <sha> '
@@ -2220,12 +2233,27 @@ def cmd_verify(args):
                         'session\'s GitHub tools and recorded by hand')
     if needs_gh and not name:
         raise OrchError(f'{repo.path} has no hosted origin: deploy runs and merge commits need one; pass --sha')
+    if accepted:
+        if not pr:
+            raise OrchError(f'{wp} is ACCEPTED and has no PR link: record it (orch.py set {wp} pr <url>) or set MERGED '
+                            'with evidence first')
+        try:
+            state, oid = verification.pr_state(name, pr)
+        except RuntimeError as error:
+            raise OrchError(f'{wp}: cannot read {pr}: {error}')
+        if state != 'MERGED':
+            raise OrchError(f'{wp} is ACCEPTED and {pr} is {state or "unknown"}, not merged: verify after the merge')
+        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='MERGED', quiet=True,
+                                   evidence=f'gh pr view {pr}: MERGED at {(oid or "?")[:10]}'))
+        r = dict(r, status='MERGED')
     sha = args.sha
     if not sha:
         if not pr:
             raise OrchError(f'{wp} has no PR link in the WP table: pass --sha <deployed sha>')
         try:
             sha = verification.merge_commit(name, pr)
+            if env == 'prod' and branch != repo_base(module):
+                sha = verification.prod_tip(repo, branch, sha)
         except RuntimeError as error:
             raise OrchError(f'{wp}: {error}; pass --sha <deployed sha>')
     url = verification.base_url(module, env)
@@ -2237,6 +2265,12 @@ def cmd_verify(args):
                 verdict, detail = verification.deploy_run(name, what, sha, branch)
             except RuntimeError as error:
                 verdict, detail = 'FAIL', f'gh: {error}'
+            if verdict == 'WAIT':  # the deploy is under way: later checks would see the old version
+                ws.journal(f'{wp}: verify on {env} waits for the deploy run ({detail})', wp=wp,
+                           evidence='orch.py verify')
+                print(f'verify {wp} --env {env}: WAIT at {sha[:10]}: {detail}; status stays {r["status"]}, '
+                      'no defect; run verify again when the run has finished', file=sys.stderr)
+                return 2
             rows.append({'kind': t['deploy'], 'target': what, 'exit': '—', 'output': [detail], 'verdict': verdict,
                          'deploy': True})
         elif kind == 'version':
@@ -2259,14 +2293,14 @@ def cmd_verify(args):
         path = reports / f'{stem}-{n}.md'
         n += 1
     rel = str(path.relative_to(ws.root))
-    summary = (f'{len(rows)} checks passed' if not failed else
-               f'{len(failed)} of {len(rows)} checks failed: ' + ', '.join(f'{x["kind"]} `{x["target"]}`' for x in failed))
+    summary = (t['passed'].format(n=len(rows)) if not failed else t['failed'].format(
+        n=len(failed), total=len(rows), items=', '.join(f'{x["kind"]} `{x["target"]}`' for x in failed)))
     note = '' if env == 'test' or r['status'] in ('VERIFIED_TEST', 'PROD', 'DONE') else \
-        f' The package reached prod without VERIFIED_TEST (status {r["status"]}).'
+        t['no_vtest'].format(status=r['status'])
     template = (TEMPLATES / ws.lang / 'verify-report.md').read_text(encoding='utf-8')
     safe_edit.create(path, fill(template, {
         'WP': wp, 'ENV': env, 'SHA': sha[:12], 'DATE': today(), 'VERDICT': verdict, 'SUMMARY': summary + note,
-        'BRANCH': branch, 'BASE_URL': url or '—', 'STATUS': r['status'], 'ROWS': verification.table(rows)}))
+        'BRANCH': branch, 'BASE_URL': url or '—', 'STATUS': r['status'], 'ROWS': verification.table(rows, ws.lang)}))
     if not failed:
         if r['status'] in verification.LATER[env]:
             ws.journal(f'{wp}: verified on {env} at {sha[:10]} (status {r["status"]} kept)', wp=wp, evidence=rel)
