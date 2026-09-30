@@ -18,7 +18,7 @@ import streams
 
 TEMPLATES = Path(__file__).resolve().parent.parent / 'templates' / 'settings'
 PERMISSION_MODES = ('auto', 'acceptEdits', 'default', 'dontAsk', 'bypassPermissions')
-CHECKPOINTS = ('push', 'pr', 'deploy_test')
+CHECKPOINTS = ('push', 'pr', 'deploy_test', 'rollback')
 DEFAULT_CHECKPOINTS = ('deploy_test',)
 SETTINGS_DIR = 'orchestration/settings'
 ORCHESTRATOR = 'orchestrator'
@@ -369,6 +369,7 @@ def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, wor
             perms['deny'].extend(prefix_rules(module.raw['deploy_prod']))
     if workspace_branch:
         perms['allow'].append(f'Bash(git push origin {workspace_branch})')
+    delivery_rules(config, modules, perms)
     perms['deny'].extend(_prod_servers(config))
     for kind in ('allow', 'ask', 'deny'):
         perms[kind] = _unique(perms[kind])
@@ -376,6 +377,30 @@ def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, wor
     data['autoMode'] = {'environment': environment(all_repos)}
     data['crossSessionInbound'] = 'accept'
     return data
+
+
+def delivery_rules(config, modules, perms):
+    """Trusted delivery (orch.yaml delivery levels set to orchestrator by a decision D-n): the commands
+    the orchestrator may run itself (runs, PR facts, the stand commands). The merge itself happens only
+    inside `orch.py deliver --apply` (a subprocess, not a Bash call), so `gh pr merge` stays denied."""
+    block = config.get('delivery') if isinstance(config.get('delivery'), dict) else {}
+    if not block.get('enabled_by'):
+        return
+    merge_level = block.get('merge') == 'orchestrator'
+    stand_level = block.get('stand') == 'orchestrator'
+    if not (merge_level or stand_level):
+        return
+    ask_rollback = 'rollback' in checkpoints(config)
+    for module in modules.values():
+        perms['allow'] += ['Bash(gh run watch *)', 'Bash(gh run list *)', 'Bash(gh pr view *)', 'Bash(gh pr checks *)']
+        raw = {**module.repo.raw, **module.raw}
+        if stand_level:
+            if is_command(raw.get('deploy_test')):
+                perms['allow'].append(f'Bash({raw["deploy_test"]})')
+            perms['allow'] += bash_rules(streams.as_list(raw.get('verify_test')))
+            if raw.get('rollback_test'):
+                rule = f'Bash({str(raw["rollback_test"]).replace("{previous_sha}", "*")})'  # the SHA varies
+                (perms['ask'] if ask_rollback else perms['allow']).append(rule)
 
 
 def apply_flags(command, settings, mode):

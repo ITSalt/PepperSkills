@@ -21,6 +21,9 @@ step. No argument, or the program name when several workspaces exist.
    sessions in another permission class are dropped after 5 minutes. `lint` warns about missing or
    stale settings files (`orch.py settings all`). The protocol never relies on messages: READY is
    also found by `gh pr list` and `orch.py ready`.
+2b. **Delivery on hold?** `orch.py delivery show` (and the first `lint` warning) names a hold with
+   its reason: say it first; nothing is delivered until the analysis ends with
+   `orch.py unhold "<reason>"` (the orchestrator after the facts, or the owner).
 3. **Read state.** `status.md` (WP table, owner queue, top of the journal), the tail of
    `decisions.md`, `orch.yaml`. `orch.py queue` lists open owner items.
 4. **Reconcile with reality** (concept section 11), read-only, delegated when long:
@@ -34,6 +37,7 @@ step. No argument, or the program name when several workspaces exist.
    | the stand | `gh run list --repo <r> --workflow <deploy_workflows entry> -L 5`: which branch deployed last, is it held by the `staging` lock holder |
    | branches of main checkouts | `git -C <repo> rev-parse --abbrev-ref HEAD`, lag behind `origin/<base>` |
    | paths | `orch.py overlap`: files outside allowed paths, undeclared or unlocked shared paths, repository checks |
+   | trusted delivery | `orch.py delivery show`; for `ACCEPTED` packages with delivery handed over, `orch.py deliver --check <WP>` |
    | verification | `orch.py verify --list`: merged packages without `VERIFIED_TEST` (suggest `verify <WP> --env test` once the deploy run for the merge commit succeeded) and packages verified on test waiting for prod; only `VERIFIED_TEST` packages may go to a release sheet |
    | plugin defects and updates | `orch.py report --status`: recorded `PLUGIN-BUG-<n>` with their Issues; with `gh`, one line when a newer plugin version is on the marketplace (`claude plugin update pepper-orchestrator@pepperskills`) |
    | on-demand locks | `orch.py lock list` / `lint`: a lock held longer than `lock_stale_hours` (default 4) is a warning: ask its session whether it still needs it |

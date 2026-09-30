@@ -72,10 +72,13 @@ merge (for example `mcp__github__merge_pull_request`): never call them.
      items, "not required", and "changes in the same branch, section 'Resubmission n', do not
      merge". Send it where messaging reaches the session; for a cloud session or without
      messaging, give the owner the text to paste into that session.
-   - ACCEPTED: `orch.py set <WP> status ACCEPTED --evidence reports/<file>`,
-     `orch.py merge add <WP> --pr <url>`, and an owner item with the merge command
-     (`orch.py owner add R "Merge: gh pr merge <n> --repo <owner/repo> --merge ; expected: merged"`).
-     The owner merges; `owner` mode verifies and runs `merge done`.
+   - ACCEPTED: `orch.py accept <WP> <PR head sha> --report reports/<file>` (the reviewed revision,
+     also noted in the package's PR cell) and `orch.py merge add <WP> --pr <url>`.
+     - With `delivery.merge: owner` (the default): an owner item with the merge command
+       (`orch.py owner add R "Merge: gh pr merge <n> --repo <owner/repo> --merge ; expected: merged"`);
+       the owner merges, `owner` mode verifies and runs `merge done`.
+     - With `delivery.merge: orchestrator` (an owner decision): no owner item; the `deliver` mode
+       delivers the package (`orch.py deliver --check`, then `--apply`).
    - `orch.py lint` and `orch.py commit "<program>: review <WP> <verdict>"`.
 
 ## Result for the owner

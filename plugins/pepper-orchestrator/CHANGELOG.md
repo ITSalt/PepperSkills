@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.9.0 — preview, unreleased
+
+Preview of stage 3c: trusted delivery of merges and the stand, only by an explicit owner decision.
+
+- `delivery` block in `orch.yaml`: `merge`, `stand`, `prod`, `prod_migrations` (owner | orchestrator,
+  default owner; workspaces before 0.9.0 = all owner), `enabled_by`, `hold`. `orch.py delivery show`
+  and `delivery set <level> owner|orchestrator --decision D-n` (orchestrator only with a recorded
+  decision). `lint`: orchestrator without `enabled_by` or with an unrecorded one, `prod: orchestrator`
+  without `merge: orchestrator`, `merge_method` and `run_timeout` values. Repository keys:
+  `merge_method` (merge | squash | rebase), `delete_branch`, `deploy_test`, `rollback_test`
+  (`{previous_sha}`), `run_timeout`, `integration_branch`.
+- `orch.py accept <WP> <sha> --report <path>`: `ACCEPTED` at the reviewed revision, journaled.
+- `orch.py deliver --check <WP>`: gates G1-G10 with facts (accepted revision and report, PR head =
+  accepted SHA, `gh pr checks`, open/mergeable/base/title, merge queue head and previous merge
+  `VERIFIED_TEST` or `--after-failure D-n`, locks, repository checks, owner items marked "blocks
+  delivery" and referenced decisions, "graph: checked" when the package has a Specification, and the
+  delivery level re-read from `orch.yaml` with no hold). `--apply`: `gh pr merge <n> --repo <origin>
+  --<merge_method> [--delete-branch]` (never `--admin`; a GitHub refusal becomes an owner item),
+  `MERGED`, merge queue, ledger `release/deliveries.md`, journal; with `stand: orchestrator` the deploy
+  run of the merge SHA (`gh run list` + `gh run watch`, `run_timeout`) or `deploy_test` (stdin closed:
+  no TTY confirmations), then `verify --env test` and `VERIFIED_TEST`. A failure: `delivery.hold`,
+  defect, `rollback_test` when configured, REVISE text; `orch.py hold` / `unhold`; the first `lint`
+  warning and `resume` name the hold. Without `delivery.merge: orchestrator`, `deliver` refuses with
+  "delivery is done by the owner" and the owner's command.
+- `settings orchestrator` follows the levels: `gh run watch/list`, `gh pr view/checks`, `deploy_test`,
+  `verify_test` and `rollback_test` verbatim (`rollback` checkpoint = ask). `gh pr merge` stays denied
+  in every session: the merge happens only inside `orch.py deliver --apply`.
+- `deliver` refuses on an invalid delivery configuration (and G10 re-checks it); `merge_method` other
+  than merge, squash or rebase never reaches `gh`; `--after-failure` takes a recorded D-n, journaled
+  and in the ledger; a deploy run still in progress at verification exits 2 (MERGED, no hold); a merge
+  commit GitHub has not reported yet stops before the stand; `accept` notes the revision in the
+  package's PR cell; the review and owner modes hand merges to `deliver` when `merge: orchestrator`.
+- Work package row "Graph"; the review brief checks the graph and writes "graph: checked".
+- `deliver` mode and command; hard rules 1 and 13 name the only exception; README (EN/RU) "Trusted
+  delivery"; concept 1.8, sections 1, 2 and 12.
+
 ## 0.8.0 — preview, unreleased
 
 Preview of stage 3e: a channel for defects of the plugin itself.
