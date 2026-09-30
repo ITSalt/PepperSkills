@@ -42,7 +42,7 @@ links. Facts, not retelling.
 ## 5. Start prompt
 
 ```text
-Read /home/owner/orchestrator/features/legacy/work-packages/WP-API-01-orders-export.md and implement it. Branch legacy/wp-api-01-orders-export from main, PR to main, do not merge. When done, send to legacy-coord: [LEGACY] READY WP-API-01 :: <sha> :: ref=<PR URL>
+Read /srv/owner/orchestrator/features/legacy/work-packages/WP-API-01-orders-export.md and implement it. Branch legacy/wp-api-01-orders-export from main, PR to main, do not merge. When done, send to legacy-coord: [LEGACY] READY WP-API-01 :: <sha> :: ref=<PR URL>
 ```
 
 ### Start command
@@ -50,7 +50,7 @@ Read /home/owner/orchestrator/features/legacy/work-packages/WP-API-01-orders-exp
 Start command (for the owner, run in a new terminal):
 
 ```bash
-cd ~/projects/example-api && claude --name legacy-api "Read /home/owner/orchestrator/features/legacy/work-packages/WP-API-01-orders-export.md and implement it. Branch legacy/wp-api-01-orders-export from main, PR to main, do not merge. When done, send to legacy-coord: [LEGACY] READY WP-API-01 :: <sha> :: ref=<PR URL>"
+cd ~/projects/example-api && claude --name legacy-api "Read /srv/owner/orchestrator/features/legacy/work-packages/WP-API-01-orders-export.md and implement it. Branch legacy/wp-api-01-orders-export from main, PR to main, do not merge. When done, send to legacy-coord: [LEGACY] READY WP-API-01 :: <sha> :: ref=<PR URL>"
 ```
 
 No `--settings` in this version: settings files are generated only in a later version.

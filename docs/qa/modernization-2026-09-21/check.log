@@ -111,9 +111,9 @@ checked: plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md
 checked: plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md
 checked: plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md
 chat-prompt.md is up to date.
-built: /Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/pepper-ru-web-compliance.plugin.zip
-built: /Users/maxnikitin/projects/PepperSkills/plugins/pepper-creative-mode/pepper-creative-mode.plugin.zip
-built: /Users/maxnikitin/projects/PepperSkills/plugins/pepper-prompt-engineer/pepper-prompt-engineer.plugin.zip
+built: plugins/pepper-ru-web-compliance/pepper-ru-web-compliance.plugin.zip
+built: plugins/pepper-creative-mode/pepper-creative-mode.plugin.zip
+built: plugins/pepper-prompt-engineer/pepper-prompt-engineer.plugin.zip
 Schema OK — 11 scenarios well-formed.
 
 ......
@@ -128,3 +128,5 @@ PASS archive plugins/pepper-creative-mode/pepper-creative-mode.plugin.zip
 PASS archive plugins/pepper-prompt-engineer/pepper-prompt-engineer.plugin.zip
 PASS archive plugins/pepper-ru-web-compliance/pepper-ru-web-compliance.plugin.zip
 PASS filesystem symlink create/update/remove (not client acceptance)
+
+# 2026-09-30: absolute paths in the "built:" lines above were made relative to the repository root (edited, not re-run).

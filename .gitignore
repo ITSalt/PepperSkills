@@ -26,3 +26,6 @@ _to_delete/
 services/ru-audit-gateway/.env
 services/ru-audit-gateway/secrets/
 services/ru-audit-gateway/*.sqlite*
+
+# Local list of private terms read by scripts/check-private-traces.py (never committed)
+.private-terms.local

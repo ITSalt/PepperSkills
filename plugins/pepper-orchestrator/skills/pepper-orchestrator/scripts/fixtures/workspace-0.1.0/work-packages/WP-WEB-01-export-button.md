@@ -42,7 +42,7 @@ links. Facts, not retelling.
 ## 5. Start prompt
 
 ```text
-Read /home/owner/orchestrator/features/legacy/work-packages/WP-WEB-01-export-button.md and implement it. Branch legacy/wp-web-01-export-button from develop, PR to develop, do not merge. When done, send to legacy-coord: [LEGACY] READY WP-WEB-01 :: <sha> :: ref=<PR URL>
+Read /srv/owner/orchestrator/features/legacy/work-packages/WP-WEB-01-export-button.md and implement it. Branch legacy/wp-web-01-export-button from develop, PR to develop, do not merge. When done, send to legacy-coord: [LEGACY] READY WP-WEB-01 :: <sha> :: ref=<PR URL>
 ```
 
 ### Start command
@@ -50,7 +50,7 @@ Read /home/owner/orchestrator/features/legacy/work-packages/WP-WEB-01-export-but
 Start command (for the owner, run in a new terminal):
 
 ```bash
-cd ~/projects/example-web && claude --name legacy-web "Read /home/owner/orchestrator/features/legacy/work-packages/WP-WEB-01-export-button.md and implement it. Branch legacy/wp-web-01-export-button from develop, PR to develop, do not merge. When done, send to legacy-coord: [LEGACY] READY WP-WEB-01 :: <sha> :: ref=<PR URL>"
+cd ~/projects/example-web && claude --name legacy-web "Read /srv/owner/orchestrator/features/legacy/work-packages/WP-WEB-01-export-button.md and implement it. Branch legacy/wp-web-01-export-button from develop, PR to develop, do not merge. When done, send to legacy-coord: [LEGACY] READY WP-WEB-01 :: <sha> :: ref=<PR URL>"
 ```
 
 No `--settings` in this version: settings files are generated only in a later version.

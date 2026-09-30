@@ -96,6 +96,22 @@ When you add a skill, also add a row to the **Skills** table in the root
   hard-wrap code blocks or YAML frontmatter.
 - **Links** between files must be relative (`./foo.md`, `../bar/baz.md`).
 
+## No private traces
+
+This repository is public. Never commit names, addresses, domains or paths of private
+projects, and never commit absolute paths of your machine (home directories on macOS,
+Linux or Windows): use repository-relative paths, `~/projects/example` placeholders and
+reserved example domains (`example.com`, `app.example.com`, RFC 2606). This covers
+documentation, test fixtures, logs, commit messages, pull request bodies and built
+archives.
+
+`scripts/check-private-traces.py` (part of `scripts/check.sh` and CI) fails on absolute
+home-directory paths in every tracked text file and in the text members of tracked
+`.skill`/`.zip` archives. Keep your own list of private terms (project names, domains)
+in `.private-terms.local` in the repository root, one term per line with `#` comments:
+the file is gitignored, and when it exists the same check also fails on those terms, so
+the names themselves never enter the public tree.
+
 ## Reporting security issues
 
 Do not open a public issue for security problems. See [SECURITY.md](./SECURITY.md).

@@ -163,9 +163,9 @@ def test_login_page_changes_auth_status() -> None:
 def test_same_site() -> None:
     print("границы сайта")
     import collect
-    check(collect.same_host("https://app.family-cinema.ru/auth", "family-cinema.ru"),
+    check(collect.same_host("https://app.example.com/auth", "example.com"),
           "поддомен считается тем же сайтом")
-    check(not collect.same_host("https://evil-family-cinema.ru/", "family-cinema.ru"),
+    check(not collect.same_host("https://evil-example.com/", "example.com"),
           "похожий чужой домен не считается тем же сайтом")
     check(collect.registrable_domain("a.b.com.ru") == "b.com.ru",
           "составной суффикс разбирается правильно")

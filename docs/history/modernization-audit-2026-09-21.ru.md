@@ -8,7 +8,7 @@ P1 — исправить до выпуска; P2 — существенная �
 
 ## 1. P1 — все три переносимых манифеста не соответствуют стандарту
 
-Место: [compliance/plugin.json](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/plugin.json:1), аналогично `pepper-creative-mode` и `pepper-prompt-engineer`.
+Место: [compliance/plugin.json](../../plugins/pepper-ru-web-compliance/plugin.json:1), аналогично `pepper-creative-mode` и `pepper-prompt-engineer`.
 
 Во всех отсутствует обязательный `$schema`; поля `skills` и `interface` размещены на верхнем уровне. По актуальной спецификации отсутствие обязательного поля делает пакет невалидным; неизвестные поля клиент должен игнорировать. Codex-совместимый манифест не делает корневой манифест корректным. Это блокирует заявленную переносимость, хотя отдельный клиент со старым загрузчиком может принять платформенный адаптер.
 
@@ -18,7 +18,7 @@ P1 — исправить до выпуска; P2 — существенная �
 
 ## 2. P1 — основание обработки ошибочно определяется для сайта целиком
 
-Место: [detect.py:903](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/detect.py:903).
+Место: [detect.py:903](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/detect.py:903).
 
 Новая `basis_kwargs()` объединяет документы и ищет несколько подстрок. Не существует связи «сервис → цель → основание», не распознаётся согласие, не учитываются отрицания. Одно найденное упоминание затем используется в разных находках.
 
@@ -35,17 +35,17 @@ P1 — исправить до выпуска; P2 — существенная �
 
 ## 3. P1 — уведомление всё ещё принимается за запрос согласия
 
-Место: [detect.py:723](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/detect.py:723), [rules.yaml:1066](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/rules.yaml:1066).
+Место: [detect.py:723](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/detect.py:723), [rules.yaml:1066](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/rules.yaml:1066).
 
-Старый путь `CK-002` не адаптирован по плану: при найденном баннере отсутствие кнопки отказа сразу даёт `FAIL`. На фикстуре «Используем только необходимые cookie. Понятно» без аналитических запросов получены `CK-001=PASS`, `CK-002=FAIL`. Назначение уведомления и необходимость согласия не проверяются. В [render.py:570](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/render.py:570) визуальная равнозначность кнопок по-прежнему обязательный критерий приёмки.
+Старый путь `CK-002` не адаптирован по плану: при найденном баннере отсутствие кнопки отказа сразу даёт `FAIL`. На фикстуре «Используем только необходимые cookie. Понятно» без аналитических запросов получены `CK-001=PASS`, `CK-002=FAIL`. Назначение уведомления и необходимость согласия не проверяются. В [render.py:570](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/render.py:570) визуальная равнозначность кнопок по-прежнему обязательный критерий приёмки.
 
-Также не согласовано правило [PDN-009](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/rules.yaml:875): детектор уже требует квалификации, а текст правила и ручной чек-лист сохраняют безусловное требование отдельного согласия. Это незакрытые пункты плана, а не новые ошибки переноса файлов.
+Также не согласовано правило [PDN-009](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/rules.yaml:875): детектор уже требует квалификации, а текст правила и ручной чек-лист сохраняют безусловное требование отдельного согласия. Это незакрытые пункты плана, а не новые ошибки переноса файлов.
 
 **Исправление:** квалифицировать назначение баннера до `CK-002`, согласовать детекторы, нормативные тексты и критерии; отделить рекомендацию по интерфейсу от юридического требования. Приёмка: информационное уведомление не порождает автоматический `FAIL`, запрос согласия проверяется отдельно.
 
 ## 4. P1 — проверка отказа и повторного посещения не реализована
 
-Место: [collect.py:606](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/collect.py:606).
+Место: [collect.py:606](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/collect.py:606).
 
 Сборщик остался прежним: первое посещение, нажатие согласия, перезагрузка и обход страниц в контексте с согласием. В модернизации ему добавлена только inline metadata. Нет отдельного отказа, сохранённого состояния отказа и повторного посещения с этим состоянием. Детектор также читает только `before_consent`, `after_consent`, `walk`.
 
@@ -55,7 +55,7 @@ P1 — исправить до выпуска; P2 — существенная �
 
 ## 5. P2 — без браузера LI-001 ошибочно становится неприменимым
 
-Место: [detect.py:951](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/detect.py:951).
+Место: [detect.py:951](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/detect.py:951).
 
 Новый детектор не проверяет `ctx.degraded`. При отсутствии сетевых наблюдений он возвращает `NA`. Воспроизведено: `degraded=True`, пустая сеть → `LI-001=NA`; отсутствие данных подменяет отсутствие аналитики.
 
@@ -63,7 +63,7 @@ P1 — исправить до выпуска; P2 — существенная �
 
 ## 6. P2 — новая задача требует недостижимого PASS
 
-Место: [render.py:553](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/render.py:553), [LI-001 в detect.py](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/detect.py:951).
+Место: [render.py:553](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/render.py:553), [LI-001 в detect.py](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/detect.py:951).
 
 `LI-001` помечен `hybrid`, поэтому план требует: «повторный прогон detect.py … возвращает статус PASS». Но детектор имеет только ветки `NA` и `WARN`. При сохранённой аналитике выполнить этот критерий невозможно. Аналогичная проблема возникает для законной обработки до согласия: новый `CK-003` не имеет способа учесть проверенное альтернативное основание.
 
@@ -71,7 +71,7 @@ P1 — исправить до выпуска; P2 — существенная �
 
 ## 7. P2 — доказательства основания теряются в отчёте
 
-Место: [render.py:374](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/render.py:374), [HTML-ветка:874](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/render.py:874).
+Место: [render.py:374](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/render.py:374), [HTML-ветка:874](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/render.py:874).
 
 `basis_evidence` записывается в JSON, но ни один рендерер его не выводит. На фикстуре маркер `BASIS_PROOF_913` сохранился в findings и исчез из Markdown. У `LI-001` обычный массив `evidence` пуст, поэтому в отдельном плане также нет места обнаружения декларации. Основной HTML-раздел не выводит даже новый блок основания; PDF строится из HTML.
 
@@ -79,7 +79,7 @@ P1 — исправить до выпуска; P2 — существенная �
 
 ## 8. P2 — инструкции uv не обеспечивают браузерный режим
 
-Место: [INSTALL.md:39](/Users/maxnikitin/projects/PepperSkills/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/INSTALL.md:39), inline metadata в `collect.py` и `render.py`.
+Место: [INSTALL.md:39](../../plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/INSTALL.md:39), inline metadata в `collect.py` и `render.py`.
 
 Скрипты объявляют `dependencies=[]`; документированные команды не добавляют Playwright. INSTALL отсылает за установкой Playwright/Chromium в README, где команд установки нет. В чистом uv-окружении сбор перейдёт в degraded, PDF будет пропущен. `pip install` в другом окружении не обеспечивает зависимость для inline-скрипта.
 

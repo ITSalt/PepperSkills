@@ -12,6 +12,8 @@ trap 'rm -rf "$qa_dir"' EXIT
 export PEPPERSKILLS_NETWORK_AUDIT_LOG="$qa_dir/network-attempts.log"
 export PYTHONPATH="$(pwd)/scripts/offline_guard${PYTHONPATH:+:$PYTHONPATH}"
 "$PYTHON" scripts/test-offline-guard.py
+"$PYTHON" scripts/test-private-traces.py
+"$PYTHON" scripts/check-private-traces.py
 skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" scripts/sync-skill-versions.py --check
 "$PYTHON" scripts/sync-plugin-manifests.py --check

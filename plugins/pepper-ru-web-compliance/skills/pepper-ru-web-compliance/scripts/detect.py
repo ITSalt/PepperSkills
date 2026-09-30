@@ -255,7 +255,7 @@ class Context:
 
 
 def registrable_domain(host: str) -> str:
-    """Домен, который регистрируют: family-cinema.ru для app.family-cinema.ru."""
+    """Домен, который регистрируют: example.com для app.example.com."""
     host = (host or "").lower().strip(".")
     for suffix in MULTI_SUFFIXES:
         if host.endswith("." + suffix):
