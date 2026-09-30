@@ -9,7 +9,7 @@
   },
   "expected": {
     "LI-001": [
-      "WARN"
+      "PASS"
     ]
   },
   "basis": "legitimate_interest_declared"

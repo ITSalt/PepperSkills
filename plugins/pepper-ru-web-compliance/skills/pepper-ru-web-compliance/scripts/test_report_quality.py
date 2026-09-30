@@ -17,7 +17,7 @@ from selftest import artifacts_fixture
 
 class ReportQuality(unittest.TestCase):
     def test_producer_version_has_no_yaml_quotes(self):
-        self.assertEqual(current_producer()['skill_version'], '2.4.0')
+        self.assertEqual(current_producer()['skill_version'], '3.0.0')
 
     def test_partial_network_summary_names_coverage_reason(self):
         summary = render.network_summary({
@@ -37,19 +37,14 @@ class ReportQuality(unittest.TestCase):
         self.assertIn('98', warnings[0])
         self.assertIn('отказа', warnings[1])
 
-    def test_shared_request_set_is_one_plan_reference_without_repeated_page_list(self):
+    def test_locations_are_short_and_point_to_register(self):
         request = {'kind': 'request', 'detail': 'GET', 'url': 'https://receiver.example/a',
                    'context': {'method': 'GET', 'page': 'https://example.ru/'}}
-        locations = [{'kind': 'dom', 'detail': 'адрес формы',
-                      'url': f'https://example.ru/page-{i}'} for i in range(12)]
-        first = {'evidence': [request] + locations}
-        second = {'evidence': [request] + locations}
-        shared = {}
-        first_lines = render.describe_observations(first, shared, 'V-01')
-        second_lines = render.describe_observations(second, shared, 'V-02')
-        self.assertLessEqual(len(first_lines), 6)
-        self.assertEqual(second_lines,
-                         ['Общий набор сетевых доказательств: см. V-01; evidence.html / evidence.json.'])
+        places = [{'kind': 'dom', 'detail': 'адрес формы',
+                   'url': f'https://example.ru/page-{i}'} for i in range(12)]
+        lines = render.locations({'evidence': [request] + places}, {'pages': []})
+        self.assertEqual(len(lines), 4)
+        self.assertIn('evidence.html', lines[-1])
 
     def test_repeated_direct_evidence_is_not_listed_twice(self):
         entries = [{'kind': 'dom', 'detail': 'адрес формы',
@@ -102,11 +97,11 @@ class ReportQuality(unittest.TestCase):
         evidence = [{'kind': 'request', 'detail': 'Обнаруженный запрос',
                      'url': 'https://tracker.example/collect?client=PRIVATE_TEST_ID'}]
         data = self.data(
-            self.finding('CK-005', manual_check='Уточнить необходимость сервиса.', evidence=evidence),
-            self.finding('PDN-009', manual_check='Уточнить страну получателя.', evidence=evidence))
+            self.finding('CK-005', fix_hint='Удалить ненужный сервис.', evidence=evidence),
+            self.finding('PDN-009', fix_hint='Описать передачу в политике.', evidence=evidence))
         for plan in (render.plan_md(data), render.plan_html(data)):
-            self.assertEqual(plan.count('Уточнить необходимость сервиса.'), 1)
-            self.assertEqual(plan.count('Уточнить страну получателя.'), 1)
+            self.assertEqual(plan.count('Удалить ненужный сервис.'), 1)
+            self.assertEqual(plan.count('Описать передачу в политике.'), 1)
             self.assertNotIn('PRIVATE_TEST_ID', plan)
             self.assertIn('CK-005', plan)
             self.assertIn('PDN-009', plan)
@@ -130,8 +125,7 @@ class ReportQuality(unittest.TestCase):
                            render.plan_md(data), render.plan_html(data)):
                 self.assertLess(output.count('receiver.example'), 12)
                 self.assertLess(output.count('Доказательство: см.'), 2)
-            self.assertLessEqual(render.plan_md(data).count('receiver.example'), 1)
-            self.assertIn('Общий набор сетевых доказательств', render.plan_md(data))
+            self.assertLessEqual(render.plan_md(data).count('receiver.example'), 2)
 
     def test_identical_repeated_requests_remain_distinct_in_registry(self):
         request = {'kind': 'request', 'detail': 'GET: назначение не установлено',
@@ -161,20 +155,23 @@ class ReportQuality(unittest.TestCase):
         data.pop('collection')
         for output in (render.report_md(data), render.report_html(data)):
             self.assertIn('Ограниченный снимок', output)
-            self.assertIn('НЕ УДАЛОСЬ ПРОВЕРИТЬ', output)
+            self.assertIn('НЕ ПРОВЕРЕНО', output)
 
     def test_every_task_has_action_even_without_fix_hint(self):
-        data = self.data(self.finding('PDN-013', fix_hint=None, manual_check='Уточнить цель заявки.'))
-        self.assertIn('**Что сделать.** Уточнить цель заявки.', render.plan_md(data))
-        self.assertIn('<b>Что сделать.</b> Уточнить цель заявки.', render.plan_html(data))
-        self.assertNotIn('Задача требует юридического', render.plan_html(data))
+        data = self.data(self.finding('PDN-013', fix_hint=None))
+        self.assertRegex(render.plan_md(data), r'\*\*Что сделать\.\*\* \S')
+        self.assertRegex(render.plan_html(data), r'<b>Что сделать\.</b> \S')
+        data = self.data(self.finding('PDN-013', fix_hint='Убрать поле даты рождения.'))
+        self.assertIn('**Что сделать.** Убрать поле даты рождения.', render.plan_md(data))
 
-    def test_same_basis_is_shown_once_with_all_rule_ids(self):
+    def test_shared_consent_fix_is_one_task_with_all_rule_ids(self):
         data = self.data(*(self.finding(r, processing_basis='UNKNOWN')
                           for r in ('CK-001', 'CK-003', 'LI-001')))
-        for report in (render.report_md(data), render.report_html(data)):
-            self.assertEqual(report.count('Автоматически распознанное основание:'), 1)
-            self.assertIn('CK-001, CK-003, LI-001', report)
+        sections = render.plan_sections(data)
+        self.assertEqual(sum(len(rows) for _, _, rows in sections), 1)
+        for plan in (render.plan_md(data), render.plan_html(data)):
+            for rule in ('CK-001', 'CK-003', 'LI-001'):
+                self.assertIn(rule, plan)
 
     def test_login_link_and_login_form_do_not_hide_subscription(self):
         self.ctx.pages[0]['forms'] = [
@@ -201,11 +198,12 @@ class ReportQuality(unittest.TestCase):
         self.ctx.pages[0]['forms'] = [{'action': '/submit', 'fields': [{'type': 'email'}]}]
         self.ctx.net['walk'] = [{'url': 'https://example.ru/submit', 'method': 'POST'}]
         rows = {f.rule_id: f for f in detect.detect_endpoints(self.ctx)}
-        self.assertEqual(rows['PDN-011'].status, 'UNKNOWN')
-        self.assertEqual(rows['INF-003'].status, 'UNKNOWN')
+        self.assertEqual(rows['PDN-011'].status, 'EXTERNAL')
+        self.assertIn('собственный домен', rows['PDN-011'].summary)
+        self.assertEqual(rows['INF-003'].status, 'PASS')
         self.ctx.net['walk'].append({'url': 'https://external.example/telemetry', 'method': 'POST'})
         rows = detect.detect_endpoints(self.ctx)
-        self.assertEqual([r.status for r in rows], ['UNKNOWN', 'UNKNOWN'])
+        self.assertEqual([r.status for r in rows], ['EXTERNAL', 'UNKNOWN'])
 
     def test_current_complete_findings_and_missing_li(self):
         data = self.data(*(self.finding(r, status='NA') for r in self.ctx.rules))

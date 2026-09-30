@@ -1,5 +1,5 @@
 {
-  "version": "2.0",
+  "version": "3.0",
   "purpose": "OpenAI Skills-only plugin review scenarios",
   "positive": [
     {
@@ -16,40 +16,40 @@
     {
       "id": "positive-consent-gating",
       "prompt": "В HAR видны запросы analytics до клика по баннеру и после согласия.",
-      "expected": "Связать факт с CK-003, запросить квалификацию основания и выдать WARN/UNKNOWN, а не безусловный юридический вывод.",
+      "expected": "Связать факт с CK-003: политика заявляет согласие, но аналитика грузится до выбора — выдать НАРУШЕНИЕ с перечнем сервисов и правкой.",
       "fixture": "submission/fixtures/positive-consent-gating.json",
       "expected_statuses": {
         "CK-003": [
-          "WARN"
+          "FAIL"
         ]
       }
     },
     {
       "id": "positive-legitimate-interest",
       "prompt": "Сайт использует ограниченную аналитику, заявляет п. 7 ч. 1 ст. 6 ФЗ-152 и даёт рабочий отказ.",
-      "expected": "Предложить шаблон LI-001 и проверить цель, необходимость, минимизацию, получателей, уведомление и фактический отказ.",
+      "expected": "Законный интерес заявлен, отказ работает и после него теги не загружаются — ОК с каркасом декларации LI-001 и смысловой проверкой баланса.",
       "fixture": "submission/fixtures/positive-legitimate-interest.json",
       "expected_statuses": {
         "LI-001": [
-          "WARN"
+          "PASS"
         ]
       }
     },
     {
       "id": "positive-remediation",
       "prompt": "В GTM нет используемых тегов, а владелец просит план исправлений.",
-      "expected": "Предложить удалить ненужный контейнер первым вариантом и дать проверяемый критерий приёмки.",
+      "expected": "Иностранный менеджер тегов без сведений о трансграничной передаче — НАРУШЕНИЕ; первым вариантом правки предложить удалить ненужный контейнер, дать проверяемый критерий приёмки.",
       "fixture": "submission/fixtures/positive-remediation.json",
       "expected_statuses": {
         "CK-005": [
-          "WARN"
+          "FAIL"
         ]
       }
     },
     {
       "id": "positive-manual-mode",
       "prompt": "Браузер и исполнение кода недоступны; у пользователя есть скриншоты и сетевой лог.",
-      "expected": "Перейти в ручной режим, сохранить UNKNOWN для непроверяемого и попросить точные наблюдения из DevTools.",
+      "expected": "Без браузера назвать техническую причину UNKNOWN и выполнить разбор по переданному сетевому логу и скриншотам.",
       "fixture": "submission/fixtures/positive-manual-mode.json",
       "expected_statuses": {
         "LI-001": [
@@ -76,7 +76,7 @@
     {
       "id": "negative-foreign-domain-is-violation",
       "prompt": "В HAR есть запрос к иностранному домену CDN без сведений о данных и получателе.",
-      "expected": "Не квалифицировать автоматически как нарушение; зафиксировать подключение и запросить правовое основание.",
+      "expected": "Страну получателя определить доразведкой (IP, ASN, RDAP); без неё — UNKNOWN с технической причиной, а не нарушение по одному домену.",
       "fixture": "submission/fixtures/negative-foreign-domain-is-violation.json",
       "expected_statuses": {
         "PDN-009": [

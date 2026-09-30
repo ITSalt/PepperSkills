@@ -96,45 +96,49 @@ class AuditRegression(unittest.TestCase):
             ctx = self.context(Path(raw))
             ctx.banner = {'found': True, 'candidates': [{'text': 'Используем только необходимые cookie. Понятно',
                           'buttons': [{'text': 'Понятно'}]}]}
-            self.assertEqual([f.status for f in detect.detect_banner(ctx)], ['NA', 'NA'])
+            self.assertEqual([f.status for f in detect.detect_banner(ctx)], ['NA', 'NA', 'NA'])
             ctx.banner['candidates'][0] = {'text': 'Cookie согласие', 'buttons': [{'text': 'Принять'}]}
-            self.assertEqual(detect.detect_banner(ctx)[1].status, 'WARN')
+            rows = {f.rule_id: f.status for f in detect.detect_banner(ctx)}
+            self.assertEqual((rows['CK-002'], rows['CK-007']), ('WARN', 'WARN'))
             ctx.degraded = True
             self.assertEqual(detect.detect_legitimate_interest(ctx)[0].status, 'UNKNOWN')
+
+    def tracked(self, ctx):
+        ctx.net['before_consent'] = [{'url': 'https://mc.yandex.ru/watch/1'}]
+        return detect.detect_gating(ctx)[0]
 
     def test_evidence_and_acceptance(self):
         with tempfile.TemporaryDirectory() as raw:
             ctx = self.context(Path(raw))
-            ctx.net['before_consent'] = [{'url': 'https://mc.yandex.ru/watch/1'}]
-            f = asdict(detect.detect_legitimate_interest(ctx)[0])
-            f['basis_evidence'][0]['snippet'] += ' BASIS_PROOF_913'
+            f = asdict(self.tracked(ctx))
+            self.assertEqual(f['status'], 'FAIL')
             data = {'target': ctx.target, 'generated_at': '2026-09-21', 'findings': [f], 'pages_analysed': 1,
+                    'pages': [{'slug': 'index', 'url': 'https://example.ru/privacy'}],
                     'collection': VERIFIED_COLLECTION}
             for report in (render.report_md(data), render.report_html(data), render.plan_md(data), render.plan_html(data)):
-                self.assertIn('https://example.ru/privacy', report)
-            for report in (render.report_md(data), render.report_html(data)):
-                self.assertIn('BASIS_PROOF_913', report)
-                self.assertIn('UNVERIFIED', report)
-            self.assertNotIn('возвращает статус PASS', render.acceptance(f))
-            f['status'] = 'UNKNOWN'
-            self.assertIn('BASIS_PROOF_913', render.report_html(data))
+                self.assertIn('https://mc.yandex.ru/watch/1', report)
+                self.assertIn('Загружать перечисленные теги только после согласия', report)
+            self.assertIn('Журнал первого визита', render.acceptance(f))
+
+    def review(self, f, status, activities=True):
+        activity = f.processing_activities[0]
+        return {'status': status, 'reviewer': 'Fixture reviewer', 'reviewed_at': '2026-09-26',
+                'evidence': ['BASIS_PROOF_913'],
+                'activities': [{'service': activity['service'], 'purpose': activity['purpose'],
+                                'verified_basis': 'consent', 'evidence': ['Fixture policy']}] if activities else []}
+
+    def attach(self, ctx, f, item):
+        (ctx.dir / 'semantic-review.json').write_text(json.dumps({'target': ctx.target,
+            'artifacts_sha256': detect.artifact_fingerprint(ctx), 'rules': {f.rule_id: item}}))
+        detect.attach_semantic_reviews(ctx, [f])
 
     def test_review_bound_to_artifacts(self):
         with tempfile.TemporaryDirectory() as raw:
             ctx = self.context(Path(raw))
-            ctx.net['before_consent'] = [{'url': 'https://mc.yandex.ru/watch/1'}]
-            f = detect.detect_legitimate_interest(ctx)[0]
-            activity = f.processing_activities[0]
-            item = {'status': 'PASS', 'reviewer': 'Fixture reviewer', 'reviewed_at': '2026-09-21',
-                    'evidence': ['Fixture evidence'], 'activities': [{
-                        'service': activity['service'], 'purpose': activity['purpose'],
-                        'verified_basis': 'consent', 'evidence': ['Fixture policy']}]}
-            path = ctx.dir / 'semantic-review.json'
-            path.write_text(json.dumps({'target': ctx.target, 'artifacts_sha256': detect.artifact_fingerprint(ctx),
-                                        'rules': {'LI-001': item}}))
-            detect.attach_semantic_reviews(ctx, [f])
+            f = self.tracked(ctx)
+            self.attach(ctx, f, self.review(f, 'PASS'))
             self.assertEqual(f.semantic_review['status'], 'PASS')
-            self.assertEqual(f.status, 'WARN')
+            self.assertEqual(f.status, 'FAIL')
             (ctx.dir / 'pages/index/text.txt').write_text('changed')
             detect.attach_semantic_reviews(ctx, [f])
             self.assertIsNone(f.semantic_review)
@@ -142,76 +146,53 @@ class AuditRegression(unittest.TestCase):
     def test_review_drives_report_without_changing_machine_observation(self):
         with tempfile.TemporaryDirectory() as raw:
             ctx = self.context(Path(raw))
-            ctx.net['before_consent'] = [{'url': 'https://mc.yandex.ru/watch/1'}]
-            f = detect.detect_legitimate_interest(ctx)[0]
-            activity = f.processing_activities[0]
-            path = ctx.dir / 'semantic-review.json'
-            for status in ('PASS', 'FAIL', 'UNKNOWN', 'NA'):
+            f = self.tracked(ctx)
+            for status in ('PASS', 'FAIL', 'WARN', 'UNKNOWN', 'NA'):
                 with self.subTest(status=status):
-                    item = {'status': status, 'reviewer': 'Fixture reviewer',
-                            'reviewed_at': '2026-09-26', 'evidence': ['BASIS_PROOF_913'],
-                            'activities': [{'service': activity['service'],
-                                            'purpose': activity['purpose'],
-                                            'verified_basis': 'consent',
-                                            'evidence': ['Fixture policy']}]}
-                    path.write_text(json.dumps({'target': ctx.target,
-                        'artifacts_sha256': detect.artifact_fingerprint(ctx),
-                        'rules': {'LI-001': item}}))
-                    detect.attach_semantic_reviews(ctx, [f])
+                    self.attach(ctx, f, self.review(f, status))
                     row = asdict(f)
                     data = {'target': ctx.target, 'generated_at': '2026-09-26',
                             'pages_analysed': 1, 'findings': [row], 'collection': VERIFIED_COLLECTION}
                     unchanged = copy.deepcopy(data)
                     summary = render.summarise(data)
-                    bucket = {'PASS': 'passes', 'FAIL': 'fails', 'UNKNOWN': 'unknowns', 'NA': 'nas'}[status]
+                    bucket = {'PASS': 'passes', 'FAIL': 'fails', 'WARN': 'warns',
+                              'UNKNOWN': 'unknowns', 'NA': 'nas'}[status]
                     self.assertEqual(len(summary[bucket]), 1)
-                    self.assertEqual(len(summary['warns']), 0)
                     for layout in ('stacked', 'twoline', 'classic'):
                         report = render.report_html(data, layout)
-                        self.assertIn('BASIS_PROOF_913', report)
-                        self.assertIn('Машинное наблюдение: WARN', report)
                         self.assertIn(f"badge {status}", report)
+                        if status in ('FAIL', 'WARN'):
+                            self.assertIn('Машинное наблюдение: FAIL', report)
+                            self.assertIn('BASIS_PROOF_913', report)
                         ids = re.findall(r'''id=['"]([^'"]+)['"]''', report)
                         self.assertEqual(len(ids), len(set(ids)))
                         for target in re.findall(r'''href=['"]#([^'"]+)['"]''', report):
                             self.assertIn(target, ids)
-                    md = render.report_md(data)
-                    self.assertIn('Машинное наблюдение: WARN', md)
-                    self.assertIn('проверенное основание: consent', md)
-                    self.assertNotIn('проверенное основание: UNKNOWN', md)
-                    self.assertIn('Fixture policy', md)
-                    self.assertIn('id="rule-li-001"', md)
-                    if status in ('PASS', 'NA'):
-                        self.assertIn('**Задач:** 0', render.plan_md(data))
-                        self.assertNotIn('Уточнить основания и режим работы аналитики', render.plan_html(data))
-                    else:
-                        self.assertIn('**Задач:** 1', render.plan_md(data))
+                    tasks = 1 if status in ('FAIL', 'WARN') else 0
+                    self.assertIn(f'**Задач:** {tasks}', render.plan_md(data))
                     self.assertEqual(data, unchanged)
-                    self.assertEqual(f.status, 'WARN')
+                    self.assertEqual(f.status, 'FAIL')
 
-            # Review of LI-001 cannot silently close another rule in its group.
-            item['status'] = 'PASS'
-            path.write_text(json.dumps({'target': ctx.target,
-                'artifacts_sha256': detect.artifact_fingerprint(ctx), 'rules': {'LI-001': item}}))
-            detect.attach_semantic_reviews(ctx, [f])
-            data['findings'] = [asdict(f), asdict(detect.mk(ctx, 'CK-003', 'WARN', 'Unreviewed tracker'))]
+            # Review of CK-003 cannot silently close another rule in its group.
+            self.attach(ctx, f, self.review(f, 'PASS'))
+            other = detect.mk(ctx, 'CK-001', 'FAIL', 'Unreviewed banner',
+                              [detect.Evidence(kind='dom', detail='баннера нет')])
+            data = {'target': ctx.target, 'generated_at': '2026-09-26', 'pages_analysed': 1,
+                    'findings': [asdict(f), asdict(other)], 'collection': VERIFIED_COLLECTION}
             plan = render.plan_md(data)
-            self.assertIn('**Правила:** CK-003', plan)
-            self.assertNotIn('LI-001', plan)
+            self.assertIn('**Правила:** CK-001', plan)
+            self.assertNotIn('CK-003', plan)
 
             # Incomplete service coverage cannot close the rule.
-            item['activities'] = []
-            path.write_text(json.dumps({'target': ctx.target,
-                'artifacts_sha256': detect.artifact_fingerprint(ctx), 'rules': {'LI-001': item}}))
-            detect.attach_semantic_reviews(ctx, [f])
+            self.attach(ctx, f, self.review(f, 'PASS', activities=False))
             self.assertIsNone(f.semantic_review)
-            self.assertEqual(render.report_status(asdict(f)), 'WARN')
+            self.assertEqual(render.report_status(asdict(f)), 'FAIL')
 
     def test_quote_keeps_qualifying_condition_after_300_characters(self):
         with tempfile.TemporaryDirectory() as raw:
             ctx = self.context(Path(raw))
             quote = 'Полное описание обработки. ' * 16 + 'Исключение: при отказе аналитика отключается.'
-            f = asdict(detect.mk(ctx, 'CK-003', 'WARN', 'Нужно проверить условие',
+            f = asdict(detect.mk(ctx, 'CK-003', 'WARN', 'Трекеры до выбора при заявленном законном интересе',
                 [detect.Evidence(kind='text', detail='Цитата с условием', snippet=quote,
                                  url='https://example.ru/privacy')]))
             data = {'target': ctx.target, 'generated_at': '2026-09-26',

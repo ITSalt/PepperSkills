@@ -5,7 +5,7 @@
   ],
   "expected": {
     "CK-005": [
-      "WARN"
+      "FAIL"
     ]
   }
 }

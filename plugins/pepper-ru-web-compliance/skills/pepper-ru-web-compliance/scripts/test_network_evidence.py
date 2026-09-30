@@ -47,22 +47,19 @@ class NetworkEvidence(unittest.TestCase):
         for urls in (SYNTHETIC_URLS, [SYNTHETIC_URLS[4]]):
             self.ctx.net['walk'] = [{'url': u, 'method': 'POST', 'resource_type': 'xhr'} for u in urls]
             rows = detect.detect_endpoints(self.ctx)
-            self.assertEqual([f.status for f in rows], ['UNKNOWN', 'UNKNOWN'])
-            self.assertEqual(len(rows[0].evidence), len(urls))
+            # Без подтверждённой отправки формы за рубеж перенос базы не предписывается.
+            self.assertNotEqual(rows[0].status, 'FAIL')
+            self.assertIn(rows[0].status, ('EXTERNAL', 'WARN'))
             data = self.data(*rows)
             data['collection']['network_observations'] = {'count': len(urls), 'versions': ['1']}
             original = copy.deepcopy(data)
             for plan in (render.plan_md(data), render.plan_html(data)):
-                self.assertIn('Проверка открытых вопросов', plan)
-                self.assertNotIn('P0-01', plan)
                 self.assertNotIn('Первичную запись данных вести', plan)
-                self.assertNotIn('Где менять', plan)
-                self.assertIn('Запросить у владельца схему', plan)
                 self.assertNotIn('PRIVATE_TEST_ID', plan)
                 self.assertNotIn('semantic_review', plan)
             for report in (render.combined_md(data), render.report_html(data)):
                 self.assertNotIn('PRIVATE_TEST_ID', report)
-                self.assertIn('старый журнал', report)
+                self.assertIn('Ограниченный снимок', report)
             ids = re.findall(r'''id=['"]([^'"]+)['"]''', render.report_html(data))
             self.assertEqual(len(ids), len(set(ids)))
             self.assertEqual(data, original)
@@ -76,7 +73,7 @@ class NetworkEvidence(unittest.TestCase):
                          'content_type': 'application/csp-report'})[0], 'security_report')
 
     def test_confirmed_form_flows_survive_host_and_method_changes(self):
-        for host in ('example.ru', 'mc.yandex.com', 'google-analytics.com', 'outside.test'):
+        for host in ('example.ru', 'mc.yandex.com', 'www.google-analytics.com', 'outside.test'):
             for method in ('GET', 'POST'):
                 req = {'url': f'https://{host}/collect', 'method': method,
                        'resource_type': 'document', 'observation_version': 2,
@@ -84,12 +81,15 @@ class NetworkEvidence(unittest.TestCase):
                 self.ctx.net['walk'] = [req]
                 row = detect.detect_endpoints(self.ctx)[0]
                 self.assertEqual(row.evidence[0]['context']['category'], 'form_submission')
-                self.assertEqual(row.status, 'UNKNOWN')
+                # Форма уходит на сервер с установленной иностранной страной — нарушение;
+                # на свой, российский или неизвестный — вывод не выше вопроса владельцу.
+                expected = 'FAIL' if host == 'www.google-analytics.com' else 'EXTERNAL'
+                self.assertEqual(row.status, expected, host)
 
     def test_empty_and_russian_brand_do_not_prove_localization(self):
         for requests in ([], [{'url': 'https://mc.yandex.ru/watch/1', 'method': 'GET'}]):
             self.ctx.net['walk'] = requests
-            self.assertTrue(all(f.status == 'UNKNOWN' for f in detect.detect_endpoints(self.ctx)))
+            self.assertEqual(detect.detect_endpoints(self.ctx)[0].status, 'EXTERNAL')
 
     def test_safe_payload_shape_never_retains_personal_values(self):
         body = json.dumps({'email': 'PRIVATE_EMAIL', 'phone': 'PRIVATE_PHONE',
@@ -127,19 +127,20 @@ class NetworkEvidence(unittest.TestCase):
             self.assertIn(f.semantic_review['action']['acceptance'], output)
         for plan in (render.plan_md(data), render.plan_html(data)):
             self.assertNotIn('Во всех формах есть чекбокс', plan)
-            self.assertIn('Где менять', plan)
+            self.assertIn('Компонент формы #lead на /contact', plan)
             self.assertNotIn('V-01', plan)
         self.assertEqual(f.status, 'PASS')
 
-    def test_unknown_and_warn_ignore_unconditional_fix_hint(self):
-        for status in ('WARN', 'UNKNOWN'):
-            f = detect.mk(self.ctx, 'PDN-011', status, 'Не установлено',
-                          manual_check='Запросить схему и подтверждение.')
-            f.fix_hint = 'UNSUPPORTED_REBUILD'
-            for output in (render.plan_md(self.data(f)), render.plan_html(self.data(f))):
-                self.assertIn('Запросить схему', output)
-                self.assertNotIn('UNSUPPORTED_REBUILD', output)
-                self.assertIn('V-01', output)
+    def test_unknown_is_not_a_task_warn_carries_its_fix(self):
+        f = detect.mk(self.ctx, 'PDN-011', 'UNKNOWN', 'Сбор не состоялся')
+        f.fix_hint = 'UNSUPPORTED_REBUILD'
+        for output in (render.plan_md(self.data(f)), render.plan_html(self.data(f))):
+            self.assertNotIn('UNSUPPORTED_REBUILD', output)
+        f = detect.mk(self.ctx, 'PDN-011', 'WARN', 'Иностранный получатель')
+        f.fix_hint = 'Убрать иностранный сервис.'
+        for output in (render.plan_md(self.data(f)), render.plan_html(self.data(f))):
+            self.assertIn('Убрать иностранный сервис.', output)
+            self.assertNotIn('V-01', output)
 
     def test_review_validation_and_artifact_binding(self):
         f = self.reviewed()
@@ -171,15 +172,17 @@ class NetworkEvidence(unittest.TestCase):
         del f.semantic_review['action']
         for plan in (render.plan_md(self.data(f)), render.plan_html(self.data(f))):
             self.assertNotIn('Во всех формах есть чекбокс', plan)
-            self.assertIn('V-01', plan)
+            self.assertIn('P0-01', plan)
 
-    def test_group_does_not_merge_fix_and_verification(self):
+    def test_grouped_task_keeps_each_rule_acceptance(self):
         fixed = self.reviewed()
         fixed.rule_id = 'CK-003'
         pending = detect.mk(self.ctx, 'LI-001', 'WARN', 'Основание неизвестно')
         sections = render.plan_sections(self.data(fixed, pending))
-        self.assertEqual([code for code, _, _ in sections], ['P1', 'V'])
-        self.assertEqual(sum(len(rows) for _, _, rows in sections), 2)
+        self.assertEqual(sum(len(rows) for _, _, rows in sections), 1)
+        task = sections[0][2][0]
+        self.assertIn(fixed.semantic_review['action']['acceptance'], render.acceptance(task))
+        self.assertIn('LI-001', render.acceptance(task))
 
     def test_recorder_retains_requests_when_metadata_unavailable(self):
         class Page:

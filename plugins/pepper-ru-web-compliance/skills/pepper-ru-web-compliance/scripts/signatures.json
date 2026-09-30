@@ -652,8 +652,167 @@
     "vendor": "Roistat",
     "country": "RU",
     "kind": "analytics"
+   },
+   {
+    "host": "mindbox.ru",
+    "match": "suffix",
+    "vendor": "Mindbox",
+    "country": "RU",
+    "kind": "ads"
+   },
+   {
+    "host": "adriver.ru",
+    "match": "suffix",
+    "vendor": "AdRiver",
+    "country": "RU",
+    "kind": "ads"
+   },
+   {
+    "host": "ad.mail.ru",
+    "vendor": "VK",
+    "country": "RU",
+    "kind": "ads"
+   },
+   {
+    "host": "r.mail.ru",
+    "vendor": "VK",
+    "country": "RU",
+    "kind": "ads"
+   },
+   {
+    "host": "calltouch.ru",
+    "match": "suffix",
+    "vendor": "Calltouch",
+    "country": "RU",
+    "kind": "analytics"
+   },
+   {
+    "host": "cdn.callbackhunter.com",
+    "vendor": "CallbackHunter",
+    "country": "RU",
+    "kind": "analytics"
+   },
+   {
+    "host": "cdn.carrotquest.app",
+    "vendor": "Carrot quest",
+    "country": "RU",
+    "kind": "analytics"
+   },
+   {
+    "host": "sberads.ru",
+    "match": "suffix",
+    "vendor": "Sber Ads",
+    "country": "RU",
+    "kind": "ads"
+   },
+   {
+    "host": "segmento.ru",
+    "match": "suffix",
+    "vendor": "Sber Ads",
+    "country": "RU",
+    "kind": "ads"
+   },
+   {
+    "host": "code.giraffe.ru",
+    "vendor": "Giraffe",
+    "country": "RU",
+    "kind": "analytics"
    }
-  ]
+  ],
+  "aliases": {
+   "Google": [
+    "google",
+    "гугл"
+   ],
+   "Meta": [
+    "facebook",
+    "meta",
+    "фейсбук"
+   ],
+   "Hotjar": [
+    "hotjar"
+   ],
+   "Microsoft": [
+    "clarity",
+    "microsoft"
+   ],
+   "TikTok": [
+    "tiktok",
+    "тикток"
+   ],
+   "LinkedIn": [
+    "linkedin"
+   ],
+   "Snap": [
+    "snap"
+   ],
+   "Amplitude": [
+    "amplitude"
+   ],
+   "Mixpanel": [
+    "mixpanel"
+   ],
+   "Intercom": [
+    "intercom"
+   ],
+   "Sentry": [
+    "sentry"
+   ],
+   "Яндекс": [
+    "яндекс",
+    "yandex",
+    "метрик"
+   ],
+   "VK": [
+    "vk",
+    "вконтакте",
+    "mail.ru",
+    "top@mail",
+    "mytarget",
+    "vk реклама",
+    "vk ads"
+   ],
+   "Jivo": [
+    "jivo",
+    "живо",
+    "jivosite"
+   ],
+   "Callibri": [
+    "callibri",
+    "калибри"
+   ],
+   "Roistat": [
+    "roistat",
+    "ройстат"
+   ],
+   "Mindbox": [
+    "mindbox",
+    "майндбокс"
+   ],
+   "AdRiver": [
+    "adriver",
+    "адривер"
+   ],
+   "Calltouch": [
+    "calltouch",
+    "коллтач"
+   ],
+   "CallbackHunter": [
+    "callbackhunter"
+   ],
+   "Carrot quest": [
+    "carrot",
+    "каррот"
+   ],
+   "Sber Ads": [
+    "sber ads",
+    "сбер",
+    "segmento"
+   ],
+   "Giraffe": [
+    "giraffe"
+   ]
+  }
  },
  "symbols": {
   "meta": {
@@ -852,5 +1011,240 @@
   "search_url": "https://pd.rkn.gov.ru/operators-registry/operators-list/?act=search&inn={inn}",
   "requires_ru_exit": true,
   "row_marker_pattern": "\\d{2}-\\d{2}-\\d{6}|\\d{2}-\\d{7}"
+ },
+ "policy_checks": {
+  "policy_elements": {
+   "purposes": {
+    "label": "цели обработки",
+    "patterns": [
+     "цел\\w* обработк",
+     "в целях",
+     "для целей"
+    ]
+   },
+   "legal_basis": {
+    "label": "правовые основания обработки",
+    "patterns": [
+     "правов\\w* основани",
+     "основани\\w* обработк",
+     "ст(?:атья|\\.)\\s*6"
+    ]
+   },
+   "data_categories": {
+    "label": "перечень (категории) персональных данных",
+    "patterns": [
+     "перечень персональн",
+     "категори\\w* персональн",
+     "состав персональн",
+     "обрабатыва\\w+ следующ\\w* персональн",
+     "персональные данные[^.]{0,40}(?:фамили|имя|телефон|адрес электронн)"
+    ]
+   },
+   "subjects": {
+    "label": "категории субъектов",
+    "patterns": [
+     "категори\\w* субъект",
+     "субъект\\w* персональн\\w* данн\\w*[^.]{0,60}(?:являются|относятся)",
+     "пользовател\\w* сайта",
+     "покупател",
+     "клиент"
+    ]
+   },
+   "actions": {
+    "label": "перечень действий с данными",
+    "patterns": [
+     "сбор[^.]{0,30}запис[^.]{0,60}систематизац",
+     "перечень действий",
+     "действи\\w* \\(операци\\w*\\)"
+    ]
+   },
+   "methods": {
+    "label": "способы обработки",
+    "patterns": [
+     "автоматизированн",
+     "смешанн\\w* обработк",
+     "способ\\w* обработк"
+    ]
+   },
+   "retention": {
+    "label": "сроки обработки и хранения",
+    "patterns": [
+     "срок\\w*[^.]{0,40}(?:обработк|хранени)",
+     "в течение[^.]{0,40}(?:лет|месяц|дней)",
+     "до достижения цел"
+    ]
+   },
+   "destruction": {
+    "label": "порядок уничтожения данных",
+    "patterns": [
+     "уничтожени\\w*",
+     "удалени\\w* персональн"
+    ]
+   },
+   "rights": {
+    "label": "права субъекта и порядок их реализации",
+    "patterns": [
+     "прав\\w* субъект",
+     "вправе[^.]{0,80}(?:требовать|получ|отозв)",
+     "имеет право"
+    ]
+   },
+   "withdrawal": {
+    "label": "порядок отзыва согласия",
+    "patterns": [
+     "отзыв\\w* согласи",
+     "отозвать согласи"
+    ]
+   },
+   "cross_border": {
+    "label": "сведения о трансграничной передаче",
+    "patterns": [
+     "трансграничн"
+    ]
+   },
+   "processors": {
+    "label": "поручение обработки третьим лицам",
+    "patterns": [
+     "поручени\\w*[^.]{0,40}(?:обработк|третьим|лиц)",
+     "третьим лицам",
+     "передач\\w* третьим"
+    ]
+   },
+   "cookies": {
+    "label": "раздел о cookie",
+    "patterns": [
+     "cookie",
+     "куки",
+     "кук-"
+    ]
+   },
+   "security": {
+    "label": "меры защиты данных",
+    "patterns": [
+     "мер\\w*[^.]{0,40}(?:защит|безопасност)",
+     "защит\\w* персональн"
+    ]
+   }
+  },
+  "consent_elements": {
+   "operator": {
+    "label": "наименование и адрес оператора",
+    "patterns": [
+     "ооо|ао |пао|общество с ограниченной|индивидуальн\\w* предпринимател",
+     "адрес[^.]{0,40}(?:места нахождени|юридическ|:)|г\\.\\s*[А-ЯЁ]"
+    ]
+   },
+   "purpose": {
+    "label": "цель обработки",
+    "patterns": [
+     "цел\\w*",
+     "в целях"
+    ]
+   },
+   "data_list": {
+    "label": "перечень персональных данных",
+    "patterns": [
+     "перечень персональн",
+     "фамили|\\bимя\\b|\\bимени\\b|телефон|адрес\\w* электронн|e-?mail"
+    ]
+   },
+   "actions": {
+    "label": "перечень действий с данными",
+    "patterns": [
+     "сбор[^.]{0,30}запис",
+     "перечень действий",
+     "обработк\\w*[^.]{0,20}включая"
+    ]
+   },
+   "methods": {
+    "label": "способы обработки",
+    "patterns": [
+     "автоматизированн",
+     "смешанн",
+     "без использования средств автоматизации"
+    ]
+   },
+   "term": {
+    "label": "срок действия согласия",
+    "patterns": [
+     "срок\\w*[^.]{0,30}(?:действи|согласи)",
+     "действует[^.]{0,40}(?:до|в течение|бессрочно)",
+     "в течение[^.]{0,30}(?:лет|месяц)"
+    ]
+   },
+   "withdrawal": {
+    "label": "порядок отзыва согласия",
+    "patterns": [
+     "отзыв\\w*",
+     "отозва"
+    ]
+   }
+  },
+  "cookie_description": {
+   "categories": [
+    "технически\\w*|необходим\\w*|обязательн\\w*",
+    "аналитическ\\w*|статистическ\\w*",
+    "рекламн\\w*|маркетингов\\w*",
+    "функциональн\\w*"
+   ],
+   "purposes": [
+    "для (?:работы|функционирования|аналитики|статистики|показа|персонализации)",
+    "назначени\\w*"
+   ],
+   "retention": [
+    "срок\\w*[^.]{0,30}(?:хранени|действи)"
+   ]
+  }
+ },
+ "blocked_platforms": {
+  "instagram": [
+   "instagram.com",
+   "www.instagram.com"
+  ],
+  "facebook": [
+   "facebook.com",
+   "www.facebook.com",
+   "m.facebook.com",
+   "fb.com"
+  ],
+  "x": [
+   "twitter.com",
+   "x.com",
+   "www.twitter.com"
+  ],
+  "linkedin": [
+   "linkedin.com",
+   "www.linkedin.com"
+  ],
+  "discord": [
+   "discord.com",
+   "discord.gg"
+  ],
+  "threads": [
+   "threads.net",
+   "www.threads.net"
+  ]
+ },
+ "vpn_markers": {
+  "terms": [
+   "vpn",
+   "впн",
+   "обход\\w* блокировок",
+   "обойти блокировк",
+   "анонимайзер",
+   "прокси-сервис"
+  ],
+  "promo": [
+   "скачать",
+   "подключ",
+   "купить",
+   "тариф",
+   "бесплатн",
+   "промокод",
+   "скидк",
+   "установ",
+   "сервис",
+   "попробуй"
+  ]
  }
 }

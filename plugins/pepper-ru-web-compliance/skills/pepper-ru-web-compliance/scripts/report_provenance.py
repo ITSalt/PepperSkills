@@ -86,7 +86,10 @@ def collection_warnings(data):
         warnings.append(f'Внутренних ссылок вне выборки: {unvisited}; '
                         'выводы об отсутствии признаков относятся только к посещённым страницам.')
     refusal = collection.get('refusal') or {}
-    if refusal and (refusal.get('click_status') != 'clicked' or not refusal.get('revisit_completed')):
+    # Без баннера отказываться не от чего: незавершённый сценарий отказа тогда
+    # ничего не ограничивает и только засоряет шапку отчёта.
+    if refusal and collection.get('banner_found') is not False and (
+            refusal.get('click_status') != 'clicked' or not refusal.get('revisit_completed')):
         warnings.append('Сценарий отказа от cookie не завершён; результат отказа и повторного визита не подтверждён.')
     return warnings
 
@@ -107,7 +110,8 @@ def consistency_issues(data):
         any(a.get('verified_basis') == 'consent' for a in review.get('activities', [])))
     if status('PDN-013') == 'PASS' and status('PDN-008') == 'FAIL' and consent_claimed:
         issues.append('PDN-013 подтверждает согласие, но PDN-008 отмечает дефект согласия; согласуйте цели, формы и доказательства.')
-    for rule in ('PDN-011', 'INF-003'):
-        if status(rule) == 'PASS' and not rows[rule].get('semantic_review'):
-            issues.append(rule + ': география не подтверждается машинным PASS; приложите документированную смысловую оценку.')
+    # Геолокация получателей (INF-003) наблюдается по IP и ASN; размещение баз
+    # (PDN-011) снаружи не видно, и машинный PASS по нему невозможен.
+    if status('PDN-011') == 'PASS' and not rows.get('PDN-011', {}).get('semantic_review'):
+        issues.append('PDN-011: размещение баз не подтверждается машинным PASS; нужен ответ владельца в смысловой оценке.')
     return issues

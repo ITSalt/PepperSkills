@@ -137,7 +137,7 @@ def test_report_completeness() -> None:
         missing = [rid for rid in ctx.rules if rid not in findings]
         check(not missing, "статус есть у каждого правила", f"нет: {missing}")
 
-        statuses = {"PASS", "FAIL", "WARN", "NA", "UNKNOWN"}
+        statuses = {"PASS", "FAIL", "WARN", "NA", "UNKNOWN", "EXTERNAL"}
         bad = [f["rule_id"] for f in result["findings"] if f["status"] not in statuses]
         check(not bad, "все статусы из допустимого набора", f"чужие: {bad}")
 
@@ -204,8 +204,10 @@ def test_disclaimer_form_scope() -> None:
         check(findings["DISC-002"]["status"] == "UNKNOWN",
               "без загруженного реестра форма плашки остаётся без вывода",
               findings["DISC-002"]["status"])
-        check(bool(findings["INF-004"].get("manual_check")),
-              "у INF-004 есть инструкция ручной проверки")
+        check(findings["INF-004"]["status"] == "UNKNOWN"
+              and "российский выход" in findings["INF-004"]["summary"],
+              "без российского выхода INF-004 называет техническую причину",
+              findings["INF-004"]["summary"])
 
 
 def test_report_colophon_and_links() -> None:
@@ -214,8 +216,12 @@ def test_report_colophon_and_links() -> None:
     data = {"target": "https://example.ru/", "generated_at": "2026-09-18T00:00:00+00:00",
             "pages_analysed": 3, "findings": [
                 {"rule_id": "INF-004", "group": "infra", "title": "Правило",
-                 "status": "UNKNOWN", "severity": "high", "summary": "нет вывода",
-                 "evidence": [], "manual_check": "Открыть https://eais.rkn.gov.ru/ и ввести домен"}]}
+                 "status": "FAIL", "severity": "high", "summary": "страница блокировки",
+                 "evidence": [{"kind": "http", "detail": "заглушка", "url": "https://eais.rkn.gov.ru/"}]}],
+            "collection": {"collector": {"name": "pepper-ru-web-compliance", "observation_version": 2},
+                           "started_at": "2026-09-18", "finished_at": "2026-09-18",
+                           "network": {"mode": "managed", "complete": True, "egress": {"ip": "203.0.113.1"}},
+                           "network_observations": {"count": 1, "versions": ["2"]}}}
     md = render.combined_md(data)
     html = render.report_html(data)
     for needle, name in ((render.SKILL_NAME, "название скилла"),
@@ -225,7 +231,7 @@ def test_report_colophon_and_links() -> None:
                          (render.SKILL_EMAIL, "почта")):
         check(needle in md and needle in html, f"{name} есть в записке")
     check('<a href="https://eais.rkn.gov.ru/">' in html,
-          "ссылка из инструкции кликабельна в HTML")
+          "адрес из доказательства кликабелен в HTML")
     check("zapret-info" not in md and "zapret-info" not in html,
           "служебное обоснование не попадает в отчёт")
 
@@ -274,12 +280,15 @@ def test_processing_basis() -> None:
         pages = [{"status": 200, "final_url": "https://example.ru/privacy", "slug": "privacy"}]
         texts = {"privacy": "Аналитика осуществляется на основании п. 7 ч. 1 ст. 6 ФЗ-152. "
                            "Пользователь может направить возражение против обработки."}
-        sig = {"trackers": {"foreign": [], "russian": [{"vendor": "Метрика",
+        sig = {"trackers": {"foreign": [], "foreign_infra": [], "russian": [{"vendor": "Метрика",
                 "kind": "analytics", "host": "mc.yandex.ru"}]}}
+        net = {"walk": [{"url": "https://mc.yandex.ru/watch/1"}]}
         def page_by_slug(self, slug):
             return self.pages[0]
         def all_requests(self):
             return [{"url": "https://mc.yandex.ru/watch/1"}]
+        def host_info(self, host):
+            return {}
 
     fake = FakeContext()
     basis = detect.basis_kwargs(fake)
@@ -307,16 +316,29 @@ def test_cookie_and_tracker_qualification() -> None:
             json.dumps({"url": "https://www.google-analytics.com/g/collect?v=2"}) + "\n",
             encoding="utf-8")
         tracked = {f["rule_id"]: f for f in detect.run(detect.Context(art))["findings"]}
-        check(tracked["CK-001"]["status"] == "WARN",
-              "отсутствие баннера при аналитике требует квалификации, а не FAIL",
+        check(tracked["CK-001"]["status"] == "FAIL",
+              "нет баннера, есть аналитика, основание не заявлено — нарушение",
               tracked["CK-001"]["status"])
-        check(tracked["CK-003"]["status"] == "WARN",
-              "аналитика без баннера требует проверки основания",
+        check(tracked["CK-003"]["status"] == "FAIL",
+              "без баннера аналитика загружается до выбора — нарушение",
               tracked["CK-003"]["status"])
-        check(tracked["CK-005"]["status"] == "WARN" and
-              tracked["PDN-009"]["status"] == "WARN",
-              "иностранный домен фиксируется как факт для правовой проверки",
+        check(tracked["CK-005"]["status"] == "FAIL" and
+              tracked["PDN-009"]["status"] == "FAIL",
+              "иностранный трекер без заявленной трансграничной передачи — нарушение",
               f"CK-005={tracked['CK-005']['status']}, PDN-009={tracked['PDN-009']['status']}")
+        (art / "pages" / "index" / "text.txt").write_text(
+            "Аналитика cookie ведётся на основании законного интереса оператора. "
+            "Сведения о трансграничной передаче: данные передаются в США.", encoding="utf-8")
+        manifest = json.loads((art / "manifest.json").read_text(encoding="utf-8"))
+        manifest["pages"][0].update({"url": "https://example.ru/privacy", "final_url": "https://example.ru/privacy"})
+        (art / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+        declared = {f["rule_id"]: f for f in detect.run(detect.Context(art))["findings"]}
+        check(declared["CK-001"]["status"] == "WARN" and declared["LI-001"]["status"] == "WARN",
+              "заявленный законный интерес без отказа — риск, а не нарушение",
+              f"CK-001={declared['CK-001']['status']}, LI-001={declared['LI-001']['status']}")
+        check(declared["PDN-009"]["status"] == "WARN",
+              "заявленная трансграничная передача — риск с уведомлением РКН",
+              declared["PDN-009"]["status"])
 
 
 def main() -> int:

@@ -12,7 +12,9 @@ def valid_action_review(item):
         return action is None
     if not isinstance(action, dict) or action.get('kind') not in {'verify', 'fix'}:
         return False
-    if action['kind'] == 'fix' and item.get('status') != 'FAIL':
+    # Правка положена нарушению и риску; вопрос (verify) — только владельцу по
+    # тому, что снаружи сайта не видно.
+    if action['kind'] == 'fix' and item.get('status') not in {'FAIL', 'WARN'}:
         return False
     if not all(isinstance(action.get(k), str) and action[k].strip() for k in ('text', 'acceptance')):
         return False

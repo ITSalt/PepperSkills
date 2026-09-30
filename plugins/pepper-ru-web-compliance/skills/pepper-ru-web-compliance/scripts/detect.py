@@ -151,12 +151,29 @@ class Context:
         self.rules = {r["id"]: r for r in load_data(RULES_PATH)["rules"]}
         self.sig = load_data(SIGNATURES_PATH)
         self.net = {phase: self._load_net(phase)
-                    for phase in ("before_consent", "after_consent", "before_reject", "after_reject", "revisit_reject", "walk")}
+                    for phase in ("before_consent", "after_consent", "before_reject", "after_reject",
+                                  "revisit_reject", "walk", "scenario")}
+        # Активные сценарии (вход, корзина, модальные формы) и доразведка
+        # (гео и вендоры получателей, внешние ссылки, документы, доступность из
+        # РФ). Старые артефакты их не содержат — правила, которым эти факты
+        # нужны, называют это технической причиной, а не просят проверить руками.
+        self.scenarios: list[dict[str, Any]] = self.manifest.get("scenarios") or []
+        self.has_scenarios = "scenarios" in self.manifest
         self.cookies = {phase: self._load_json(f"cookies/{phase}.json", [])
                         for phase in ("before_consent", "after_consent", "before_reject", "after_reject", "revisit_reject")}
         self._texts: dict[str, str] | None = None
         self._doms: dict[str, str] | None = None
         self._registries: dict[str, reg.RegistryData] = {}
+
+    def enrich(self, name: str) -> dict[str, Any]:
+        data = self._load_json(f"enrich/{name}.json", {})
+        return data if isinstance(data, dict) else {}
+
+    def scenario(self, name: str) -> dict[str, Any] | None:
+        return next((s for s in self.scenarios if s.get("name") == name), None)
+
+    def host_info(self, host: str) -> dict[str, Any]:
+        return (self.enrich("hosts").get("hosts") or {}).get(host) or {}
 
     def _load_net(self, phase: str) -> list[dict[str, Any]]:
         path = self.dir / "network" / f"{phase}.jsonl"
@@ -327,7 +344,7 @@ def mk(ctx: Context, rule_id: str, status: str, summary: str,
         fine_legal=fines.get("legal_entity"),
         summary=summary,
         evidence=[asdict(e) for e in (evidence or [])],
-        fix_hint=rule.get("fix_hint"),
+        fix_hint=extra.pop("fix_hint", None) or rule.get("fix_hint"),
         rule_evidence=rule.get("evidence") or [],
         manual_check=extra.pop("manual_check", None) or rule.get("manual_check"),
         check=rule.get("check"),
@@ -419,8 +436,17 @@ def detector(name: str):
 def detect_auth(ctx: Context) -> list[Finding]:
     sig = ctx.sig["auth"]
     out: list[Finding] = []
-    login_pages = [p for p in ctx.pages if looks_like_login_page(ctx, p)]
+    login_pages = [p for p in ctx.pages
+                   if p.get("scenario") == "auth" or looks_like_login_page(ctx, p)]
     has_auth = bool(login_pages)
+    # «Маркеров нет» честно только тогда, когда интерфейс входа открывался:
+    # кнопка «Войти через Google» живёт в модалке, которую обход страниц не видит.
+    login_seen = login_form_observed(ctx)
+    auth_scenario = ctx.scenario("auth") or {}
+    unseen_reason = ("интерфейс входа не открылся при сборе"
+                     + (f": сценарий входа — {auth_scenario.get('status')}"
+                        + (f" ({auth_scenario.get('error')})" if auth_scenario.get("error") else "")
+                        if auth_scenario else ": сценарий входа этим сборщиком не выполнялся"))
 
     def scan(block: dict[str, Any], rule_id: str) -> list[Evidence]:
         found: list[Evidence] = []
@@ -444,8 +470,13 @@ def detect_auth(ctx: Context) -> list[Finding]:
     for rule_id, block_name in (("AUTH-001", "foreign_oauth"),
                                 ("AUTH-003", "foreign_idaas")):
         ev = scan(sig[block_name], rule_id)
-        if not ev:
-            out.append(mk(ctx, rule_id, "PASS", "Маркеров не обнаружено"))
+        if not ev and has_auth and not login_seen:
+            out.append(mk(ctx, rule_id, "UNKNOWN", "На сайте есть вход, но " + unseen_reason,
+                          [Evidence(kind="dom", detail="признак входа", selector=p.get("slug", ""))
+                           for p in login_pages[:2]]))
+        elif not ev:
+            out.append(mk(ctx, rule_id, "PASS", "Иностранных провайдеров входа нет"
+                          + (" в интерфейсе входа" if login_seen else "")))
         elif has_auth:
             out.append(mk(ctx, rule_id, "FAIL",
                           f"Найдено признаков: {len(ev)}; на сайте есть авторизация",
@@ -471,6 +502,8 @@ def detect_auth(ctx: Context) -> list[Finding]:
     if tg_ev:
         out.append(mk(ctx, "AUTH-002", "FAIL" if has_auth else "WARN",
                       "Обнаружен виджет входа через Telegram", tg_ev[:4]))
+    elif has_auth and not login_seen:
+        out.append(mk(ctx, "AUTH-002", "UNKNOWN", "На сайте есть вход, но " + unseen_reason))
     else:
         out.append(mk(ctx, "AUTH-002", "PASS", "Виджет входа Telegram не обнаружен"))
 
@@ -527,8 +560,15 @@ def detect_auth(ctx: Context) -> list[Finding]:
                   if f.rule_id in ("AUTH-001", "AUTH-002", "AUTH-003")
                   and f.status in ("FAIL", "WARN")]
 
+    network_allowed = [e for e in allowed_ev if e.kind == "request"]
     if not has_auth:
         out.append(mk(ctx, "AUTH-004", "NA", "Признаков авторизации на сайте не найдено"))
+    elif not login_seen and not network_allowed:
+        # Надпись «VK» в подвале — ссылка на сообщество, а не способ входа.
+        # Без открытого интерфейса входа о способах входа сказать нечего.
+        out.append(mk(ctx, "AUTH-004", "UNKNOWN", "Авторизация на сайте есть, но " + unseen_reason,
+                      [Evidence(kind="dom", detail="признак авторизации", selector=p.get("slug", ""))
+                       for p in login_pages[:3]]))
     elif allowed_ev or own_form:
         detail = "собственная форма входа" if own_form and not allowed_ev else "разрешённый способ"
         out.append(mk(ctx, "AUTH-004", "PASS", f"Найден {detail}",
@@ -543,79 +583,83 @@ def detect_auth(ctx: Context) -> list[Finding]:
         # способами пускают внутрь, неизвестно. Это не нарушение и не
         # соответствие — это непроверенное место, и назвать его надо так.
         out.append(mk(ctx, "AUTH-004", "UNKNOWN",
-                      "Авторизация на сайте есть, но страница входа не обойдена — "
-                      "способы входа не наблюдались",
+                      "Авторизация на сайте есть, но " + unseen_reason,
                       [Evidence(kind="dom", detail="признак авторизации",
                                 selector=p.get("slug", ""))
                        for p in login_pages[:3]],
-                      source_note="открыть страницу входа и повторить сбор — "
-                                  "без неё способ авторизации не наблюдается"))
+                      ))
 
-    out.append(mk(ctx, "AUTH-006", "PASS" if allowed_ev else "NA",
-                  "Используются российские провайдеры" if allowed_ev
-                  else "Российские провайдеры не используются", allowed_ev[:4]))
+    providers = [e for e in allowed_ev if "телефон" not in e.detail]
+    out.append(mk(ctx, "AUTH-006", "PASS" if providers else "NA",
+                  "Используются российские провайдеры входа" if providers
+                  else "Российские провайдеры входа не используются", providers[:4]))
     return out
 
 
 @detector("trackers_jurisdiction")
 def detect_trackers(ctx: Context) -> list[Finding]:
-    sig = ctx.sig["trackers"]
+    """CK-005, CK-006, PDN-009: кто получает данные посетителей и где он.
+
+    Страна получателя берётся из сигнатуры вендора, а для хостов без сигнатуры —
+    из доразведки (IP, ASN, RDAP). Вывод даётся по каждому получателю: «сторонние
+    запросы есть, требуют квалификации» не отвечает ни на один вопрос владельца.
+    """
     out: list[Finding] = []
-
-    def collect(specs: list[dict[str, Any]]) -> dict[str, Evidence]:
-        found: dict[str, Evidence] = {}
-        for req in ctx.all_requests():
-            host, path = host_of(req["url"]), urllib.parse.urlparse(req["url"]).path
-            for spec in specs:
-                if not match_host(host, spec):
-                    continue
-                if spec.get("paths") and not any(p in path for p in spec["paths"]):
-                    continue
-                key = f"{spec['vendor']}|{host}"
-                found.setdefault(key, Evidence(
-                    kind="request",
-                    detail=f"{spec['vendor']} ({spec['country']}, {spec['kind']}) — {host}",
-                    url=req["url"][:200]))
-        return found
-
-    foreign = collect(sig["foreign"])
     if ctx.degraded:
-        out.append(mk(ctx, "CK-005", "UNKNOWN",
-                      "Сбор шёл без рендера — сетевые запросы не наблюдались"))
-    elif foreign:
-        countries = sorted({e.detail.split("(")[1].split(",")[0] for e in foreign.values()})
+        return [mk(ctx, rid, "UNKNOWN", "Сбор шёл без рендера — сетевые запросы не наблюдались")
+                for rid in ("CK-005", "CK-006", "PDN-009")]
+    border = cross_border_declared(ctx)
+    recipients = third_party_recipients(ctx)
+    optional_kinds = ("analytics", "ads", "session_recording", "tagmanager")
+
+    foreign_trackers = [r for r in recipients.values()
+                        if r["country"] not in (None, "RU") and r["kind"] in optional_kinds]
+    ev = [recipient_evidence(r) for r in foreign_trackers][:8]
+    if not foreign_trackers:
+        out.append(mk(ctx, "CK-005", "PASS", "Иностранных трекеров нет"))
+    elif border == "declared":
         out.append(mk(ctx, "CK-005", "WARN",
-                      f"Иностранных трекеров: {len(foreign)}; юрисдикции: {', '.join(countries)}",
-                      list(foreign.values())[:8], needs_llm=True, **basis_kwargs(ctx)))
+                      f"Подключены иностранные трекеры: {names(foreign_trackers)}; "
+                      "трансграничная передача в политике заявлена — нужно уведомление РКН по ст. 12",
+                      ev, **basis_kwargs(ctx)))
     else:
-        out.append(mk(ctx, "CK-005", "PASS", "Иностранных трекеров не обнаружено"))
+        out.append(mk(ctx, "CK-005", "FAIL",
+                      f"Подключены иностранные трекеры: {names(foreign_trackers)}; "
+                      + ("политика прямо отрицает трансграничную передачу"
+                         if border == "negated" else
+                         "в политике нет сведений о трансграничной передаче"),
+                      ev, **basis_kwargs(ctx)))
 
-    infra = collect(sig["foreign_infra"])
-    if ctx.degraded:
-        out.append(mk(ctx, "CK-006", "UNKNOWN", "Сбор шёл без рендера"))
-    elif infra:
+    infra = [r for r in recipients.values()
+             if r["country"] not in (None, "RU") and r["kind"] not in optional_kinds]
+    if infra:
         out.append(mk(ctx, "CK-006", "WARN",
-                      f"Иностранные инфраструктурные подключения: {len(infra)}",
-                      list(infra.values())[:6]))
+                      f"Иностранные сервисы инфраструктуры получают IP посетителей: {names(infra)}",
+                      [recipient_evidence(r) for r in infra][:6]))
     else:
-        out.append(mk(ctx, "CK-006", "PASS", "Не обнаружено"))
+        out.append(mk(ctx, "CK-006", "PASS", "Иностранных CDN, шрифтов и капч нет"))
 
-    russian = collect(sig["russian"])
-    if foreign and not ctx.degraded:
-        out.append(mk(ctx, "PDN-009", "WARN",
-                      "Обнаружены запросы к иностранным сервисам; состав данных, первичная "
-                      "запись, основание и требования к трансграничной передаче нужно "
-                      "подтвердить по документации и настройкам",
-                      list(foreign.values())[:5], needs_llm=True, **basis_kwargs(ctx)))
-    elif ctx.degraded:
-        out.append(mk(ctx, "PDN-009", "UNKNOWN", "Сбор шёл без рендера"))
+    foreign = [r for r in recipients.values() if r["country"] not in (None, "RU")]
+    unknown = [r for r in recipients.values() if r["country"] is None]
+    russian = [r for r in recipients.values() if r["country"] == "RU"]
+    if not recipients:
+        out.append(mk(ctx, "PDN-009", "NA", "Сторонних получателей нет"))
+    elif foreign:
+        status = "WARN" if border == "declared" else "FAIL"
+        out.append(mk(ctx, "PDN-009", status,
+                      f"Иностранные получатели: {names(foreign)}; "
+                      + ("трансграничная передача в политике заявлена, нужно уведомление РКН"
+                         if status == "WARN" else "сведений о трансграничной передаче в политике нет"),
+                      [recipient_evidence(r) for r in foreign][:8], **basis_kwargs(ctx)))
+    elif unknown:
+        out.append(mk(ctx, "PDN-009", "UNKNOWN",
+                      f"Страна не определена для получателей: {names(unknown)} — "
+                      "доразведка (IP, ASN, RDAP) в этом сборе не выполнялась",
+                      [recipient_evidence(r) for r in unknown][:8]))
     else:
-        third_party = [r for r in ctx.all_requests() if not first_party(r["url"], ctx.target)]
-        out.append(mk(ctx, "PDN-009", "UNKNOWN" if third_party else "NA",
-                      "Сторонние запросы есть, получатели и состав данных требуют квалификации"
-                      if third_party else "Сторонние получатели в пределах обхода не наблюдались",
-                      [Evidence(kind="request", detail="сторонний запрос", url=r["url"])
-                       for r in third_party[:5]], needs_llm=bool(third_party)))
+        out.append(mk(ctx, "PDN-009", "PASS",
+                      f"Все сторонние получатели — российские: {names(russian)}",
+                      [recipient_evidence(r) for r in russian][:8]))
     return out
 
 
@@ -626,6 +670,50 @@ def looks_like_login_form(ctx: Context, form: dict[str, Any]) -> bool:
     action = urllib.parse.urlparse(form.get("action") or "").path.lower()
     segments = set(re.split(r"[^a-z0-9]+", action))
     return bool(segments & set(ctx.sig["auth"]["login_context"]["url_segments"]))
+
+
+CART_RE = re.compile(r"корзин|в корзину|купить|оформить заказ|basket|\bcart\b|add to cart", re.I)
+
+
+def cart_present(ctx: Context) -> bool:
+    """Есть ли на сайте покупка: ссылка на корзину или кнопка «В корзину»."""
+    for page in ctx.pages:
+        url = (page.get("final_url") or page.get("url") or "").lower()
+        if re.search(r"korzin|/cart|basket|checkout|/order", url):
+            return True
+        if any(CART_RE.search(label) for label in clickable_labels(ctx.doms.get(page.get("slug", ""), ""))):
+            return True
+    return False
+
+
+def unobserved_forms(ctx: Context) -> list[str]:
+    """Формы, которые на сайте есть, но сбор до них не дошёл.
+
+    Вывод «во всех формах есть чекбокс» по одной форме подписки — ложный PASS.
+    Если сценарий входа или заказа был и не удался, это техническая причина и
+    она называется прямо; если сценарий дошёл до формы, её поля уже в выборке.
+    """
+    missing = []
+    auth = ctx.scenario("auth")
+    if any(looks_like_login_page(ctx, p) for p in ctx.pages) and not login_form_observed(ctx):
+        missing.append("вход и регистрация" + (f" (сценарий: {auth.get('status')})" if auth else ""))
+    checkout = ctx.scenario("checkout")
+    checkout_seen = any(p.get("scenario") == "checkout" and p.get("forms") for p in ctx.pages)
+    if cart_present(ctx) and not checkout_seen:
+        missing.append("оформление заказа" + (f" (сценарий: {checkout.get('status')})" if checkout else ""))
+    return missing
+
+
+def login_form_observed(ctx: Context) -> bool:
+    """Интерфейс входа действительно наблюдался: форма с полем логина."""
+    for page in ctx.pages:
+        in_login = page.get("scenario") == "auth" or looks_like_login_page(ctx, page)
+        for form in page.get("forms") or []:
+            types = {(f.get("type") or "").lower() for f in form.get("fields") or []}
+            if "password" in types or (in_login and types & {"tel", "email"}
+                                       and (page.get("scenario") == "auth" or looks_like_login_form(ctx, form))):
+                return True
+    return False
 
 
 @detector("forms_consent")
@@ -645,7 +733,7 @@ def detect_forms(ctx: Context) -> list[Finding]:
                        for k in ("имя", "телефон", "e-mail", "email", "почта"))
                 for f in fields)
             # Login links or widgets elsewhere on the page do not classify this form.
-            if collects_pd and not looks_like_login_form(ctx, form):
+            if collects_pd and not looks_like_login_form(ctx, form) and page.get("scenario") != "auth":
                 forms.append((page, form))
             elif collects_pd:
                 login_forms.append((page, form))
@@ -685,6 +773,21 @@ def detect_forms(ctx: Context) -> list[Finding]:
                                       selector=where,
                                       snippet=(checkboxes[0].get("label_text") or "")[:160]))
 
+    # Формы, до которых сбор не дошёл: PASS по одной форме подписки был бы
+    # утверждением о формах, которых никто не видел.
+    unseen = unobserved_forms(ctx)
+    if unseen and not no_cb:
+        distinct = {(f.get("selector"), tuple(x.get("name") for x in f.get("fields") or [])) for _, f in forms}
+        note = (f"Проверено разных форм: {len(distinct)}; не наблюдались: {', '.join(unseen)}")
+        out.append(mk(ctx, "PDN-004", "UNKNOWN", note + ". В наблюдавшихся формах чекбокс согласия есть"))
+        out.append(mk(ctx, "PDN-005", "FAIL" if prechecked else "UNKNOWN",
+                      f"Предотмеченных чекбоксов: {len(prechecked)}" if prechecked
+                      else note + ". В наблюдавшихся формах предотмеченных чекбоксов нет", prechecked[:6]))
+        out.append(mk(ctx, "PDN-006", "FAIL" if no_link else "UNKNOWN",
+                      f"Чекбоксов без ссылки на политику: {len(no_link)}" if no_link
+                      else note + ". В наблюдавшихся формах ссылка на политику есть", no_link[:6]))
+        out.append(advertising_consent(ctx, single_cb))
+        return out
     out.append(mk(ctx, "PDN-004", "FAIL" if no_cb else "PASS",
                   f"Форм без чекбокса согласия: {len(no_cb)} из {len(forms)}"
                   if no_cb else f"Во всех {len(forms)} формах есть чекбокс согласия",
@@ -710,42 +813,78 @@ def detect_forms(ctx: Context) -> list[Finding]:
     if not any_checkbox:
         out.append(mk(ctx, "PDN-007", "NA", "Чекбоксов согласия нет — см. PDN-004"))
         return out
-    out.append(mk(ctx, "PDN-007", "WARN" if single_cb else "PASS",
-                  "Согласие одним чекбоксом — требуется проверить, не покрывает ли "
-                  "оно заодно рекламную рассылку" if single_cb
-                  else "Согласия разделены", single_cb[:6], needs_llm=bool(single_cb)))
+    out.append(advertising_consent(ctx, single_cb))
     return out
+
+
+AD_RE = re.compile(r"рассылк|реклам|новост|акци|спецпредложени|маркетинг|newsletter", re.I)
+PD_RE = re.compile(r"политик|персональн|обработк|конфиденциальн", re.I)
+
+
+def advertising_consent(ctx: Context, single_cb: list[Evidence]) -> Finding:
+    """PDN-007: рекламное согласие не должно ехать в одном чекбоксе с обработкой ПДн.
+
+    Один чекбокс «Согласен с политикой» в форме заказа — нормальная форма: о
+    рекламе в нём нет ни слова. Нарушение — когда одна галочка покрывает и
+    обработку данных, и рассылку.
+    """
+    merged = [e for e in single_cb if AD_RE.search(e.snippet or "") and PD_RE.search(e.snippet or "")]
+    if merged:
+        return mk(ctx, "PDN-007", "FAIL",
+                  f"Одним чекбоксом собирается согласие и на обработку данных, и на рекламу: {len(merged)}",
+                  merged[:6], fix_hint="Разделить чекбокс на два: согласие на обработку данных и "
+                                       "отдельное необязательное согласие на рекламную рассылку.")
+    return mk(ctx, "PDN-007", "PASS", "Согласие на рекламу не совмещено с согласием на обработку данных")
 
 
 @detector("cookie_banner")
 def detect_banner(ctx: Context) -> list[Finding]:
+    """CK-001, CK-002, CK-007: есть ли выбор и честен ли он.
+
+    Основание аналитики — не повод откладывать вывод. Нет баннера, аналитика
+    работает с первого визита, а в документах не заявлено ни согласие, ни
+    законный интерес, — основания нет ни в каком виде: это нарушение. Если
+    законный интерес заявлен, это риск, и его применимость проверяет LI-001.
+    """
     sig = ctx.sig["cookie_banner"]
     out: list[Finding] = []
     if ctx.degraded:
         return [mk(ctx, rid, "UNKNOWN", "Без рендера баннер не наблюдается")
-                for rid in ("CK-001", "CK-002")]
+                for rid in ("CK-001", "CK-002", "CK-007")]
 
     found = ctx.banner.get("found")
     candidates = ctx.banner.get("candidates") or []
+    basis = basis_kwargs(ctx)
+    declared = declared_bases(ctx)
+    services = optional_services(ctx, ("before_consent",)) or optional_services(ctx)
+    service_ev = [recipient_evidence(r) for r in services.values()][:8]
     if not found:
-        basis = basis_kwargs(ctx)
-        if optional_tracking_observed(ctx):
-            out.append(mk(ctx, "CK-001", "WARN",
-                          "Баннер не обнаружен, но наблюдалась необязательная аналитика; "
-                          "правовое основание и необходимость согласия не определены",
-                          [Evidence(kind="dom", detail="на главной странице баннер не найден")],
-                          needs_llm=True, **basis))
-        else:
+        ev = [Evidence(kind="dom", detail="баннер согласия на главной странице не найден")] + service_ev
+        if not services:
             out.append(mk(ctx, "CK-001", "NA",
-                          "Баннер не обнаружен, необязательная аналитика не наблюдалась",
-                          [Evidence(kind="dom", detail="на главной странице баннер не найден")],
-                          **basis))
-        out.append(mk(ctx, "CK-002", "NA", "Баннера нет"))
+                          "Баннера нет, и необязательной аналитики нет — согласие не требуется", ev[:1], **basis))
+        elif declared["legitimate_interest"]:
+            out.append(mk(ctx, "CK-001", "WARN",
+                          f"Баннера нет; аналитика ({names(services.values())}) работает с первого "
+                          "визита по заявленному законному интересу — применимость в LI-001",
+                          ev + declared["evidence"][:2], **basis))
+        elif declared["consent"]:
+            out.append(mk(ctx, "CK-001", "FAIL",
+                          f"Политика заявляет обработку по согласию, но согласие не запрашивается: "
+                          f"баннера нет, аналитика ({names(services.values())}) работает с первого визита",
+                          ev + declared["evidence"][:2], **basis))
+        else:
+            out.append(mk(ctx, "CK-001", "FAIL",
+                          f"Баннера нет, аналитика и реклама ({names(services.values())}) работают с "
+                          "первого визита; ни согласие, ни законный интерес в документах не заявлены",
+                          ev, **basis))
+        out.append(mk(ctx, "CK-002", "NA", "Баннера нет — отказываться не от чего"))
+        out.append(mk(ctx, "CK-007", "NA", "Баннера нет — выбора, который можно затруднить, не предлагается"))
         return out
 
     if not candidates:
         return [mk(ctx, rid, "UNKNOWN", "Баннер отмечен, но его текст не сохранён")
-                for rid in ("CK-001", "CK-002")]
+                for rid in ("CK-001", "CK-002", "CK-007")]
     top = candidates[0]
     ev = [Evidence(kind="dom", detail="уведомление о cookie", selector=top.get("selector"),
                    snippet=(top.get("text") or "")[:300])]
@@ -754,68 +893,77 @@ def detect_banner(ctx: Context) -> list[Finding]:
     explicit_consent = any(re.search(r"соглас|принять|разрешить|accept|allow", b)
                            for b in buttons)
     necessary_only = bool(re.search(r"только (?:строго )?(?:необходим|техническ)", low))
-    if necessary_only and not explicit_consent and not optional_tracking_observed(ctx):
+    if necessary_only and not explicit_consent and not services:
         out.append(mk(ctx, "CK-001", "NA", "Информационное уведомление о необходимых cookie", ev))
-        out.append(mk(ctx, "CK-002", "NA", "Запрос согласия не обнаружен; кнопка отказа не оценивается", ev))
+        out.append(mk(ctx, "CK-002", "NA", "Запроса согласия нет — кнопка отказа не нужна", ev))
+        out.append(mk(ctx, "CK-007", "NA", "Запроса согласия нет", ev))
         return out
     if not explicit_consent:
-        return [mk(ctx, rid, "UNKNOWN", "Назначение уведомления не установлено; проверить необходимость согласия",
-                   ev, needs_llm=True, **basis_kwargs(ctx)) for rid in ("CK-001", "CK-002")]
-    out.append(mk(ctx, "CK-001", "PASS", "Запрос согласия обнаружен (техническое наблюдение)", ev))
-    has_reject = any(any(r in b for r in sig["reject_texts"]) for b in buttons)
+        # Уведомление «Мы используем cookie. [Понятно]» при работающей
+        # аналитике — не запрос согласия: выбора нет, есть только информирование.
+        if not services:
+            out.append(mk(ctx, "CK-001", "NA", "Уведомление о cookie; необязательной аналитики нет", ev))
+        elif declared["legitimate_interest"]:
+            out.append(mk(ctx, "CK-001", "WARN",
+                          "Уведомление без выбора, аналитика работает по заявленному законному интересу — "
+                          "применимость в LI-001", ev + service_ev, **basis))
+        else:
+            out.append(mk(ctx, "CK-001", "FAIL",
+                          f"Уведомление о cookie без выбора: кнопки согласия и отказа нет, аналитика "
+                          f"({names(services.values())}) работает, законный интерес не заявлен",
+                          ev + service_ev, **basis))
+        out.append(mk(ctx, "CK-002", "WARN" if services else "NA",
+                      "Отказаться от аналитики в уведомлении нельзя" if services
+                      else "Запроса согласия нет", ev))
+        out.append(mk(ctx, "CK-007", "NA", "Запроса согласия нет — есть только уведомление", ev))
+        return out
+
+    out.append(mk(ctx, "CK-001", "PASS", "Запрос согласия отображается", ev))
+    direct_reject = [b for b in buttons if any(r in b for r in sig["reject_texts"])
+                     and not re.search(r"настро|управлен|параметр", b)]
+    settings_only = [b for b in buttons if re.search(r"настро|управлен|параметр", b)]
+    has_reject = bool(direct_reject or settings_only)
     out.append(mk(ctx, "CK-002", "PASS" if has_reject else "WARN",
-                  "Запрос согласия: " + ("кнопка отказа найдена; действие проверяется отдельно"
-                  if has_reject else "явная кнопка отказа не найдена; проверить способ отказа и свободу выбора"),
-                  ev, needs_llm=not has_reject))
+                  "Кнопка отказа есть" + (f": «{(direct_reject or settings_only)[0]}»" if has_reject else "")
+                  if has_reject else "В баннере нет кнопки отказа — только согласие", ev))
+    if direct_reject:
+        out.append(mk(ctx, "CK-007", "PASS", "Отказ доступен на первом экране наравне с согласием", ev))
+    else:
+        out.append(mk(ctx, "CK-007", "WARN",
+                      "На первом экране баннера только «Принять»; отказ "
+                      + ("спрятан в настройках" if settings_only else "не предусмотрен"), ev))
     return out
 
 
 @detector("consent_gating")
 def detect_gating(ctx: Context) -> list[Finding]:
-    """Грузятся ли трекеры до согласия — диф сетевых запросов двух проходов."""
+    """CK-003: что грузится до выбора пользователя — по журналу первого визита."""
     if ctx.degraded:
-        return [mk(ctx, "CK-003", "UNKNOWN", "Без рендера диф проходов недоступен")]
-    if not ctx.banner.get("found"):
-        basis = basis_kwargs(ctx)
-        if optional_tracking_observed(ctx):
-            return [mk(ctx, "CK-003", "WARN",
-                       "Необязательная аналитика наблюдалась до взаимодействия с баннером; "
-                       "сначала определить основание обработки и необходимость согласия",
-                       needs_llm=True, **basis)]
-        return [mk(ctx, "CK-003", "NA", "Необязательная аналитика не наблюдалась")]
-
-    specs = ctx.sig["trackers"]["foreign"] + ctx.sig["trackers"]["russian"]
-    before = ctx.net.get("before_consent") or []
-    leaked: dict[str, Evidence] = {}
-    for req in before:
-        host, path = host_of(req["url"]), urllib.parse.urlparse(req["url"]).path
-        for spec in specs:
-            if spec.get("kind") in ("analytics", "ads", "session_recording") \
-                    and match_host(host, spec) \
-                    and (not spec.get("paths") or any(p in path for p in spec["paths"])):
-                leaked.setdefault(host, Evidence(
-                    kind="request",
-                    detail=f"{spec['vendor']} загружен до взаимодействия с баннером",
-                    url=req["url"][:200]))
+        return [mk(ctx, "CK-003", "UNKNOWN", "Без рендера сетевой журнал первого визита недоступен")]
+    declared = declared_bases(ctx)
+    # Без баннера выбора нет ни в одном проходе: всё, что грузится, грузится
+    # до выбора. С баннером смотрим только журнал до клика.
+    leaked = optional_services(ctx, ("before_consent",) if ctx.banner.get("found") else None)
     cookies_before = [c.get("name") for c in ctx.cookies.get("before_consent") or []
                       if c.get("name", "").lower() not in
                       ctx.sig["cookie_banner"]["technical_cookie_names"]]
-
-    if leaked:
-        ev = list(leaked.values())[:8]
-        if cookies_before:
-            ev.append(Evidence(kind="dom",
-                               detail=f"cookie до согласия: {', '.join(cookies_before[:8])}"))
+    if not leaked:
+        if not optional_services(ctx):
+            return [mk(ctx, "CK-003", "NA", "Необязательной аналитики нет")]
+        return [mk(ctx, "CK-003", "PASS", "До выбора пользователя аналитика и реклама не загружаются")]
+    ev = [recipient_evidence(r) for r in leaked.values()][:8]
+    if cookies_before:
+        ev.append(Evidence(kind="cookie", detail="cookie до выбора: " + ", ".join(cookies_before[:12])))
+    where = "до выбора в баннере" if ctx.banner.get("found") else "при первом визите (баннера нет)"
+    if declared["legitimate_interest"]:
         return [mk(ctx, "CK-003", "WARN",
-                   f"До взаимодействия с баннером загружаются трекеры: {len(leaked)}; "
-                   "нужно подтвердить основание обработки и применимость согласия", ev,
-                   needs_llm=True, **basis_kwargs(ctx))]
-    return [mk(ctx, "CK-003", "PASS",
-               "До согласия аналитические и рекламные трекеры не загружаются")]
+                   f"{names(leaked.values())} загружаются {where}; для аналитики заявлен законный "
+                   "интерес — применимость в LI-001", ev, **basis_kwargs(ctx))]
+    return [mk(ctx, "CK-003", "FAIL",
+               f"{names(leaked.values())} загружаются {where}, законный интерес для них не заявлен",
+               ev, **basis_kwargs(ctx))]
 
 
-# Поля, наличие которых делает форму сбором персональных данных. Поиск по
-# сайту и фильтр каталога — тоже формы, но ничего о человеке не собирают.
 PD_FIELD_TYPES = {"email", "tel", "password"}
 PD_FIELD_HINTS = ("name", "fio", "имя", "фамил", "email", "mail", "почт", "phone",
                   "tel", "телефон", "address", "адрес", "birth", "дата рожд",
@@ -978,51 +1126,184 @@ def basis_kwargs(ctx: Context) -> dict[str, Any]:
 
 def optional_tracking_observed(ctx: Context) -> bool:
     """Whether collected evidence contains analytics, ads, or session replay."""
-    specs = ctx.sig["trackers"]["foreign"] + ctx.sig["trackers"]["russian"]
-    for request in ctx.all_requests():
-        host = host_of(request["url"])
-        path = urllib.parse.urlparse(request["url"]).path
-        if any(match_host(host, spec) and spec.get("kind") in
-               ("analytics", "ads", "session_recording") and
-               (not spec.get("paths") or any(p in path for p in spec["paths"]))
-               for spec in specs):
-            return True
-    return False
+    return bool(optional_services(ctx))
+
+
+OPTIONAL_KINDS = ("analytics", "ads", "session_recording")
+
+
+def tracker_spec(ctx: Context, url: str) -> dict[str, Any] | None:
+    host, path = host_of(url), urllib.parse.urlparse(url).path
+    for spec in (ctx.sig["trackers"]["foreign"] + ctx.sig["trackers"]["foreign_infra"]
+                 + ctx.sig["trackers"]["russian"]):
+        if match_host(host, spec) and (not spec.get("paths") or any(p in path for p in spec["paths"])):
+            return spec
+    return None
+
+
+def third_party_recipients(ctx: Context, phases: tuple[str, ...] | None = None) -> dict[str, dict[str, Any]]:
+    """Сторонние получатели: вендор, страна, назначение, хосты и примеры адресов.
+
+    Ключ — вендор, если он известен по сигнатуре или доразведке, иначе
+    регистрируемый домен: два хоста одного сервиса — один получатель.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for phase, rows in ctx.net.items():
+        if phases and phase not in phases:
+            continue
+        for req in rows:
+            url = req.get("url") or ""
+            host = host_of(url)
+            if not host or first_party(url, ctx.target):
+                continue
+            spec = tracker_spec(ctx, url)
+            info = ctx.host_info(host) or ctx.host_info(registrable_domain(host))
+            if not spec and info.get("vendor"):
+                # Вендор найден доразведкой (по коду скрипта или RDAP): страна и
+                # назначение берутся из сигнатуры того же вендора, если она есть.
+                spec = next((s for s in ctx.sig["trackers"]["foreign"] + ctx.sig["trackers"]["russian"]
+                             if s["vendor"].lower() == info["vendor"].lower()), None)
+            vendor = (spec or {}).get("vendor") or info.get("vendor")
+            country = (spec or {}).get("country") or info.get("country")
+            kind = (spec or {}).get("kind") or info.get("kind") or "unknown"
+            key = vendor or registrable_domain(host)
+            item = out.setdefault(key, {"name": vendor or registrable_domain(host), "vendor": vendor,
+                                        "country": country, "kind": kind, "hosts": [], "urls": [],
+                                        "phases": [], "asn": info.get("asn"), "org": info.get("org")})
+            if item["country"] is None and country:
+                item["country"] = country
+            if item["kind"] == "unknown" and kind != "unknown":
+                item["kind"] = kind
+            if host not in item["hosts"]:
+                item["hosts"].append(host)
+            if len(item["urls"]) < 3 and safe_url(url) not in item["urls"]:
+                item["urls"].append(safe_url(url))
+            if phase not in item["phases"]:
+                item["phases"].append(phase)
+    return out
+
+
+def optional_services(ctx: Context, phases: tuple[str, ...] | None = None) -> dict[str, dict[str, Any]]:
+    return {k: v for k, v in third_party_recipients(ctx, phases).items() if v["kind"] in OPTIONAL_KINDS}
+
+
+def names(items) -> str:
+    items = list(items)
+    return ", ".join(i["name"] for i in items[:8]) + (f" и ещё {len(items) - 8}" if len(items) > 8 else "")
+
+
+def recipient_evidence(r: dict[str, Any]) -> Evidence:
+    where = r["country"] or "страна не установлена"
+    net = f"; сеть {r['asn']} {r['org']}" if r.get("asn") or r.get("org") else ""
+    kind = {"analytics": "аналитика", "ads": "реклама", "session_recording": "запись сессий",
+            "tagmanager": "менеджер тегов", "fonts": "шрифты", "captcha": "капча", "cdn": "CDN",
+            "embed": "встроенное видео", "support": "чат поддержки", "errors": "сбор ошибок"}.get(
+                r["kind"], "назначение по адресу не определено")
+    return Evidence(kind="request", detail=f"{r['name']} — {kind}, {where}{net}; хосты: "
+                    + ", ".join(r["hosts"][:4]), url=(r["urls"] or [None])[0])
+
+
+def legal_corpus(ctx: Context, privacy_only: bool = False) -> dict[str, str]:
+    """Тексты правовых документов: страницы сайта и извлечённые файлы доразведки."""
+    texts = dict(policy_texts(ctx))
+    if privacy_only:
+        slugs = {p.get("slug") for p in privacy_pages(ctx)}
+        texts = {k: v for k, v in texts.items() if k in slugs} or texts
+    for doc in ctx.enrich("documents").get("documents") or []:
+        rel = doc.get("text_path")
+        if not rel or doc.get("extraction") == "failed":
+            continue
+        path = ctx.dir / "enrich" / rel if not rel.startswith("enrich/") else ctx.dir / rel
+        url = (doc.get("url") or "").lower()
+        if privacy_only and not any(h in url for h in PRIVACY_URL_HINTS + ("confidential",)):
+            continue
+        if path.exists():
+            texts["doc:" + (doc.get("url") or rel)] = path.read_text(encoding="utf-8", errors="replace")
+    return texts
+
+
+def sentences_with(text: str, pattern: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.;!?])\s+|\n+", text)
+            if re.search(pattern, s, re.I)]
+
+
+def declared_bases(ctx: Context) -> dict[str, Any]:
+    """Заявленные в документах основания для аналитики и рекламы.
+
+    Нужна не юридическая оценка, а факт: написал ли оператор хоть где-то, что
+    аналитика идёт по согласию или по законному интересу. «Ничего не заявлено»
+    — это вывод, а не пробел.
+    """
+    li, consent, ev = False, False, []
+    for slug, text in legal_corpus(ctx).items():
+        for s in sentences_with(text, r"законн\w* интерес"):
+            if re.search(r"аналитик|статистик|cookie|куки|метрик|реклам|маркетинг", s, re.I):
+                li = True
+                ev.append(Evidence(kind="text", detail="заявлен законный интерес", selector=slug,
+                                   snippet=s[:240]))
+                break
+        for s in sentences_with(text, r"(?:cookie|куки|аналитик|метрик)[^.]{0,120}соглас|соглас[^.]{0,120}(?:cookie|куки|аналитик|метрик)"):
+            consent = True
+            ev.append(Evidence(kind="text", detail="заявлено согласие на cookie или аналитику",
+                               selector=slug, snippet=s[:240]))
+            break
+    for activity in basis_kwargs(ctx)["processing_activities"]:
+        if activity["declared_basis"] == "legitimate_interest_declared":
+            li = True
+        if activity["declared_basis"] == "consent_declared":
+            consent = True
+    return {"legitimate_interest": li, "consent": consent, "evidence": ev}
+
+
+def cross_border_declared(ctx: Context) -> str:
+    """declared | negated | absent — что политика говорит о трансграничной передаче."""
+    found = "absent"
+    for text in legal_corpus(ctx).values():
+        for s in sentences_with(text, r"трансграничн"):
+            if re.search(r"\bне\s+(?:осуществля|производ|вед[её]т|планиру|передаёт|передает)\w*", s, re.I):
+                found = "negated" if found == "absent" else found
+            else:
+                return "declared"
+    return found
 
 
 @detector("legitimate_interest")
 def detect_legitimate_interest(ctx: Context) -> list[Finding]:
+    """LI-001: законный интерес — только если его заявили, и только с работающим отказом."""
     if ctx.degraded or ctx.blocked:
         return [mk(ctx, "LI-001", "UNKNOWN", "Нет браузерных доказательств для проверки аналитики")]
-    if not optional_tracking_observed(ctx):
-        return [mk(ctx, "LI-001", "NA", "Необязательная аналитика не наблюдалась в пределах обхода")]
+    services = optional_services(ctx)
+    if not services:
+        return [mk(ctx, "LI-001", "NA", "Необязательной аналитики нет")]
+    declared = declared_bases(ctx)
     basis = basis_kwargs(ctx)
+    if not declared["legitimate_interest"]:
+        return [mk(ctx, "LI-001", "NA",
+                   "Законный интерес в документах не заявлен — основание аналитики оценено в CK-001",
+                   **basis)]
     refusal = ctx.manifest.get("refusal") or {}
-    observations = []
-    for phase in ("after_reject", "revisit_reject"):
-        requests = ctx.net.get(phase) or []
-        for activity in basis["processing_activities"]:
-            specs = [spec for spec in ctx.sig["trackers"]["foreign"] + ctx.sig["trackers"]["russian"]
-                     if spec["vendor"] == activity["service"] and spec.get("kind") == activity["purpose"]]
-            for req in requests:
-                if any(match_host(host_of(req["url"]), spec) and (not spec.get("paths") or
-                       any(path in urllib.parse.urlparse(req["url"]).path for path in spec["paths"]))
-                       for spec in specs):
-                    observations.append(Evidence(kind="request", url=req["url"],
-                        detail=f"{activity['service']}: запрос в сценарии {phase}"))
-        cookies = [c.get("name", "") for c in ctx.cookies.get(phase, [])
-                   if c.get("name", "").lower() not in ctx.sig["cookie_banner"]["technical_cookie_names"]]
-        if cookies:
-            observations.append(Evidence(kind="dom", detail=f"{phase}: cookie требуют классификации: "
-                                         + ", ".join(cookies[:8])))
-    if refusal.get("click_status") != "clicked" or not refusal.get("revisit_completed"):
-        control = "Отказ или повторный визит не подтверждены: " + refusal.get("click_status", "not_collected")
-    elif observations:
-        control = "После отказа наблюдаются запросы сервисов или неклассифицированные cookie; эффективность отказа не подтверждена"
-    else:
-        control = "После отказа и повторного визита известные трекеры не наблюдались в окне сбора"
-    return [mk(ctx, "LI-001", "WARN", control + ". Основание требует отдельной смысловой проверки",
-               observations[:8], needs_llm=True, **basis)]
+    after = optional_services(ctx, ("after_reject", "revisit_reject"))
+    objection = []
+    for slug, text in legal_corpus(ctx).items():
+        for s in sentences_with(text, r"возраж|отказ\w*[^.]{0,60}(?:аналитик|метрик|cookie)|opt-?out"):
+            objection.append(Evidence(kind="text", detail="порядок возражения", selector=slug, snippet=s[:240]))
+            break
+    ev = declared["evidence"][:2] + objection[:2]
+    if refusal.get("click_status") == "clicked" and refusal.get("revisit_completed") and not after:
+        return [mk(ctx, "LI-001", "PASS",
+                   "Законный интерес заявлен; после отказа и повторного визита аналитика не загружается",
+                   ev, needs_llm=True, **basis)]
+    if after:
+        return [mk(ctx, "LI-001", "WARN",
+                   f"Законный интерес заявлен, но после отказа продолжают загружаться: {names(after.values())}",
+                   ev + [recipient_evidence(r) for r in after.values()][:4], **basis)]
+    if objection:
+        return [mk(ctx, "LI-001", "WARN",
+                   "Законный интерес заявлен, возражение описано только текстом; кнопки отказа на сайте нет",
+                   ev, needs_llm=True, **basis)]
+    return [mk(ctx, "LI-001", "WARN",
+               "Законный интерес заявлен, но способа возразить против аналитики на сайте нет",
+               ev, **basis)]
 
 
 RESPONSIBLE_RE = re.compile(
@@ -1085,9 +1366,14 @@ def detect_requisites(ctx: Context) -> list[Finding]:
             break
     responsible: list[Evidence] = []
     mentioned = False
+    mentions: list[Evidence] = []
     for slug, text in ctx.texts.items():
         for m in RESPONSIBLE_RE.finditer(text):
             mentioned = True
+            if len(mentions) < 2:
+                mentions.append(Evidence(kind="text", detail="упоминание ответственного без контакта",
+                                         selector=slug,
+                                         snippet=re.sub(r"\s+", " ", text[max(0, m.start() - 60):m.end() + 120])))
             window = text[m.start():m.end() + 400]
             contact = EMAIL_RE.search(window) or PHONE_RE.search(window)
             if contact:
@@ -1110,15 +1396,19 @@ def detect_requisites(ctx: Context) -> list[Finding]:
     elif mentioned:
         out.append(mk(ctx, "ORG-003", "FAIL",
                       "Ответственный за организацию обработки ПДн упомянут, но контакта "
-                      "для обращений субъекта рядом нет"))
+                      "для обращений субъекта рядом нет", mentions,
+                      fix_hint="Указать в политике рядом с упоминанием ответственного его ФИО или "
+                               "должность и контакт для обращений субъектов: почту или телефон."))
     elif policy_texts(ctx):
         out.append(mk(ctx, "ORG-003", "FAIL",
                       "В разобранных правовых документах нет ни ответственного за "
-                      "организацию обработки ПДн, ни контакта для обращений субъекта"))
+                      "организацию обработки ПДн, ни контакта для обращений субъекта",
+                      [Evidence(kind="text", detail="проверенные документы: " + ", ".join(policy_texts(ctx)))]))
     elif not privacy_pages(ctx) and not privacy_documents(ctx):
         out.append(mk(ctx, "ORG-003", "FAIL",
                       "Политики обработки ПДн на сайте нет, контактов ответственного "
-                      "за организацию обработки — тоже"))
+                      "за организацию обработки — тоже",
+                      [Evidence(kind="text", detail="обойдено страниц: " + str(len(ctx.pages)))]))
     else:
         out.append(mk(ctx, "ORG-003", "UNKNOWN",
                       "Правовой документ опубликован файлом и не разобран — "
@@ -1130,7 +1420,7 @@ def detect_requisites(ctx: Context) -> list[Finding]:
 
 @detector("cookie_inventory")
 def detect_cookie_inventory(ctx: Context) -> list[Finding]:
-    """CK-004: описаны ли в политике те cookie, которые сайт реально ставит."""
+    """CK-004: какие cookie сайт реально ставит и какие из них названы в документах."""
     if ctx.degraded:
         return [mk(ctx, "CK-004", "UNKNOWN",
                    "Сбор шёл без рендера: какие cookie ставятся, не наблюдалось")]
@@ -1139,33 +1429,40 @@ def detect_cookie_inventory(ctx: Context) -> list[Finding]:
     if not jar:
         return [mk(ctx, "CK-004", "PASS", "Сайт не устанавливает cookie")]
 
-    docs = policy_texts(ctx)
-    listed = [Evidence(kind="cookie",
-                       detail=f"{name} (домен {c.get('domain') or '—'})")
-              for name, c in list(jar.items())[:12]]
+    docs = legal_corpus(ctx)
     if not docs and not privacy_pages(ctx) and not privacy_documents(ctx):
-        # Политики нет вовсе: перечень cookie не описан не «неизвестно где», а
-        # нигде. Это вывод, а не пробел.
         return [mk(ctx, "CK-004", "FAIL",
                    f"Сайт ставит cookie ({len(jar)}), а политики, в которой их можно "
-                   f"было бы описать, на сайте нет", listed)]
+                   f"было бы описать, на сайте нет", cookie_list_evidence(jar, list(jar)))]
     if not docs:
         return [mk(ctx, "CK-004", "UNKNOWN",
-                   f"Сайт ставит cookie ({len(jar)}), но текст политики не разобран "
-                   f"(документ опубликован файлом) — сверить перечень не с чем",
-                   listed)]
-
+                   f"Сайт ставит cookie ({len(jar)}), но текст политики не извлечён из файла",
+                   cookie_list_evidence(jar, list(jar)))]
     joined = " ".join(docs.values()).lower()
-    if not any(word in joined for word in ("cookie", "куки", "кук")):
+    if not re.search(r"cookie|куки|кук-", joined):
         return [mk(ctx, "CK-004", "FAIL",
-                   f"Сайт ставит cookie ({len(jar)}), а в правовых документах слово "
-                   f"«cookie» не встречается", listed)]
+                   f"Сайт ставит cookie ({len(jar)}), а в правовых документах cookie не упоминаются",
+                   cookie_list_evidence(jar, list(jar)))]
+    missing = [name for name in jar if name.lower() not in joined]
+    if not missing:
+        return [mk(ctx, "CK-004", "PASS", f"Все {len(jar)} cookie названы в документах")]
+    spec = ctx.sig["policy_checks"]["cookie_description"]
+    cookie_text = " ".join(s for t in docs.values() for s in sentences_with(t, r"cookie|куки"))
+    described = (any(re.search(p, cookie_text, re.I) for p in spec["categories"])
+                 and any(re.search(p, cookie_text, re.I) for p in spec["purposes"]))
+    if described:
+        return [mk(ctx, "CK-004", "WARN",
+                   f"Cookie описаны в общем виде, но из {len(jar)} фактических имён не названы "
+                   f"{len(missing)}", cookie_list_evidence(jar, missing))]
+    return [mk(ctx, "CK-004", "FAIL",
+               f"Cookie упомянуты без описания типов и назначения; из {len(jar)} фактических имён "
+               f"не названы {len(missing)}", cookie_list_evidence(jar, missing))]
 
-    named = [name for name in jar if name.lower() in joined]
-    return [mk(ctx, "CK-004", "UNKNOWN",
-               f"Cookie описаны в документах в общем виде: из {len(jar)} фактических "
-               f"имён в тексте встречается {len(named)}. Полноту перечня определяет "
-               f"смысловой слой", listed, needs_llm=True)]
+
+def cookie_list_evidence(jar: dict[str, dict[str, Any]], names_: list[str]) -> list[Evidence]:
+    """Один перечень вместо дюжины строк: это и есть содержимое будущей таблицы."""
+    rows = [f"{n} ({jar[n].get('domain') or '—'})" for n in names_]
+    return [Evidence(kind="cookie", detail="не описаны в документах: " + ", ".join(rows))]
 
 
 def valid_inn(value: str) -> bool:
@@ -1362,23 +1659,43 @@ def disclaimer_form_findings(ctx: Context, mentions: list[Finding]) -> list[Find
 
 @detector("meta_symbols")
 def detect_meta(ctx: Context) -> list[Finding]:
+    """DISC-004, DISC-005: видимая символика отдельно от невидимой разметки.
+
+    Иконка и ссылка на странице — публичная демонстрация символики. Instagram в
+    JSON-LD sameAs посетитель не видит, но поисковик показывает его в карточке
+    организации; это риск, который снимается одной правкой разметки.
+    """
     sig = ctx.sig["symbols"]
     out: list[Finding] = []
-    sym: list[Evidence] = []
+    visible: list[Evidence] = []
+    hidden: list[Evidence] = []
     for slug, dom in ctx.doms.items():
         low = dom.lower()
+        body = SCRIPT_RE.sub(" ", low)
         for cls in sig["meta"]["css_classes"]:
-            if cls in low:
-                sym.append(Evidence(kind="dom", detail=f"иконка соцсети: {cls}",
-                                    selector=slug))
+            if cls in body:
+                visible.append(Evidence(kind="dom", detail=f"иконка соцсети: {cls}", selector=slug))
                 break
         for host in sig["meta"]["link_hosts"]:
-            if f"//{host}" in low and not any(x in low for x in sig["excluded"]):
-                sym.append(Evidence(kind="dom", detail=f"ссылка на {host}", selector=slug))
+            if re.search(rf"href=[\"'][^\"']*//{re.escape(host)}", body):
+                visible.append(Evidence(kind="dom", detail=f"видимая ссылка на {host}", selector=slug))
                 break
-    out.append(mk(ctx, "DISC-005", "FAIL" if sym else "PASS",
-                  f"Признаков символики Meta: {len(sym)}" if sym
-                  else "Иконок и ссылок Instagram/Facebook не обнаружено", sym[:6]))
+            if f"//{host}" in low and f"//{host}" not in body:
+                hidden.append(Evidence(kind="dom", detail=f"{host} только в скрытой разметке (JSON-LD, скрипты)",
+                                       selector=slug, snippet=jsonld_snippet(dom, host)))
+                break
+    if visible:
+        out.append(mk(ctx, "DISC-005", "FAIL",
+                      f"Видимые иконки или ссылки Instagram/Facebook: {len(visible)}", visible[:6]))
+    elif hidden:
+        pages = sorted({e.selector for e in hidden})
+        out.append(mk(ctx, "DISC-005", "WARN",
+                      f"Instagram/Facebook не видны посетителю, но указаны в разметке schema.org "
+                      f"(sameAs) на {len(pages)} страницах — поисковики показывают их в карточке компании",
+                      hidden[:3], fix_hint="Удалить адреса Instagram и Facebook из JSON-LD (поле sameAs) "
+                                           "в шаблоне сайта."))
+    else:
+        out.append(mk(ctx, "DISC-005", "PASS", "Иконок и ссылок Instagram/Facebook нет"))
 
     mentions: list[Evidence] = []
     for slug, text in ctx.texts.items():
@@ -1393,9 +1710,271 @@ def detect_meta(ctx: Context) -> list[Finding]:
                 break
     out.append(mk(ctx, "DISC-004", "FAIL" if mentions else "PASS",
                   f"Упоминаний без пометки: {len(mentions)}" if mentions
-                  else "Упоминаний Meta без пометки не найдено",
+                  else "Упоминаний Meta без пометки нет",
                   mentions[:6], needs_llm=bool(mentions)))
     return out
+
+
+SCRIPT_RE = re.compile(r"<script\b.*?</script>|<noscript\b.*?</noscript>|<!--.*?-->", re.S | re.I)
+
+
+def jsonld_snippet(dom: str, host: str) -> str:
+    i = dom.lower().find("//" + host)
+    return re.sub(r"\s+", " ", dom[max(0, i - 80): i + 80]) if i >= 0 else ""
+
+
+@detector("blocked_platforms")
+def detect_blocked_platforms(ctx: Context) -> list[Finding]:
+    """DISC-008: видимые ссылки на площадки, заблокированные в РФ."""
+    platforms = ctx.sig["blocked_platforms"]
+    links = {l.get("url"): l for l in ctx.enrich("links").get("links") or []}
+    found: dict[str, Evidence] = {}
+    external: set[str] = set()
+    for slug, dom in ctx.doms.items():
+        body = SCRIPT_RE.sub(" ", dom)
+        for href in re.findall(r"href=[\"'](https?://[^\"']+)", body, re.I):
+            host = host_of(href)
+            if not host or first_party(href, ctx.target):
+                continue
+            external.add(registrable_domain(host))
+            for name, hosts in platforms.items():
+                if host in hosts and name not in found:
+                    info = links.get(href) or {}
+                    owner = {True: "; аккаунт принадлежит бренду", False: "; аккаунт бренду не принадлежит"}.get(
+                        info.get("brand_match"), "")
+                    found[name] = Evidence(kind="dom", detail=f"ссылка на {name}{owner}", url=href,
+                                           selector=slug, snippet=info.get("brand_evidence"))
+    if found:
+        return [mk(ctx, "DISC-008", "WARN",
+                   "Видимые ссылки на заблокированные в РФ площадки: " + ", ".join(found),
+                   list(found.values()))]
+    social = sorted(d for d in external if d.split(".")[0] in
+                    ("t", "vk", "ok", "youtube", "rutube", "dzen", "telegram", "max"))
+    return [mk(ctx, "DISC-008", "PASS",
+               "Ссылок на заблокированные площадки нет"
+               + (f"; внешние площадки на сайте: {', '.join(social)}" if social else ""))]
+
+
+@detector("vpn_ads")
+def detect_vpn_ads(ctx: Context) -> list[Finding]:
+    """DISC-009: реклама VPN — термин и призыв в одном предложении."""
+    spec = ctx.sig["vpn_markers"]
+    term = "|".join(spec["terms"])
+    promo = "|".join(spec["promo"])
+    hits = []
+    for slug, text in ctx.texts.items():
+        for s in sentences_with(text, rf"(?<![0-9a-zа-яё])(?:{term})"):
+            if re.search(promo, s, re.I):
+                hits.append(Evidence(kind="text", detail="VPN в рекламном контексте", selector=slug,
+                                     snippet=s[:240]))
+    if hits:
+        return [mk(ctx, "DISC-009", "FAIL", f"Тексты, продвигающие VPN или обход блокировок: {len(hits)}",
+                   hits[:6], needs_llm=True)]
+    return [mk(ctx, "DISC-009", "PASS",
+               f"Рекламы VPN и средств обхода блокировок нет ({len(ctx.texts)} страниц)")]
+
+
+def element_check(text: str, elements: dict[str, dict[str, Any]]) -> tuple[list[str], list[Evidence]]:
+    missing, found = [], []
+    for key, spec in elements.items():
+        quote = None
+        for pattern in spec["patterns"]:
+            m = re.search(pattern, text, re.I)
+            if m:
+                quote = re.sub(r"\s+", " ", text[max(0, m.start() - 60): m.end() + 100]).strip()
+                break
+        if quote:
+            found.append(Evidence(kind="text", detail=f"есть: {spec['label']}", snippet=quote))
+        else:
+            missing.append(spec["label"])
+    return missing, found
+
+
+@detector("policy_content")
+def detect_policy_content(ctx: Context) -> list[Finding]:
+    """PDN-003: обязательные сведения политики — поимённо «есть» или «нет»."""
+    docs = legal_corpus(ctx, privacy_only=True)
+    if not docs:
+        if privacy_documents(ctx):
+            return [mk(ctx, "PDN-003", "UNKNOWN", "Политика опубликована файлом, текст из него не извлечён")]
+        return [mk(ctx, "PDN-003", "FAIL", "Политики нет — раскрывать сведения негде (см. PDN-001)")]
+    slug, text = max(docs.items(), key=lambda kv: len(kv[1]))
+    missing, found = element_check(text, ctx.sig["policy_checks"]["policy_elements"])
+    where = Evidence(kind="text", detail="проверенный документ", selector=slug)
+    if missing:
+        return [mk(ctx, "PDN-003", "FAIL", "В политике нет: " + "; ".join(missing),
+                   [where] + [Evidence(kind="text", detail="отсутствует: " + m) for m in missing] + found[:4],
+                   needs_llm=True)]
+    return [mk(ctx, "PDN-003", "PASS", "Все обязательные сведения в политике найдены", [where] + found[:6],
+               needs_llm=True)]
+
+
+CONSENT_URL_HINTS = ("soglas", "agree", "consent", "personal-data", "personalnyh", "obrabotk")
+
+
+@detector("consent_content")
+def detect_consent_content(ctx: Context) -> list[Finding]:
+    """PDN-008: текст согласия, на который ведёт подпись чекбокса."""
+    forms = [(p, f) for p in ctx.pages for f in p.get("forms") or [] if form_collects_pd(f)]
+    if not forms:
+        return [mk(ctx, "PDN-008", "NA", "Форм сбора персональных данных нет")]
+    linked: set[str] = set()
+    labels = []
+    for _, form in forms:
+        for cb in form.get("fields") or []:
+            if cb.get("type") == "checkbox":
+                labels.append(cb.get("label_text") or "")
+                for href in cb.get("label_links") or []:
+                    linked.add(urllib.parse.urljoin(ctx.target + "/", href).split("#")[0].rstrip("/"))
+    candidates = []
+    for page in ctx.pages:
+        url = (page.get("final_url") or page.get("url") or "").split("#")[0].rstrip("/")
+        text = ctx.texts.get(page.get("slug", ""))
+        low_url = url.lower()
+        if not text or re.search(r"privacy|polic|politik|konfidenc", low_url):
+            continue
+        if re.search(r"user-?agreement|polzovatel|terms|oferta|offer|rules|pravila", low_url):
+            continue
+        head = text[:3000]
+        is_consent = (re.search(r"согласи", head, re.I)
+                      and re.search(r"персональн|обработк|рассылк", head, re.I))
+        if is_consent and (url in linked or any(h in low_url for h in CONSENT_URL_HINTS)):
+            candidates.append((page.get("slug"), text))
+    if not candidates:
+        label = next((l for l in labels if l), "")
+        return [mk(ctx, "PDN-008", "FAIL",
+                   "Отдельного текста согласия нет: подпись чекбокса ссылается только на политику"
+                   if label else "Отдельного текста согласия нет, чекбокса согласия в формах нет",
+                   [Evidence(kind="dom", detail="подпись чекбокса", snippet=label[:200])] if label else [],
+                   needs_llm=True)]
+    results = []
+    for slug, text in candidates:
+        missing, found = element_check(text, ctx.sig["policy_checks"]["consent_elements"])
+        results.append((slug, missing, found))
+    worst = max(results, key=lambda r: len(r[1]))
+    slug, missing, found = worst
+    where = Evidence(kind="text", detail="проверенный текст согласия", selector=slug)
+    path = urllib.parse.urlparse(ctx.page_by_slug(slug).get("final_url") or ctx.page_by_slug(slug).get("url") or "").path
+    if missing:
+        return [mk(ctx, "PDN-008", "FAIL", f"В тексте согласия ({path or slug}) нет: " + "; ".join(missing),
+                   [where] + [Evidence(kind="text", detail="отсутствует: " + m) for m in missing] + found[:3],
+                   needs_llm=True)]
+    return [mk(ctx, "PDN-008", "PASS", "Текст согласия содержит все элементы ч. 4 ст. 9",
+               [where] + found[:5], needs_llm=True)]
+
+
+PD_CATEGORIES = {
+    "email": ("адрес электронной почты", r"электронн\w* почт|e-?mail"),
+    "phone": ("номер телефона", r"телефон"),
+    "name": ("имя", r"\bимя\b|фамили|ф\.?и\.?о"),
+    "address": ("адрес", r"адрес\w*(?! электронн)"),
+    "birth": ("дата рождения", r"дат\w* рождени"),
+}
+
+
+def field_categories(form: dict[str, Any]) -> set[str]:
+    cats = set()
+    for f in form.get("fields") or []:
+        blob = " ".join(str(f.get(k) or "") for k in ("type", "name", "id", "placeholder", "label",
+                                                     "autocomplete")).lower()
+        if f.get("type") == "email" or re.search(r"e-?mail|почт", blob):
+            cats.add("email")
+        if f.get("type") == "tel" or re.search(r"phone|tel\b|телефон", blob):
+            cats.add("phone")
+        if re.search(r"\bname\b|fio|имя|фамил|first_?name|last_?name|surname", blob):
+            cats.add("name")
+        if re.search(r"address|адрес|street|улиц", blob) and "email" not in blob:
+            cats.add("address")
+        if re.search(r"birth|рожд", blob):
+            cats.add("birth")
+    return cats
+
+
+def form_collects_pd(form: dict[str, Any]) -> bool:
+    return bool(field_categories(form))
+
+
+@detector("policy_vs_practice")
+def detect_policy_vs_practice(ctx: Context) -> list[Finding]:
+    """PDN-012: всё, что сайт подключил и собирает, должно быть названо в политике."""
+    docs = legal_corpus(ctx)
+    if not docs:
+        if privacy_documents(ctx):
+            return [mk(ctx, "PDN-012", "UNKNOWN", "Политика опубликована файлом, текст из него не извлечён")]
+        return [mk(ctx, "PDN-012", "FAIL", "Политики нет — описать фактическую обработку негде")]
+    corpus = " ".join(docs.values()).lower()
+    aliases = ctx.sig["trackers"].get("aliases") or {}
+    absent_services = []
+    for r in third_party_recipients(ctx).values():
+        if r["kind"] in ("fonts", "cdn", "captcha", "embed", "errors"):
+            continue
+        variants = aliases.get(r["vendor"] or "", []) + [h.split(".")[-2] for h in r["hosts"] if "." in h]
+        if not any(v.lower() in corpus for v in variants if len(v) > 2):
+            absent_services.append(r)
+    collected = set()
+    for page in ctx.pages:
+        for form in page.get("forms") or []:
+            collected |= field_categories(form)
+    absent_data = [PD_CATEGORIES[c][0] for c in sorted(collected) if not re.search(PD_CATEGORIES[c][1], corpus)]
+    ev = [recipient_evidence(r) for r in absent_services][:8]
+    ev += [Evidence(kind="dom", detail=f"поле формы «{d}» не описано в политике") for d in absent_data]
+    parts = []
+    if absent_services:
+        parts.append("сервисы " + names(absent_services))
+    if absent_data:
+        parts.append("данные: " + ", ".join(absent_data))
+    if parts:
+        return [mk(ctx, "PDN-012", "FAIL", "На сайте есть, в документах не названы: " + "; ".join(parts),
+                   ev, needs_llm=True)]
+    return [mk(ctx, "PDN-012", "PASS",
+               "Подключённые сервисы и собираемые данные названы в документах", needs_llm=True)]
+
+
+EXCESSIVE_FIELDS = {
+    "passport": ("паспортные данные", r"passport|паспорт"),
+    "snils": ("СНИЛС", r"snils|снилс"),
+    "inn": ("ИНН", r"\binn\b|\bинн\b"),
+    "birth": ("дата рождения", r"birth|рожд"),
+    "gender": ("пол", r"\bgender\b|\bsex\b|\bпол\b"),
+}
+
+
+@detector("forms_minimization")
+def detect_forms_minimization(ctx: Context) -> list[Finding]:
+    """PDN-013: состав полей формы против её назначения."""
+    forms = [(p, f) for p in ctx.pages for f in p.get("forms") or [] if form_collects_pd(f)]
+    if not forms:
+        return [mk(ctx, "PDN-013", "NA", "Форм сбора персональных данных нет")]
+    excessive, kinds = [], {}
+    for page, form in forms:
+        cats = field_categories(form)
+        blob = " ".join(" ".join(str(f.get(k) or "") for k in ("name", "id", "placeholder", "label"))
+                        for f in form.get("fields") or []).lower()
+        order = "address" in cats and "phone" in cats
+        kind = ("оформление заказа" if order else "подписка" if cats == {"email"}
+                else "вход" if page.get("scenario") == "auth" else "заявка")
+        kinds.setdefault(kind, set()).update(PD_CATEGORIES[c][0] for c in cats)
+        for key, (label, pattern) in EXCESSIVE_FIELDS.items():
+            if re.search(pattern, blob) and not (order and key == "inn"):
+                excessive.append(Evidence(kind="dom", detail=f"{kind}: поле «{label}»",
+                                          selector=f"{page.get('slug')} {form.get('selector')}"))
+    if excessive:
+        return [mk(ctx, "PDN-013", "FAIL", "Формы собирают лишние данные: "
+                   + ", ".join(e.detail for e in excessive[:6]), excessive[:6], needs_llm=True)]
+    summary = "; ".join(f"{k} — {', '.join(sorted(v))}" for k, v in kinds.items())
+    return [mk(ctx, "PDN-013", "PASS", "Состав полей форм не шире назначения: " + summary, needs_llm=True)]
+
+
+@detector("applicability")
+def detect_applicability(ctx: Context) -> list[Finding]:
+    """AUTH-005: к кому обращено требование — определяется по ИНН с сайта."""
+    if ctx.inn and len(ctx.inn) in (10, 12):
+        who = "юрлицо" if len(ctx.inn) == 10 else "ИП или гражданин"
+        return [mk(ctx, "AUTH-005", "PASS", f"Владелец — российское {who}: ИНН {ctx.inn}",
+                   [Evidence(kind="text", detail=f"ИНН {ctx.inn} на сайте, контрольная сумма верна")])]
+    return [mk(ctx, "AUTH-005", "WARN",
+               "ИНН на сайте не найден; сайт русскоязычный и ориентирован на РФ — требования группы "
+               "считаются применимыми")]
 
 
 @detector("infrastructure")
@@ -1414,69 +1993,181 @@ def detect_infra(ctx: Context) -> list[Finding]:
         out.append(mk(ctx, "INF-001", "UNKNOWN",
                       f"Проверить не удалось: {http.get('error') or tls.get('error') or 'нет данных'}"))
 
-    geo = ctx.infra.get("geo") or []
-    ru = [g for g in geo if g.get("country") == "RU"]
-    ev = [Evidence(kind="infra", detail=f"{g.get('ip')} — {g.get('country')} {g.get('org','')}")
-          for g in geo[:4]]
-    if not geo:
-        out.append(mk(ctx, "INF-002", "UNKNOWN", "Геоданные хостинга не получены"))
-    elif ru:
-        out.append(mk(ctx, "INF-002", "WARN",
-                      "Хостинг в РФ; принадлежность провайдера реестру РКН требует "
-                      "отдельной сверки, а DDoS-прокси маскирует реальный origin", ev))
-    else:
-        out.append(mk(ctx, "INF-002", "WARN",
-                      f"Хостинг за пределами РФ: {', '.join(sorted({g.get('country') or '?' for g in geo}))}",
-                      ev))
-
-    # INF-004: единый реестр запрещённой информации в скилл не подключён.
-    # Сказать об этом прямо — единственный честный вариант: молчание по пункту
-    # читается как «совпадений нет», а это утверждение, которого никто не делал.
-    host = ctx.infra.get("host") or urllib.parse.urlparse(ctx.target).hostname or "—"
-    out.append(mk(ctx, "INF-004", "UNKNOWN",
-                  "Машиночитаемого источника реестра нет — проверяется вручную",
-                  [Evidence(kind="infra", detail=f"домен {host}",
-                            url="https://eais.rkn.gov.ru/")]))
+    out.append(hosting_finding(ctx))
+    out.append(blocklist_finding(ctx))
     return out
+
+
+LEGAL_FORM_TOKENS = {"ооо", "ао", "пао", "зао", "оао", "llc", "ltd", "jsc", "inc", "gmbh", "limited",
+                     "co", "company", "общество", "ограниченной", "ответственностью", "с"}
+TRANSLIT = str.maketrans({"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+                          "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+                          "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+                          "ф": "f", "х": "h", "ц": "c", "ч": "ch", "ш": "sh", "щ": "sch", "ы": "y",
+                          "э": "e", "ю": "yu", "я": "ya", "ъ": "", "ь": ""})
+
+
+def org_key(name: str) -> str:
+    """Сопоставимое ядро названия: «ООО «ДДОС-ГАРД»» и «DDOS-GUARD LTD» -> ddosgard / ddosguard."""
+    tokens = [t for t in re.split(r"[^0-9a-zа-яё]+", (name or "").lower()) if t and t not in LEGAL_FORM_TOKENS]
+    key = "".join(tokens).translate(TRANSLIT)
+    return key.replace("guard", "gard").replace("ks", "x")
+
+
+def hosting_finding(ctx: Context) -> Finding:
+    geo = ctx.infra.get("geo") or []
+    site = (ctx.enrich("hosts").get("site") or {})
+    orgs = [o for o in [site.get("org"), site.get("whois_org")] + [g.get("org") for g in geo] if o]
+    ev = [Evidence(kind="infra", detail=f"{g.get('ip')} — {g.get('country')} {g.get('org', '')}")
+          for g in geo[:4]]
+    if not geo and not site:
+        return mk(ctx, "INF-002", "UNKNOWN", "Геоданные хостинга не получены")
+    if geo and not any(g.get("country") == "RU" for g in geo):
+        return mk(ctx, "INF-002", "WARN",
+                  "Хостинг за пределами РФ: " + ", ".join(sorted({g.get('country') or '?' for g in geo})), ev)
+    try:
+        registry = ctx.registry("rkn_hosting_providers")
+    except Exception as exc:  # старый пакет реестров без этого ключа
+        return mk(ctx, "INF-002", "UNKNOWN", f"Реестр провайдеров хостинга не загружен ({type(exc).__name__})", ev)
+    if not registry.entries:
+        return mk(ctx, "INF-002", "UNKNOWN",
+                  f"Реестр провайдеров хостинга не загружен ({registry.error or 'нет данных'})", ev)
+    wanted = {org_key(o) for o in orgs if org_key(o)}
+    for entry in registry.entries:
+        names_ = [entry.get("name") or ""] + list(entry.get("aliases") or [])
+        keys = {org_key(n) for n in names_ if org_key(n)}
+        if any(w and k and (w in k or k in w) for w in wanted for k in keys):
+            return mk(ctx, "INF-002", "PASS",
+                      f"Провайдер {orgs[0]} есть в реестре провайдеров хостинга: {entry.get('name')}",
+                      ev + [Evidence(kind="registry", detail=f"запись реестра: {entry.get('name')}"
+                                     + (f", ИНН {entry.get('inn')}" if entry.get("inn") else ""))],
+                      source_trust=registry.source_trust)
+    return mk(ctx, "INF-002", "WARN",
+              f"Организация сети сайта ({', '.join(dict.fromkeys(orgs)) or 'не определена'}) в реестре "
+              f"провайдеров хостинга не найдена", ev, source_trust=registry.source_trust)
+
+
+BLOCK_STUB_FALLBACK = ("доступ к информационному ресурсу ограничен", "доступ к ресурсу ограничен",
+                       "ресурс заблокирован", "eais.rkn.gov.ru", "blocked by roskomnadzor",
+                       "внесён в единый реестр")
+
+
+def blocklist_finding(ctx: Context) -> Finding:
+    """INF-004: сайт открывается из РФ — значит, по домену он не заблокирован.
+
+    Реестр ЕАИС закрыт капчей, но сам факт его применения виден снаружи:
+    операторы связи обязаны отдать заглушку вместо сайта. Проверка идёт через
+    российский выход аудита, поэтому доступность — прямое наблюдение.
+    """
+    host = ctx.infra.get("host") or urllib.parse.urlparse(ctx.target).hostname or "—"
+    reach = ctx.enrich("reachability")
+    network = ctx.manifest.get("network") or {}
+    egress = network.get("egress") or {}
+    home = next((p for p in ctx.pages if p.get("slug") == "index"), ctx.pages[0] if ctx.pages else {})
+    markers = [m.lower() for m in (ctx.sig.get("block_stubs") or {}).get("text_markers", [])] \
+        or list(BLOCK_STUB_FALLBACK)
+    text = (ctx.texts.get(home.get("slug", ""), "") or "")[:5000].lower()
+    stub = reach.get("block_stub") or any(m in text for m in markers)
+    ru = reach.get("ru_exit") if "ru_exit" in reach else egress.get("country") == "RU"
+    if stub:
+        return mk(ctx, "INF-004", "FAIL", f"Через российский выход вместо {host} отдаётся страница блокировки",
+                  [Evidence(kind="http", detail=reach.get("matched_marker") or "маркер заглушки блокировки",
+                            url=home.get("final_url"))])
+    if ru and home.get("status") == 200 and (home.get("text_chars") or len(text)) > 0:
+        return mk(ctx, "INF-004", "PASS",
+                  f"{host} открывается через российский выход ({egress.get('ip') or 'РФ'}) без заглушки "
+                  "блокировки", [Evidence(kind="http", detail=f"HTTP 200 через выход {egress.get('ip', '')} "
+                                                              f"({egress.get('country', 'RU')})",
+                                          url=home.get("final_url"))])
+    if not ru:
+        return mk(ctx, "INF-004", "UNKNOWN", "Сбор шёл не через российский выход — доступность из РФ не наблюдалась")
+    return mk(ctx, "INF-004", "UNKNOWN", "Главная страница через российский выход не открылась")
+
+
+STATIC_RE = re.compile(r"\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|woff2?|ttf|otf|eot|mp4|webm|map)(?:$|\?)", re.I)
 
 
 @detector("form_endpoints_geo")
 def detect_endpoints(ctx: Context) -> list[Finding]:
-    """PDN-011 и INF-003: куда уходят данные форм."""
+    """PDN-011 и INF-003: куда уходят данные и где эти получатели.
+
+    Статика своего домена (спрайты, шрифты, стили) — не поток данных, и в
+    доказательствах локализации ей не место: она прячет единственно значимые
+    строки среди сотни одинаковых.
+    """
     if ctx.degraded:
         return [mk(ctx, rid, "UNKNOWN", "Без рендера приёмники форм не наблюдаются")
                 for rid in ("PDN-011", "INF-003")]
-    ev = []
+    ev, seen = [], set()
+    foreign_forms = []
+    # Куда формы отправляют данные по разметке: пустой action — тот же адрес.
+    form_hosts = set()
+    for page in ctx.pages:
+        for form in page.get("forms") or []:
+            if form_collects_pd(form):
+                action = urllib.parse.urljoin(page.get("final_url") or page.get("url") or ctx.target,
+                                              form.get("action") or "")
+                form_hosts.add(host_of(action))
     for req in ctx.all_requests():
-        category, basis = classify_request(req)
-        # Keep same-origin and GET data flows too. A payload field is only a
-        # candidate, not proof of personal data or a form submission.
-        if not (category != "unknown" or req.get("method") not in ("GET", "HEAD")
-                or req.get("resource_type") in ("xhr", "fetch", "ping", "other")
-                or (req.get("payload_shape") or {}).get("known_fields")):
-            continue
         url = safe_url(req.get("url"))
         if not url:
             continue
+        category, basis = classify_request(req)
+        own = first_party(url, ctx.target)
+        shape = (req.get("payload_shape") or {}).get("known_fields")
+        if (req.get("method") in ("GET", "HEAD", None)) and not shape and category == "unknown":
+            continue
+        if STATIC_RE.search(url) and not shape:
+            continue
+        key = (url, req.get("method"), category)
+        if key in seen:
+            continue
+        seen.add(key)
         context = request_context(req)
         detail = f"{req.get('method', '?')}: {basis}"
-        if context['observation_version'] == 2 and not context['metadata_complete']:
-            detail += "; часть контекста запроса недоступна"
         ev.append(Evidence(kind="request", detail=detail, url=url, context=context))
-    for page in ctx.pages:
-        for form in page.get("forms") or []:
-            action = urllib.parse.urljoin(page.get("url") or ctx.target, form.get("action") or "")
-            ev.append(Evidence(kind="dom", url=safe_url(action), selector=page.get("slug"),
-                detail="В разметке указан адрес формы; фактическая отправка и хранение не подтверждены"))
-    return [mk(ctx, "PDN-011", "UNKNOWN",
-               "Локализация хранения не подтверждена. Сетевые запросы и адреса форм "
-               "не устанавливают состав персональных данных и размещение баз",
-               ev, needs_llm=True),
-            mk(ctx, "INF-003", "UNKNOWN",
-               "Назначение запросов и страна хранения требуют подтверждения; "
-               "домен и HTTP-метод не определяют географию базы",
-               ev, needs_llm=True)]
-
+        if category == "form_submission" and not own:
+            country = (tracker_spec(ctx, url) or {}).get("country") or ctx.host_info(host_of(url)).get("country")
+            if country and country != "RU":
+                foreign_forms.append((url, country))
+    recipients = third_party_recipients(ctx)
+    foreign = [r for r in recipients.values() if r["country"] not in (None, "RU")]
+    unknown = [r for r in recipients.values() if r["country"] is None]
+    if foreign_forms:
+        pdn011 = mk(ctx, "PDN-011", "FAIL",
+                    "Данные формы отправляются напрямую на сервер за пределами РФ: "
+                    + ", ".join(f"{host_of(u)} ({c})" for u, c in foreign_forms[:4]), ev[:8])
+    elif foreign:
+        pdn011 = mk(ctx, "PDN-011", "WARN",
+                    f"Данные посетителей получают иностранные сервисы ({names(foreign)}): первичная "
+                    "запись их идентификаторов происходит вне РФ",
+                    [recipient_evidence(r) for r in foreign][:6])
+    else:
+        own_forms = form_hosts and all(first_party("https://" + h, ctx.target) for h in form_hosts if h)
+        parts = []
+        if own_forms:
+            parts.append("формы отправляют данные на собственный домен (" + ", ".join(sorted(form_hosts)) + ")")
+        if recipients and not unknown:
+            parts.append("сторонние получатели российские: " + names(recipients.values()))
+        elif unknown:
+            parts.append("страна не определена для: " + names(unknown))
+        summary = "; ".join(parts) or "сторонних получателей нет"
+        pdn011 = mk(ctx, "PDN-011", "EXTERNAL",
+                    summary[0].upper() + summary[1:] + ". Где стоят базы, снаружи не видно — подтверждает владелец",
+                    ev[:6] + [recipient_evidence(r) for r in recipients.values()][:6])
+    if foreign:
+        inf003 = mk(ctx, "INF-003", "WARN", f"Получатели за пределами РФ: {names(foreign)}",
+                    [recipient_evidence(r) for r in foreign][:8])
+    elif unknown:
+        inf003 = mk(ctx, "INF-003", "UNKNOWN",
+                    f"Страна не определена для: {names(unknown)} — доразведка в этом сборе не выполнялась",
+                    [recipient_evidence(r) for r in unknown][:8])
+    else:
+        inf003 = mk(ctx, "INF-003", "PASS",
+                    "Все получатели наблюдаемых потоков — в РФ"
+                    + (f": {names(recipients.values())}" if recipients else " (сторонних получателей нет)"),
+                    [recipient_evidence(r) for r in recipients.values()][:8])
+    return [pdn011, inf003]
 
 
 # --- Сборка ------------------------------------------------------------------
@@ -1588,7 +2279,7 @@ def attach_semantic_reviews(ctx: Context, findings: list[Finding]):
         item = rules.get(f.rule_id)
         if not isinstance(item, dict):
             continue
-        if item.get("status") not in {"PASS", "FAIL", "UNKNOWN", "NA"}:
+        if item.get("status") not in {"PASS", "FAIL", "WARN", "UNKNOWN", "NA", "EXTERNAL"}:
             continue
         if not all(item.get(k) for k in ("reviewer", "reviewed_at", "evidence")):
             continue
@@ -1609,8 +2300,10 @@ def attach_semantic_reviews(ctx: Context, findings: list[Finding]):
 
 def run(ctx: Context) -> dict[str, Any]:
     findings: list[Finding] = []
-    order = ["requisites", "auth_providers", "registry_mentions", "meta_symbols",
-             "documents", "forms_consent", "cookie_banner", "consent_gating",
+    order = ["requisites", "applicability", "auth_providers", "registry_mentions", "meta_symbols",
+             "blocked_platforms", "vpn_ads",
+             "documents", "policy_content", "consent_content", "policy_vs_practice",
+             "forms_consent", "forms_minimization", "cookie_banner", "consent_gating",
              "legitimate_interest",
              "cookie_inventory", "trackers_jurisdiction", "form_endpoints_geo",
              "infrastructure", "rkn_operator_registry"]
@@ -1673,6 +2366,7 @@ def run(ctx: Context) -> dict[str, Any]:
             "visual_complete": ctx.manifest.get("visual_complete"),
             "partial_pages": ctx.manifest.get("partial_pages"),
             "refusal": ctx.manifest.get("refusal"),
+            "banner_found": bool(ctx.banner.get("found")),
             "network": ctx.manifest.get("network"),
             "network_observations": {
                 "count": sum(len(rows) for rows in ctx.net.values()),
@@ -1690,6 +2384,11 @@ def run(ctx: Context) -> dict[str, Any]:
         "thin_coverage": ctx.thin_coverage,
         "unvisited_links": ctx.unvisited_links,
         "pages_analysed": len([p for p in ctx.pages if p.get("status") == 200]),
+        # Адрес страницы по её slug: отчёт называет место находки ссылкой,
+        # а не внутренним именем каталога артефактов.
+        "pages": [{"slug": p.get("slug"), "url": safe_url(p.get("final_url") or p.get("url")),
+                   "scenario": p.get("scenario")} for p in ctx.pages],
+        "scenarios": [{k: s.get(k) for k in ("name", "status", "url", "error")} for s in ctx.scenarios],
         "registry_status": {
             key: {"origin": d.origin, "trust": d.source_trust,
                   "entries": len(d.entries), "stale_days": d.stale_days,
