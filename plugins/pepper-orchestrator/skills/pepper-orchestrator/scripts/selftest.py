@@ -1871,6 +1871,9 @@ if args[:2] == ['issue', 'list']:
 elif args[:2] == ['issue', 'create']:
     print('https://github.com/ITSalt/PepperSkills/issues/101')
 elif args[:2] == ['issue', 'comment']:
+    if os.path.exists(os.path.join(root, 'fail_comment')):
+        sys.stderr.write('HTTP 502: bad gateway\\n')
+        sys.exit(1)
     print('https://github.com/ITSalt/PepperSkills/issues/42#issuecomment-1')
 elif args[:1] == ['api']:
     print(base64.b64encode(json.dumps({'version': '9.9.9'}).encode()).decode())
@@ -1893,6 +1896,7 @@ def test_report(tmp):
     home = tmp / 'report/home'
     home.mkdir()
     git(home, 'init', '-q')
+    git(home, 'remote', 'add', 'origin', 'https://git.hushcorp.example/hushowner/homerepo.git')
     (home / '.private-terms.local').write_text('# private\nhushterm\n', encoding='utf-8')
     run(home, 'init', 'quietprog', '--lang', 'ru', '--sessions', 'local', '--permission-mode', 'auto', '--tag', 'QPX',
         '--repo', f'quietrepo={mono}', '--area', 'billzone=quietrepo:apps/app/**')
@@ -1906,6 +1910,8 @@ def test_report(tmp):
         f'Traceback: orch: settings billzone: error in {mono}/apps/app for quietprog-billzone',
         f'origin https://github.com/acme-hidden/quietmono.git, QPX, quietprog, {Path.home()}/notes, hushterm',
         f'contact owner@hidden-shop.example token {token} host stage.hidden-shop.example',
+        'DB_PASSWORD=plainvalue123 STRIPE_KEY: sk_live_abcdef123456 url acme-hidden%2Fquietmono',
+        'home origin https://git.hushcorp.example/hushowner/homerepo.git by hushowner',
     ] + [f'line {i}' for i in range(40)]), encoding='utf-8')
     out = run(home, 'report', '--check', '--command', f'python3 orch.py settings all --workspace {ws}', '--log', str(log),
               '--expected-actual', 'Expected settings for billzone; got an error.', '--workaround=dispatch with --no-settings').stdout
@@ -1913,10 +1919,11 @@ def test_report(tmp):
     issue = (ws / 'bugs/PLUGIN-BUG-1.issue.md').read_text(encoding='utf-8')
     body = record + issue + out
     for secret in ('quietprog', 'QPX', 'billzone', 'quietrepo', 'acme-hidden', 'quietmono', 'hidden-shop', 'hushterm',
-                   str(Path.home()), str(mono), str(ws), token, 'owner@'):
+                   str(Path.home()), str(mono), str(ws), token, 'owner@', 'plainvalue123', 'sk_live_abcdef',
+                   'hushowner', 'hushcorp', 'homerepo'):
         assert secret.lower() not in body.lower(), (secret, body)
     assert '<module-1>' in issue and '<repo-1>' in issue and '<workspace>' in issue and '[redacted]' in issue, issue
-    assert 'line 25' in record and 'line 28' not in record, 'first 30 lines only'
+    assert 'line 23' in record and 'line 26' not in record, 'first 30 lines only'
     assert '## Вывод (первые строки, обезличен)' in record and '### Plugin and version' in issue
     assert 'Publish this anonymized report' in out and 'fingerprint: pepper-orchestrator' in out, out
     traces = next((p / 'scripts/check-private-traces.py' for p in HERE.parents
@@ -1972,6 +1979,36 @@ def test_report(tmp):
     assert 'PLUGIN-BUG-1: Issue https://' in status_out and 'update available: pepper-orchestrator' in status_out
     assert 'SECURITY.md' in run(home, 'report', '--security').stdout
     assert plugin_report.fingerprint('p', '1.0', 'orch: <module-1> error [redacted]') == 'p 1.0 orch: error'
+    # M1: the exception line of a traceback, not its header; volatile parts removed.
+    first = ['Traceback (most recent call last):', '  File "orch.py", line 10, in main', "KeyError: 'shell'"]
+    second = ['Traceback (most recent call last):', '  File "orch.py", line 99, in run', 'ValueError: bad sha']
+    fps = {plugin_report.fingerprint('p', '1', plugin_report.first_error_line(x)) for x in (first, second)}
+    assert len(fps) == 2 and "p 1 KeyError: shell" in fps, fps
+    assert plugin_report.fingerprint('p', '1', '2026-09-30 10:22Z WP-APP-01 dispatch refused at abc1234def') == \
+        plugin_report.fingerprint('p', '1', '2026-10-01 08:00Z WP-DB-07 dispatch refused at 9876543fed'), 'volatile parts'
+    assert plugin_report.first_error_line(['all good', 'still fine']) == ''
+    assert plugin_report.search_query('p 1.0 -x orch: error') == '"p 1.0 x orch error"'
+    # L4 d: environment, settings, key files and KEY=value files are never attached.
+    for name, content in (('.env.local', 'A=1\n'), ('orch.yaml', 'x: 1\n'), ('settings.local.json', '{}'),
+                          ('id.pem', 'x'), ('vars.txt', 'A=1\nB=2\nnote\n')):
+        bad = tmp / 'report-logs' / name  # outside the workspace tree: a stray orch.yaml would be found as one
+        bad.parent.mkdir(exist_ok=True)
+        bad.write_text(content, encoding='utf-8')
+        assert '--log refused' in run(home, 'report', '--check', '--log', str(bad), ok=False).stderr, name
+    # L3: a failed comment leaves no file behind; the retry works. L7: an open duplicate is preferred.
+    (stub / 'issues.json').write_text(json.dumps([{'number': 7, 'title': 'old', 'url': 'u7', 'state': 'CLOSED'},
+                                                  {'number': 42, 'title': 'x', 'url': 'u42', 'state': 'OPEN'}]),
+                                      encoding='utf-8')
+    run(home, 'report', '--check', '--log', str(log), '--title', 'fourth')
+    (stub / 'fail_comment').write_text('x', encoding='utf-8')
+    assert 'gh failed: HTTP 502' in run(home, 'report', '--apply', extra_env=gh_env, ok=False).stderr
+    (stub / 'fail_comment').unlink()
+    again = run(home, 'report', '--apply', extra_env=gh_env).stdout
+    assert 'comment on #42 (open, u42)' in again, again
+    assert 'comment on #42 (open' in (ws / 'status.md').read_text(encoding='utf-8')
+    calls = [json.loads(line) for line in (stub / 'calls.log').read_text(encoding='utf-8').splitlines()]
+    searches = [c[c.index('--search') + 1] for c in calls if c[:2] == ['issue', 'list']]
+    assert all(s.startswith('"') and s.endswith('"') for s in searches), searches
     print('PASS report: anonymized record and Issue text, guard clean, owner yes required, stub gh create/comment, '
           'auto by decision, no-gh instructions, update line')
 

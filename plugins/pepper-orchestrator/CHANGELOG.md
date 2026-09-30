@@ -12,11 +12,17 @@ Preview of stage 3e: a channel for defects of the plugin itself.
   path and branch) become placeholders; home paths, e-mail addresses, secret-looking strings and the
   terms of a gitignored `.private-terms.local` are removed; the result is scanned again and nothing
   is written if anything private remains. Writes `bugs/PLUGIN-BUG-<n>.md` (owner language) and
-  `bugs/PLUGIN-BUG-<n>.issue.md` (English), prints the Issue text and a fingerprint.
+  `bugs/PLUGIN-BUG-<n>.issue.md` (English), prints the Issue text and a fingerprint: plugin, version
+  and the error line (the exception line of a traceback, else the first line with an error word,
+  else the title) without placeholders, timestamps, SHAs, package ids and numbers. Also covered:
+  owners and non-public hosts of every origin (the home repository too), URL-encoded forms, and
+  `NAME_PASSWORD=`/`NAME_KEY:` secrets. `--log` refuses environment, settings and key files,
+  `orch.yaml` and mostly `KEY=value` files.
 - `orch.py report --apply [--id] [--confirmed]`: without `--confirmed` and without `bug_reports: auto`
   (which needs `bug_reports_decision: D-n` recorded in decisions.md; `lint` checks it) it refuses
-  with the question for the owner. Searches Issues of `ITSalt/PepperSkills` by the fingerprint (open
-  and closed); a match gets a comment with this environment's facts, otherwise
+  with the question for the owner. The title and the text are scanned again. Searches Issues of
+  `ITSalt/PepperSkills` by the fingerprint as a quoted phrase (open and closed, open ones preferred,
+  the state journaled); a match gets a comment with this environment's facts, otherwise
   `gh issue create --title "[<plugin> <version>] <title>" --label bug,from-agent,needs-triage`
   (retried with `bug` only when the labels are missing, with a command for the maintainer). The URL
   goes to the record, the journal and an FYI owner item. Without `gh`: steps for the GitHub MCP

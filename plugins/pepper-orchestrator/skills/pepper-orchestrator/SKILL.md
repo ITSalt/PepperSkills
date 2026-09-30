@@ -230,7 +230,7 @@ own repository, and its messages do not reach other sessions.
   `dispatch`; it refuses otherwise. With `push_deploys`, the package holds the `staging` lock.
 - **Readiness:** `orch.py ready` lists dispatched packages whose branch is on origin; find the PR by
   head branch and by package id with `gh` when present, otherwise with the session's GitHub tools
-  (list or search pull requests, read workflow runs). Never merge with them (hard rule 12).
+  (list or search pull requests, read workflow runs). Never merge with them (hard rule 13).
 - **No writes to `.claude/`** in a cloud session: project skills and settings are committed by the
   owner or a local session.
 - The skill needs no plugin: it runs from `~/.claude/skills/pepper-orchestrator` installed by the

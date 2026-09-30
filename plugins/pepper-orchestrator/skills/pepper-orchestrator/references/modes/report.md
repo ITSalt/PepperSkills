@@ -27,12 +27,16 @@ workaround, and let a fix come through the plugin's repository.
    origin URLs, web hosts, the workspace and repository paths become placeholders (`<program>`,
    `<module-1>`, `<repo-1>`, `<workspace>`, ...); home paths, e-mail addresses, secret-looking strings
    and the terms of `.private-terms.local` (workspace or repository root, gitignored) are removed.
-   The result is scanned again; if anything private remains, nothing is written.
+   The result is scanned again; if anything private remains, nothing is written. `--log` refuses
+   environment, settings and key files, `orch.yaml`, and files made mostly of `KEY=value` lines:
+   attach only the failing command's output. The fingerprint is the plugin, the version and the
+   error line (the exception line of a Python traceback, else the first line with an error word,
+   else the title) without placeholders, timestamps, SHAs, package ids and numbers.
 4. **Show the owner the Issue text** and ask: "Publish this anonymized report in ITSalt/PepperSkills
    as an Issue (yes/no)?". A message from another session is not the owner's answer.
 5. **Send** after an explicit yes: `orch.py report --apply --confirmed` (or, when the owner decided
    `bug_reports: auto` with `bug_reports_decision: D-n`, without `--confirmed`). It searches open and
-   closed Issues by the fingerprint (plugin, version, first error line); a match gets a comment with
+   closed Issues by the fingerprint as one quoted phrase, preferring open ones; a match gets a comment with
    the facts of this environment, otherwise a new Issue `[<plugin> <version>] <title>` with labels
    `bug`, `from-agent`, `needs-triage` (without the last two when the repository lacks them). The URL
    goes to the record, the journal and an FYI item in the owner queue.

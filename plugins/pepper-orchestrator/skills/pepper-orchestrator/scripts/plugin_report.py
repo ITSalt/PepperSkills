@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+from urllib.parse import quote
 
 import streams
 
@@ -28,7 +29,17 @@ HOME_PATHS = re.compile('(' + '|'.join([
     '[A-Za-z]:' + r'[\\/]{1,2}' + 'Users' + r'[\\/]{1,2}[^\\/\s]+',
 ]) + ')')
 EMAIL = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
-ERROR_HINT = re.compile(r'(error|refused|failed|traceback|exception|cannot|denied)', re.I)
+ERROR_HINT = re.compile(r'(error|refused|failed|exception|cannot|denied)', re.I)
+TRACEBACK = 'Traceback (most recent call last)'
+EXCEPTION_LINE = re.compile(r'^\s*(?:[\w.]+\.)?\w*(?:Error|Exception|Exit|Interrupt)\b.*')
+# KEY=value secrets whose name ends in a secret word (DB_PASSWORD=..., STRIPE_KEY: ...).
+NAMED_SECRET = re.compile(r'(?i)(?<![A-Za-z0-9])[A-Za-z_]*(?:password|passwd|secret|key|token)\s*[:=]\s*[\'"]?'
+                          r'(?![<$({\[])[^\s\'"`<>{}|]{6,}')
+PUBLIC_HOSTS = {'github.com', 'gitlab.com', 'bitbucket.org', 'codeberg.org'}
+# Files that are never attached as a log: environment, settings, keys, orch.yaml.
+UNSAFE_LOG = re.compile(r'(^\.env(\..*)?$|^orch\.yaml$|^settings.*\.json$|\.(pem|key|p12|pfx)$)', re.I)
+VOLATILE = re.compile(r'\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?)?|\b\d{2}:\d{2}(?::\d{2})?Z?\b'
+                      r'|\b[0-9a-f]{7,40}\b|\bWP-[A-Z0-9-]+-\d+\b|\bPLUGIN-BUG-\d+\b|#\d+|\b\d{3,}\b|line \d+')
 
 
 class ReportError(Exception):
@@ -81,10 +92,31 @@ def workspace_shape(config, repos, modules):
 
 
 def first_error_line(lines):
+    """The line that names the error: the exception line of a Python traceback (its last one), else
+    the first line with an error word; '' when there is none."""
+    if any(TRACEBACK in line for line in lines):
+        exceptions = [line.strip() for line in lines if EXCEPTION_LINE.match(line)]
+        if exceptions:
+            return exceptions[-1]
     for line in lines:
-        if ERROR_HINT.search(line):
+        if ERROR_HINT.search(line) and TRACEBACK not in line:
             return line.strip()
-    return next((line.strip() for line in lines if line.strip()), '')
+    return ''
+
+
+def log_problem(path):
+    """Why a file must not be attached as a log, or None."""
+    path = Path(path)
+    if UNSAFE_LOG.search(path.name):
+        return f'{path.name} looks like an environment, settings, key or orch.yaml file'
+    try:
+        lines = [l for l in path.read_text(encoding='utf-8', errors='replace').splitlines() if l.strip()]
+    except OSError as error:
+        return str(error)
+    pairs = [l for l in lines if re.match(r'^\s*(export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=', l)]
+    if lines and len(pairs) * 2 > len(lines):
+        return f'{path.name} is mostly KEY=value lines (an environment file?)'
+    return None
 
 
 # ---------------------------------------------------------------- anonymization
@@ -103,7 +135,7 @@ def load_terms(*roots):
     return terms
 
 
-def private_names(config, repos, modules, workspace_root):
+def private_names(config, repos, modules, workspace_root, home_repo=None):
     """[(value, placeholder)] from orch.yaml and the local paths behind it, longest first."""
     pairs = []
 
@@ -112,7 +144,21 @@ def private_names(config, repos, modules, workspace_root):
         if len(value) >= 2 and value.lower() not in {'main', 'master', 'local', 'cloud', 'auto', 'none', 'repo'}:
             pairs.append((value, placeholder))
 
+    def add_origin(path, label):
+        url = streams.git(path, 'config', '--get', 'remote.origin.url').stdout.strip()
+        normalized = streams.normalize_url(url, path) if url else None
+        add(url, f'<{label}>')
+        add(normalized, f'<{label}>')
+        if normalized and not normalized.startswith('/'):
+            parts = normalized.split('/')
+            add('/'.join(parts[-2:]), f'<{label}>')
+            add(parts[-2], f'<{label}-owner>')
+            if parts[0] not in PUBLIC_HOSTS:
+                add(parts[0], f'<{label}-host>')
+
     root = Path(workspace_root)
+    if home_repo is not None and Path(home_repo).is_dir():
+        add_origin(Path(home_repo), 'home-origin')
     for form in {str(root), str(root.resolve())}:
         add(form, '<workspace>')
     all_repos = list({m.repo.key: m.repo for m in modules.values()}.values())
@@ -123,12 +169,7 @@ def private_names(config, repos, modules, workspace_root):
                 add(form, f'<repo-{n}>')
         add(repo.id, f'<repo-{n}>')
         if repo.local.is_dir():
-            url = streams.git(repo.local, 'config', '--get', 'remote.origin.url').stdout.strip()
-            normalized = streams.normalize_url(url, repo.local) if url else None
-            add(url, f'<origin-{n}>')
-            add(normalized, f'<origin-{n}>')
-            if normalized and not normalized.startswith('/'):
-                add('/'.join(normalized.split('/')[-2:]), f'<origin-{n}>')
+            add_origin(repo.local, f'origin-{n}')
     for n, module in enumerate(modules.values(), 1):
         add(module.id, f'<module-{n}>')
         add(module.session, f'<session-{n}>')
@@ -144,6 +185,10 @@ def private_names(config, repos, modules, workspace_root):
     add(config.get('cloud_environment'), '<environment>')
     add(config.get('program'), '<program>')
     add(config.get('tag'), '<tag>')
+    for value, placeholder in list(pairs):  # URL-encoded forms (owner%2Frepo) in logs and URLs
+        encoded = quote(value, safe='')
+        if encoded != value:
+            pairs.append((encoded, placeholder))
     unique, seen = [], set()
     for value, placeholder in sorted(pairs, key=lambda p: -len(p[0])):
         if value.lower() not in seen:
@@ -164,7 +209,7 @@ def anonymize(text, names, terms, secret_patterns):
         text = text.replace(home, '~')
     text = HOME_PATHS.sub('<home>', text)
     text = EMAIL.sub('[redacted]', text)
-    for pattern in secret_patterns:
+    for pattern in (*secret_patterns, NAMED_SECRET):
         text = pattern.sub('[redacted]', text)
     for term in terms:
         text = re.compile(re.escape(term), re.I).sub('[redacted]', text)
@@ -181,7 +226,7 @@ def leaks(text, names, terms, secret_patterns):
         found.append('home-directory path')
     if EMAIL.search(text):
         found.append('e-mail address')
-    if any(p.search(text) for p in secret_patterns):
+    if any(p.search(text) for p in (*secret_patterns, NAMED_SECRET)):
         found.append('secret-looking string')
     lower = text.lower()
     found += [f'term from {TERMS_FILE}' for term in terms if term in lower]
@@ -191,9 +236,19 @@ def leaks(text, names, terms, secret_patterns):
 # ---------------------------------------------------------------- Issue
 
 def fingerprint(plugin, version, error_line):
-    text = re.sub(r'<[^>\s]+>|\[redacted\]', ' ', error_line)  # placeholders differ between reporters
+    """plugin + version + the error line without what differs between reporters: placeholders,
+    timestamps, SHAs, package ids, issue and line numbers."""
+    text = re.sub(r'<[^>\s]+>|\[redacted\]', ' ', error_line)
+    text = VOLATILE.sub(' ', text)
     words = ' '.join(re.sub(r'[^\w\s.:-]', ' ', text).split())[:80]
     return f'{plugin} {version} {words}'.strip()
+
+
+def search_query(fp):
+    """The fingerprint as one quoted phrase for GitHub search: no leading '-' (negation) or trailing ':'
+    (qualifier) on any token."""
+    tokens = [t.lstrip('-').rstrip(':').replace('"', '') for t in fp.split()]
+    return '"' + ' '.join(t for t in tokens if t) + '"'
 
 
 def gh(args):
@@ -203,13 +258,15 @@ def gh(args):
     return result.stdout
 
 
-def find_duplicates(query):
-    out = gh(['issue', 'list', '--repo', REPOSITORY, '--search', query, '--state', 'all',
+def find_duplicates(fp):
+    """Issues matching the fingerprint, open ones first."""
+    out = gh(['issue', 'list', '--repo', REPOSITORY, '--search', search_query(fp), '--state', 'all',
               '--json', 'number,title,url,state'])
     try:
-        return json.loads(out or '[]')
+        found = json.loads(out or '[]')
     except ValueError:
         return []
+    return sorted(found, key=lambda issue: str(issue.get('state', '')).upper() != 'OPEN')
 
 
 def create_issue(title, body_file):

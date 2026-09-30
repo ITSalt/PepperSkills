@@ -78,7 +78,7 @@ SECRET_PATTERNS = [
     re.compile(r'\bxox[abprs]-[A-Za-z0-9-]{10,}'),
     re.compile(r'\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'),
     re.compile(r'\b[a-z][a-z0-9+.-]*://[^/\s:@<>]+:[^/\s@<>]+@'),
-    re.compile(r'(?i)\b(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*'
+    re.compile(r'(?i)(?<![A-Za-z0-9])[A-Za-z_]*(?:password|passwd|secret|api[_-]?key|access[_-]?token)\s*[:=]\s*'
                r'[\'"]?(?![<$({])[^\s\'"`<>{}|]{8,}'),
 ]
 
@@ -2418,7 +2418,7 @@ def report_policy(ws):
 
 def report_context(ws):
     repos, modules, _ = ws.streams()
-    names = plugin_report.private_names(ws.config, repos, modules, ws.root)
+    names = plugin_report.private_names(ws.config, repos, modules, ws.root, ws.git_top)
     terms = plugin_report.load_terms(ws.root, ws.git_top, *{m.repo.local for m in modules.values()})
     return repos, modules, names, terms
 
@@ -2440,6 +2440,9 @@ def cmd_report(args):
 def report_check(ws, args, repos, modules, names, terms):
     facts = plugin_report.environment_facts(SKILL_DIR, ws.config)
     if args.log:
+        problem = plugin_report.log_problem(Path(args.log).expanduser())
+        if problem:
+            raise OrchError(f'--log refused: {problem}; copy only the failing command\'s output into a file')
         lines = Path(args.log).expanduser().read_text(encoding='utf-8', errors='replace').splitlines()
     else:
         lines = [f'{r["date"]} {r["wp"]} {r["event"]}' for r in ws.table(ws.status, 'journal')[2][:10]]
@@ -2449,7 +2452,8 @@ def report_check(ws, args, repos, modules, names, terms):
         return plugin_report.anonymize(text, names, terms, SECRET_PATTERNS)
 
     output = clean('\n'.join(lines)) or '—'
-    error = plugin_report.first_error_line(output.split('\n'))
+    # The journal is context, not the error: without --log the fingerprint comes from the title.
+    error = plugin_report.first_error_line(output.split('\n')) if args.log else ''
     title = clean(' '.join((args.title or error or 'plugin defect').split()))[:100]
     fp = plugin_report.fingerprint(facts['plugin'], facts['version'], error or title)
     expected_actual = clean(args.expected_actual or 'Expected: as the mode documentation says. Actual: the output above.')
@@ -2506,14 +2510,15 @@ def report_apply(ws, args, names, terms):
                         + (f'; {problem}' if problem else ''))
     issue_path = ws.root / f'bugs/{rid}.issue.md'
     issue = issue_path.read_text(encoding='utf-8')
-    problems = plugin_report.leaks(issue, names, terms, SECRET_PATTERNS)
-    if problems:
-        raise OrchError(f'{issue_path.name} looks private (' + ', '.join(sorted(set(problems))) + '): nothing sent')
     fp = (record_field(text, 'Fingerprint') or record_field(text, 'Отпечаток') or '').strip('`')
     head = text.split('\n', 1)[0]
     title = head.split(' — ', 1)[1].strip() if ' — ' in head else rid
     plugin, version = plugin_report.plugin_version(SKILL_DIR)
     full_title = f'[{plugin} {version}] {title}'
+    problems = plugin_report.leaks(full_title + '\n' + issue, names, terms, SECRET_PATTERNS)
+    if problems:
+        raise OrchError(f'{issue_path.name} or its title looks private (' + ', '.join(sorted(set(problems)))
+                        + '): nothing sent')
     if not shutil_which('gh'):
         print(f'No gh here. With the GitHub MCP tools of this session:\n'
               f'1. search_issues: repo:{plugin_report.REPOSITORY} "{fp}" (open and closed).\n'
@@ -2530,9 +2535,15 @@ def report_apply(ws, args, names, terms):
             dup = duplicates[0]
             env = issue.split('### Fingerprint', 1)[0]
             comment = ws.root / f'bugs/{rid}.comment.md'
-            safe_edit.create(comment, f'Same defect seen in another program ({rid}, anonymized).\n\n' + env.strip() + '\n')
-            url = plugin_report.comment_issue(dup['number'], comment)
-            what, missing = f'comment on #{dup["number"]} ({dup.get("url", "")})', False
+            comment.write_text(f'Same defect seen in another program ({rid}, anonymized).\n\n' + env.strip() + '\n',
+                               encoding='utf-8')  # regenerated on every attempt; removed when gh fails
+            try:
+                url = plugin_report.comment_issue(dup['number'], comment)
+            except plugin_report.ReportError:
+                comment.unlink()
+                raise
+            what, missing = (f'comment on #{dup["number"]} ({str(dup.get("state", "?")).lower()}, '
+                             f'{dup.get("url", "")})'), False
         else:
             url, missing = plugin_report.create_issue(full_title, issue_path)
             what = 'new Issue'
