@@ -35,6 +35,7 @@ step. No argument, or the program name when several workspaces exist.
    | branches of main checkouts | `git -C <repo> rev-parse --abbrev-ref HEAD`, lag behind `origin/<base>` |
    | paths | `orch.py overlap`: files outside allowed paths, undeclared or unlocked shared paths, repository checks |
    | verification | `orch.py verify --list`: merged packages without `VERIFIED_TEST` (suggest `verify <WP> --env test` once the deploy run for the merge commit succeeded) and packages verified on test waiting for prod; only `VERIFIED_TEST` packages may go to a release sheet |
+   | plugin defects and updates | `orch.py report --status`: recorded `PLUGIN-BUG-<n>` with their Issues; with `gh`, one line when a newer plugin version is on the marketplace (`claude plugin update pepper-orchestrator@pepperskills`) |
    | on-demand locks | `orch.py lock list` / `lint`: a lock held longer than `lock_stale_hours` (default 4) is a warning: ask its session whether it still needs it |
    | databases | migration journal and object definitions through a read-only tool, SELECT only |
    | deployed versions | version string in the served bundle, not the browser badge |

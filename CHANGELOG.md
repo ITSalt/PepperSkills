@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.8.0 (preview)
+
+Plugin defect channel: `report` mode and `orch.py report` (anonymized record, Issue in this
+repository after the owner's yes, duplicates commented), an issue form for agent reports,
+CODEOWNERS, a merge rule and agent sections in CONTRIBUTING. Also fixes the indentation of the bug
+issue form, which GitHub could not parse. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.7.1 (preview)
 
 Windows fix: settings files use the documented Windows form of rule paths (`//c/...`), so

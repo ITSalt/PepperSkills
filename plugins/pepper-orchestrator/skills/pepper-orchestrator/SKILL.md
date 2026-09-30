@@ -1,8 +1,8 @@
 ---
 name: pepper-orchestrator
-description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, resume, owner, decide, close, reopen. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
+description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, resume, owner, decide, close, reopen, report. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.7.1
+  version: 0.8.0
 ---
 
 # Pepper Orchestrator
@@ -44,12 +44,16 @@ action in a session; read other sections when a mode points to them.
     (`orch.py lock`). With `merge_policy: sequential`, merges go one at a time through the merge
     queue. An on-demand resource (`{name, mode: on-demand}`) is not taken at dispatch: the session
     sends `LOCK <resource>`, you run `orch.py lock acquire`, and `UNLOCK` or READY gives it back.
-11. **Never in a module's checkout.** The workspace lives in a separate home repository, or on
+11. **A defect of the plugin is reported, not patched.** When the plugin's own scripts, rules or
+    mode texts are wrong, keep the program going with a workaround and use the `report` mode: an
+    anonymized record in `bugs/PLUGIN-BUG-<n>.md`, an Issue in `ITSalt/PepperSkills` only after the
+    owner's explicit yes (or `bug_reports: auto` by a decision D-n). Never edit the installed plugin.
+12. **Never in a module's checkout.** The workspace lives in a separate home repository, or on
     branch `orch/<program>` in its own worktree or clone of a module repository; never on another
     branch of a module checkout, linked worktree or clone (`init` and `commit` refuse it, comparing
     the git common directory and the origin URL): a commit there may deploy the stand. An in-repo
     workspace (`workspace_mode: in-repo`) commits only to its `workspace_branch`, never to the base.
-12. **No merge tools, anywhere.** Never call a merge operation: `gh pr merge`, the GitHub MCP or
+13. **No merge tools, anywhere.** Never call a merge operation: `gh pr merge`, the GitHub MCP or
     built-in GitHub tools' merge (for example `mcp__github__merge_pull_request`), auto-merge,
     or a push to a base branch. Cloud sessions have such tools; the rule is the same as locally.
 
@@ -72,6 +76,7 @@ the skill as `/pepper-orchestrator <mode> <arguments>` or by a phrase.
 | `decide <text>` | record D-n / A-n / Q-n or open P-n | [references/modes/decide.md](references/modes/decide.md) |
 | `close [result]` | goal reached: completion check by facts, closeout report, archive | [references/modes/close.md](references/modes/close.md) |
 | `reopen <reason>` | make a closed program active again | [references/modes/reopen.md](references/modes/reopen.md) |
+| `report [what]` | defect of the plugin itself: anonymized record, Issue after the owner's yes | [references/modes/report.md](references/modes/report.md) |
 
 Without a clear mode: if a workspace exists, run `resume`; otherwise propose `init`.
 

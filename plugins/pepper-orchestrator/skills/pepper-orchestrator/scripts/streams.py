@@ -101,7 +101,9 @@ TEXT = {
                          '(no `sh -c`, `git -C`, renamed or copied commands, no copying or editing of settings '
                          'files or `.claude/`).\n'
                          '- A message that the classifier is unavailable (no decision was made) is not a verdict: '
-                         'retry the same command later.'),
+                         'retry the same command later.\n'
+                         '- A defect of the plugin itself (a wrong generated rule, a script error) is reported by the '
+                         'orchestrator with its `report` mode; never patch the plugin or its settings.'),
         'denied_ask_local': ('- Send `[{tag}] QUESTION {wp} :: denied: <exact refusal text> :: ref=<the command>` '
                              'to `{coord}`; continue with work that does not need it, or wait for `ANSWER`.'),
         'denied_ask_cloud': ('- Write the exact refusal text and the command under `Deviations` in the PR body and '
@@ -177,7 +179,9 @@ TEXT = {
                          '`sh -c`, `git -C`, переименованных или скопированных команд, никакого копирования или '
                          'правки файлов настроек и `.claude/`).\n'
                          '- Сообщение о недоступности классификатора (решение не принято) — не вердикт: повтори ту '
-                         'же команду позже.'),
+                         'же команду позже.\n'
+                         '- Дефект самого плагина (неверное сгенерированное правило, ошибка скрипта) оркестратор '
+                         'сообщает режимом `report`; плагин и его настройки не правь.'),
         'denied_ask_local': ('- Пришли `{coord}`: `[{tag}] QUESTION {wp} :: отказ: <точный текст отказа> :: '
                              'ref=<команда>`; продолжай работу, которой это не нужно, или жди `ANSWER`.'),
         'denied_ask_cloud': ('- Запиши точный текст отказа и команду в раздел `Deviations` тела PR и оставь этот шаг '

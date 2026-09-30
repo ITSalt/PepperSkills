@@ -12,7 +12,7 @@ body:
     validations:
       required: true
   - type: input
-      id: platform
+    id: platform
     attributes:
       label: Client surface
       description: Codex, Claude, Cursor, chat adapter, or another supported client?
