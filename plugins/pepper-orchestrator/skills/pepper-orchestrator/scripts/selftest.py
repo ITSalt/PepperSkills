@@ -1919,8 +1919,9 @@ def test_report(tmp):
     assert 'line 25' in record and 'line 28' not in record, 'first 30 lines only'
     assert '## Вывод (первые строки, обезличен)' in record and '### Plugin and version' in issue
     assert 'Publish this anonymized report' in out and 'fingerprint: pepper-orchestrator' in out, out
-    traces = HERE.parents[4] / 'scripts/check-private-traces.py'
-    if traces.is_file():  # inside the PepperSkills repository: the repository guard on the published text
+    traces = next((p / 'scripts/check-private-traces.py' for p in HERE.parents
+                   if (p / 'scripts/check-private-traces.py').is_file()), None)
+    if traces:  # inside the PepperSkills repository (not in an unpacked package): the repository guard
         import importlib.util
         spec = importlib.util.spec_from_file_location('traces', traces)
         guard = importlib.util.module_from_spec(spec)
