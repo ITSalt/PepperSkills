@@ -2255,13 +2255,22 @@ if args[:2] == ['pr', 'list']:
 elif args[:2] == ['pr', 'create']:
     git('fetch', '-q', 'origin')
     pr = {'number': 40, 'url': 'https://github.com/example/mono/pull/40', 'state': 'OPEN',
-          'headRefOid': git('rev-parse', 'origin/' + arg('--head')), 'baseRefName': arg('--base'),
+          'headRefOid': (load('head_override').strip() if os.path.exists(path('head_override')) else
+                         git('rev-parse', 'origin/' + arg('--head'))), 'baseRefName': arg('--base'),
           'headRefName': arg('--head'), 'title': arg('--title'), 'mergeCommit': None}
     open(path('pr.json'), 'w', encoding='utf-8').write(json.dumps(pr))
     print(pr['url'])
 elif args[:2] == ['pr', 'view']:
     print(load('pr.json'))
 elif args[:2] == ['pr', 'checks']:
+    if os.path.exists(path('race')):  # someone pushes to prod while the release waits for the checks
+        os.remove(path('race'))
+        git('fetch', '-q', 'origin')
+        git('checkout', '-q', '-B', 'main', 'origin/main')
+        open(os.path.join(load('clone.txt').strip(), 'urgent.txt'), 'w').write('hotfix\\n')
+        git('add', '-A')
+        git('commit', '-qm', 'urgent hotfix on prod')
+        git('push', '-q', 'origin', 'main')
     seq = json.loads(load('checks_seq.json'))
     current = seq.pop(0) if len(seq) > 1 else seq[0]
     open(path('checks_seq.json'), 'w', encoding='utf-8').write(json.dumps(seq))
@@ -2271,6 +2280,10 @@ elif args[:2] == ['pr', 'merge']:
     git('fetch', '-q', 'origin')
     git('checkout', '-q', '-B', pr['baseRefName'], 'origin/' + pr['baseRefName'])
     git('merge', '-q', '--no-ff', '-m', 'Merge release', 'origin/' + pr['headRefName'])
+    if os.path.exists(path('dirty_merge')):  # a conflict resolved by hand in the merge commit
+        open(os.path.join(load('clone.txt').strip(), 'resolved.txt'), 'w').write('orders = 999\\n')
+        git('add', '-A')
+        git('commit', '-q', '--amend', '--no-edit')
     git('push', '-q', 'origin', pr['baseRefName'])
     pr['state'], pr['mergeCommit'] = 'MERGED', {'oid': git('rev-parse', 'HEAD')}
     open(path('pr.json'), 'w', encoding='utf-8').write(json.dumps(pr))
@@ -2364,6 +2377,22 @@ def test_release(tmp):
         run(home, 'delivery', 'set', level, 'orchestrator', '--decision', 'D-1')
     green = run(home, 'release', '--check', extra_env=env)
     assert 'RED' not in green.stdout and gates(green)['P7'] == 'after', green.stdout
+    assert 'merge_method squash is not used for a promote' in green.stdout, green.stdout  # L1
+    # M1: nothing to verify on prod is a red gate before the promote, not an error after it.
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '    deploy_workflows: [deploy.yml]\n', '    deploy_workflows: {test: [deploy.yml], '
+                           'prod: []}\n')
+    safe_edit.replace_once(config, '    verify_prod: ["echo prod ok"]\n', '')
+    blind = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(blind)['P7'] == 'RED' and 'nothing to verify on prod for WP-APP-01' in blind.stdout, blind.stdout
+    config.write_text(original, encoding='utf-8')
+    # P1: a stand SHA that is not in the promote SHA (the sheet edited by hand).
+    sheet_text = sheet.read_text(encoding='utf-8')
+    sheet.write_text(sheet_text.replace(f'| {wp1} | mono | app | {sha1} |', f'| {wp1} | mono | app | {"0" * 40} |'),
+                     encoding='utf-8')
+    outside = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(outside)['P1'] == 'RED' and f'stand SHA of {wp1} unknown or not in' in outside.stdout, outside.stdout
+    sheet.write_text(sheet_text, encoding='utf-8')
     # P2: a package of the batch is no longer VERIFIED_TEST.
     run(home, 'set', wp2, 'status', 'VERIFYING')
     assert gates(run(home, 'release', '--check', extra_env=env, ok=False))['P2'] == 'RED'
@@ -2381,7 +2410,16 @@ def test_release(tmp):
     review2.write_text(review2.read_text(encoding='utf-8') + '\nmigrations: safe, reversible (0002 adds a column)\n',
                        encoding='utf-8')
     assert gates(run(home, 'release', '--check', extra_env=env))['P4'] == 'green'
+    safe_edit.replace_once(config, '    backup_prod: "echo backup done"\n', '')
+    nobackup = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(nobackup)['P4'] == 'RED' and 'repo mono has no backup_prod' in nobackup.stdout, nobackup.stdout
+    safe_edit.replace_once(config, '    verify_prod: ["echo prod ok"]\n', '    verify_prod: ["echo prod ok"]\n'
+                           '    backup_prod: "echo backup done"\n')
     run(home, 'owner', 'close', 'R-1', 'prod migrations handed over by D-1')
+    run(home, 'delivery', 'set', 'prod_migrations', 'owner')  # L2: an item the owner closed is not opened again
+    assert 'owner item R-1' in run(home, 'release', '--check', extra_env=env, ok=False).stdout
+    assert 'migrations in WP-APP-02' not in run(home, 'queue').stdout, 'no second migrations item'
+    run(home, 'delivery', 'set', 'prod_migrations', 'orchestrator', '--decision', 'D-1')
     # P5: the window and the daily limit (by the ledger).
     original = config.read_text(encoding='utf-8')
     safe_edit.replace_once(config, '  enabled_by: D-1\n', '  enabled_by: D-1\n  release_window: "Mon-Fri 10:00-18:00 '
@@ -2427,6 +2465,33 @@ def test_release(tmp):
     safe_edit.replace_once(config, '    prod_branch: live\n', '    prod_branch: main\n')
     git(mono, 'reset', '-q', '--hard', sha2)
     git(mono, 'push', '-q', '--force', 'origin', 'stage')  # fixture only: the late commit never happened
+    helper = tmp / 'release/gh-clone'
+    git(helper, 'fetch', '-q', 'origin')
+    git(helper, 'checkout', '-q', '-B', 'main', 'origin/main')
+    prod_before = git(helper, 'rev-parse', 'HEAD').strip()
+    (helper / 'hotfix.txt').write_text('hotfix\n', encoding='utf-8')
+    git(helper, 'add', '-A')
+    git(helper, 'commit', '-qm', 'hotfix straight on prod')
+    git(helper, 'push', '-q', 'origin', 'main')
+    hotfix = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(hotfix)['P1'] == 'RED' and '1 commit(s) the stand never saw' in hotfix.stdout and \
+        'to recover, revert the same change on stage' in hotfix.stdout, hotfix.stdout
+    git(helper, 'push', '-q', '--force', 'origin', f'{prod_before}:main')  # fixture only
+    # 3581: a promote PR whose head is not the sheet SHA is never merged.
+    (stub / 'head_override').write_text('e' * 40, encoding='utf-8')
+    wrong = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'the sheet promotes' in wrong and 'nothing merged' in wrong, wrong
+    (stub / 'head_override').unlink()
+    assert '"pr", "merge"' not in (stub / 'calls.log').read_text(encoding='utf-8')
+    # H1 race: a commit lands on prod while the release waits for the checks: no merge.
+    (stub / 'race').write_text('x', encoding='utf-8')
+    raced = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'origin/main moved from' in raced and 'nothing merged' in raced, raced
+    assert '"pr", "merge"' not in (stub / 'calls.log').read_text(encoding='utf-8')
+    git(helper, 'push', '-q', '--force', 'origin', f'{prod_before}:main')  # fixture only
+    (stub / 'checks_seq.json').write_text(json.dumps([[{'name': 'ci', 'bucket': 'pending'}],
+                                                      [{'name': 'ci', 'bucket': 'pass'}]]), encoding='utf-8')
+    (stub / 'calls.log').unlink()
     # Apply: backup, promote PR, checks waited for, merge (a merge commit), prod run, verify prod, PROD.
     applied = run(home, 'release', '--apply', extra_env=env)
     assert 'PROD' in applied.stdout, applied.stdout
@@ -2450,10 +2515,45 @@ def test_release(tmp):
     git(mono, 'fetch', '-q', 'origin')
     assert git(mono, 'merge-base', '--is-ancestor', sha2, prod_sha) == '' and \
         git(tmp / 'release/mono.git', 'rev-parse', 'main').strip() == prod_sha
+    again = run(home, 'release', '--check', f'release/{sheet.name}', extra_env=env, ok=False)
+    assert gates(again)['P1'] == 'RED' and 'already contains' in again.stdout and 'nothing to promote' in again.stdout
+    # H1 without a race: the last promote merge was resolved by hand (other code than the stand).
+    git(helper, 'fetch', '-q', 'origin')
+    git(helper, 'checkout', '-q', '-B', 'main', 'origin/main')
+    (helper / 'apps/app/src/orders.tsx').write_text('export const orders = 999;\n', encoding='utf-8')
+    git(helper, 'commit', '-qa', '--amend', '--no-edit')
+    git(helper, 'push', '-q', '--force', 'origin', 'main')
     # A second batch: the prod deploy run fails, no rollback_prod: hold, defect, owner item with a command.
     wp3, sha3 = stand_package(mono, home, ws, 'fees', 3)
     run(home, 'release', '--plan', extra_env=env)
+    resolved = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(resolved)['P1'] == 'RED' and 'is not the code of' in resolved.stdout and \
+        'no other' not in resolved.stdout, resolved.stdout
+    git(helper, 'push', '-q', '--force', 'origin', f'{prod_sha}:main')  # fixture only: back to the real promote
     assert run(home, 'release', '--check', extra_env=env).returncode == 0, 'the earlier promote merge is no new code'
+    # 3419: a fast-forward is impossible over a promote merge commit.
+    ff_config = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '    prod_branch: main\n', f'    prod_branch: main\n    promote: ff\n'
+                           f'    release_clone: {helper}\n')
+    run(home, 'release', '--plan', extra_env=env)
+    ff = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(ff)['P1'] == 'RED' and 'a fast-forward is impossible' in ff.stdout, ff.stdout
+    config.write_text(ff_config, encoding='utf-8')
+    run(home, 'release', '--plan', extra_env=env)
+    # H1 after the merge: the promote merge carries other code (resolved by hand): hold, no PROD.
+    (stub / 'dirty_merge').write_text('x', encoding='utf-8')
+    dirty = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'is not the code of the stand SHA' in dirty and 'no package got PROD' in dirty, dirty
+    (stub / 'dirty_merge').unlink()
+    assert 'stopped after the promote of mono' in run(home, 'queue').stdout
+    assert '| VERIFIED_TEST |' in next(l for l in (ws / 'status.md').read_text(encoding='utf-8').split('\n')
+                                       if l.startswith(f'| [{wp3}]'))
+    git(helper, 'push', '-q', '--force', 'origin', f'{prod_sha}:main')  # fixture only
+    run(home, 'unhold', 'analysed: the hand-resolved merge is reverted')
+    for bug_file in (ws / 'bugs').glob('BUG-*-verify-wp-app-03-prod.md'):
+        bug_file.write_text(bug_file.read_text(encoding='utf-8').replace('| open (WP-APP-03) |', '| fixed |'),
+                            encoding='utf-8')
+    run(home, 'release', '--plan', extra_env=env)
     (stub / 'watch_rc.txt').write_text('1', encoding='utf-8')
     failed = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
     assert 'every delivery is on hold' in failed and 'no rollback_prod configured' in failed, failed
@@ -2466,12 +2566,22 @@ def test_release(tmp):
     assert 'not run: no rollback_prod configured' in ledger_path.read_text(encoding='utf-8')
     blocked = run(home, 'release', '--check', extra_env=env, ok=False)
     assert gates(blocked)['P6'] == 'RED', 'the hold stops every release'
+    # M4: the owner ran the revert: the sheet is on prod by history, not by code: never verified there.
+    failed_prod = git(tmp / 'release/mono.git', 'rev-parse', 'main').strip()
+    git(helper, 'fetch', '-q', 'origin')
+    git(helper, 'checkout', '-q', '-B', 'main', 'origin/main')
+    git(helper, 'revert', '--no-edit', '-m', '1', 'HEAD')
+    git(helper, 'push', '-q', 'origin', 'main')
+    reverted = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert 'contains ' in reverted.stdout and 'but not its code' in reverted.stdout and \
+        'never verify this sheet on prod' in reverted.stdout and 'to recover' in reverted.stdout, reverted.stdout
+    git(helper, 'push', '-q', '--force', 'origin', f'{failed_prod}:main')  # fixture only
     # With rollback_prod and no migrations in the batch: the rollback runs, the hold stays (an incident).
     run(home, 'unhold', 'analysed: runner outage')
-    prod_bug = next((ws / 'bugs').glob('BUG-*-verify-wp-app-03-prod.md'))
     assert gates(run(home, 'release', '--check', extra_env=env, ok=False))['P3'] == 'RED', 'the prod defect blocks'
-    prod_bug.write_text(prod_bug.read_text(encoding='utf-8').replace('| open (WP-APP-03) |', '| fixed (runner) |'),
-                        encoding='utf-8')
+    for prod_bug in (ws / 'bugs').glob('BUG-*-verify-wp-app-03-prod.md'):
+        prod_bug.write_text(prod_bug.read_text(encoding='utf-8').replace('| open (WP-APP-03) |', '| fixed (runner) |'),
+                            encoding='utf-8')
     (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
     run(home, 'verify', wp3, '--env', 'prod', '--sha', git(tmp / 'release/mono.git', 'rev-parse', 'main').strip(),
         extra_env=env)
@@ -2479,10 +2589,12 @@ def test_release(tmp):
                            '    rollback_prod: "echo rollback to {previous_sha}"\n')
     wp4, _ = stand_package(mono, home, ws, 'tax', 4)
     run(home, 'release', '--plan', extra_env=env)
-    (stub / 'watch_rc.txt').write_text('1', encoding='utf-8')
+    safe_edit.replace_once(config, '    verify_prod: ["echo prod ok"]\n', '    verify_prod: ["false"]\n')
     before = git(tmp / 'release/mono.git', 'rev-parse', 'main').strip()
     rolled = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
-    assert f'rollback_prod: `echo rollback to {before}` exited 0' in rolled, rolled
+    assert 'WP-APP-04: prod verification failed' in rolled and \
+        f'rollback_prod: `echo rollback to {before}` exited 0' in rolled, rolled
+    safe_edit.replace_once(config, '    verify_prod: ["false"]\n', '    verify_prod: ["echo prod ok"]\n')
     assert orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery'].get('hold'), 'an incident holds'
     run(home, 'unhold', 'analysed: rolled back')
     (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
@@ -2535,6 +2647,10 @@ def test_release(tmp):
     assert 'Bash(echo prod ok)' in rules['allow'] and 'Bash(echo backup done)' in rules['allow'], rules['allow']
     assert 'Bash(echo rollback to *)' in rules['allow'] + rules['ask'] and 'Bash(gh pr merge *)' in rules['deny']
     assert not any('pr create' in r or 'pr merge' in r for r in rules['allow']), rules['allow']
+    assert 'Bash(git push origin stage)' in rules['deny'] and 'Bash(git push *:stage)' in rules['deny'], rules['deny']
+    run(home, 'settings', 'app')
+    module_rules = json.loads((ws / 'orchestration/settings/app.json').read_text(encoding='utf-8'))['permissions']
+    assert 'Bash(git push origin stage)' in module_rules['deny'], module_rules['deny']  # M3
     print('PASS release: sheet, P1-P7 by facts, promote PR with checks, merge commit, prod run, verify prod, PROD, '
           'ledger, FYI; failure -> hold, defect, owner item; rollback_prod; per_package; lint; settings')
 

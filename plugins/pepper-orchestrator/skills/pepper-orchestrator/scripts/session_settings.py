@@ -287,6 +287,21 @@ def _base_push_rules(base):
             f'Bash(git push * refs/heads/{base} *)']
 
 
+def delivery_branches(config, raws, base):
+    """The integration and prod branches of a repository other than its base, when orch.yaml has a
+    delivery block: pushes to them are denied like pushes to the base (release promotes happen only
+    inside orch.py release --apply)."""
+    if not isinstance(config.get('delivery'), dict):
+        return []
+    found = []
+    for raw in raws:
+        for key in ('integration_branch', 'prod_branch'):
+            value = str(raw.get(key) or '').strip()
+            if value and value != base and value not in found:
+                found.append(value)
+    return found
+
+
 def checkpoints(config, module=None):
     raw = (module.raw.get('checkpoints') if module is not None else None)
     if raw is None:
@@ -321,6 +336,8 @@ def module_settings(config, workspace_root, module, in_repo=False):
             ask.append('Bash(git push *)')
         (ask if 'pr' in points else allow).append('Bash(gh pr create *)')
         deny.extend(_base_push_rules(repo.base))
+        for branch in delivery_branches(config, [repo.raw, module.raw], repo.base):
+            deny.extend(_base_push_rules(branch))
     setup = repo.worktree_setup
     copies = secret_copies(setup)
     for command in copies:
@@ -364,6 +381,9 @@ def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, wor
         perms['allow'].append(path_rule('Read', real_path(repo.local)))
         if streams.has_remote(repo):
             perms['deny'].extend(_base_push_rules(repo.base))
+            raws = [repo.raw] + [m.raw for m in modules.values() if m.repo.key == repo.key]
+            for branch in delivery_branches(config, raws, repo.base):
+                perms['deny'].extend(_base_push_rules(branch))
     for module in modules.values():
         if is_command(module.raw.get('deploy_prod')):
             perms['deny'].extend(prefix_rules(module.raw['deploy_prod']))

@@ -43,6 +43,17 @@ Stage 3d: production by the orchestrator, only when the owner handed `prod` over
   (its rows keep their values; a journal line records it).
 - **Backlog B3 of the 3c review**: an owner item opened because GitHub refused a merge is closed when
   a later `deliver` of the same package merges.
+- **Code, not only history (review rev.2).** P1 compares trees: the prod tip must carry the code of the
+  stand SHA of the last promote (a hand-resolved promote merge, a revert or a hotfix on prod is red,
+  with the recovery step; a reverted sheet is never offered for `verify --env prod`). `--apply` reads
+  the prod tip again right before the merge and refuses when it moved since the gates, and after the
+  promote compares the promoted commit's tree with the stand SHA's tree before any `PROD`. Any error
+  after the promote (other code, an unknown merge commit, a failing command) ends in a hold, a defect
+  and an owner item. P7 is red before the release when a package has nothing to verify on prod. The
+  P1 fact names the promote merge method (`merge_method` other than merge is not used for a promote).
+  The P4 migrations item is closed after the release of its batch and not opened again once the owner
+  closed it. Pushes to `integration_branch` and `prod_branch` are denied like pushes to the base in
+  the module and orchestrator settings when `orch.yaml` has a `delivery` block.
 - `lint`: `release_policy`, `release_window`, `max_prod_releases_per_day`, `promote` (and `ff` needs
   `release_clone`), `prod_migrations: orchestrator` needs `prod: orchestrator`.
 - `orch.py settings orchestrator` with `prod: orchestrator` allows `verify_prod` and `backup_prod`

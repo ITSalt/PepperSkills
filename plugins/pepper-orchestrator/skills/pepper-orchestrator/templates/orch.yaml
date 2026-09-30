@@ -97,7 +97,7 @@ modules: []
 #    session: {{PROGRAM}}-db
 #    tests: ["./scripts/test.sh"]
 #    deploy_test: owner-confirmed in module window
-#    deploy_prod: ./scripts/deploy.sh --target prod
+#    deploy_prod: ./scripts/deploy.sh --target prod   # the owner's; denied to every session, release never runs it
 #    release_clone: ~/projects/example-database-release
 #    web_urls: {test: https://test.example.com, prod: https://example.com}
 # Example module that is an area of a shared repository:

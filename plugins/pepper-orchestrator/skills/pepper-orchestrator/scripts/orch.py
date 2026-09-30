@@ -2907,10 +2907,12 @@ def ledger_rows(ws, name='deliveries'):
     return out
 
 
-def owner_item(ws, text, where, dedup=None):
-    """Open an owner action R-n (once: an open item starting with dedup is reused); its id."""
-    for item in open_owner_items(ws):
-        if dedup and item['text'].startswith(dedup):
+def owner_item(ws, text, where, dedup=None, closed_too=False):
+    """Open an owner action R-n (once: an open item starting with dedup is reused, with closed_too
+    also one the owner already closed); its id."""
+    items = ws.table(ws.status, 'owner')[2] if closed_too else open_owner_items(ws)
+    for item in items:
+        if dedup and item['text'].strip('~').startswith(dedup):
             return plain_id(item['id'])
     cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', text=text, where=where, quiet=True))
     return plain_id(open_owner_items(ws)[-1]['id'])
@@ -3413,16 +3415,28 @@ def release_gates(ws, path):
                             'commits the stand has not passed (plan again after their verification)')
         elif method == 'ff' and not prodrelease.is_ancestor(repo, sha, tip_int):
             problems.append(f'{repo.id}: {sha[:10]} is not on origin/{integration}')
+        content_ok, base = prodrelease.prod_content(repo, tip_prod, sha)
+        restore = (f'to recover, revert the same change on {integration} through a package and the stand, or '
+                   f'bring {prod} back to the code of {base[:10] if base else "the last promoted stand SHA"}; '
+                   'then plan again')
         if prodrelease.is_ancestor(repo, sha, tip_prod):
-            problems.append(f'{repo.id}: origin/{prod} already contains {sha[:10]}: nothing to promote '
-                            f'(orch.py verify <WP> --env prod --sha {tip_prod[:12]})')
+            if content_ok:
+                problems.append(f'{repo.id}: origin/{prod} already contains {sha[:10]}: nothing to promote '
+                                f'(orch.py verify <WP> --env prod --sha {tip_prod[:12]})')
+            else:
+                problems.append(f'{repo.id}: origin/{prod} contains {sha[:10]} but not its code (a revert or a '
+                                f'hand-resolved merge after it): never verify this sheet on prod; {restore}')
         elif method == 'ff' and not prodrelease.is_ancestor(repo, tip_prod, sha):
             problems.append(f'{repo.id}: origin/{prod} ({tip_prod[:10]}) is not an ancestor of {sha[:10]}: a '
                             'fast-forward is impossible (earlier promotes by PR left merge commits; use promote: pr)')
         elif method != 'ff' and prodrelease.own_commits(repo, tip_prod, sha):
             own = prodrelease.own_commits(repo, tip_prod, sha)
             problems.append(f'{repo.id}: origin/{prod} has {len(own)} commit(s) the stand never saw '
-                            f'({", ".join(c[:10] for c in own[:3])}): a promote would not ship the same code')
+                            f'({", ".join(c[:10] for c in own[:3])}): a promote would not ship the same code; {restore}')
+        elif method != 'ff' and not content_ok:
+            problems.append(f'{repo.id}: the code on origin/{prod} ({tip_prod[:10]}) is not the code of '
+                            f'{base[:10] if base else "?"}, the stand SHA of the last promote (a revert or a '
+                            f'hand-resolved merge): a promote would not ship the stand code; {restore}')
         if method == 'ff':
             problem = prodrelease.clone_problem(clone, repo)
             if problem:
@@ -3430,8 +3444,11 @@ def release_gates(ws, path):
         repos[repo.id] = {'module': module, 'repo': repo, 'name': streams.origin_name(repo), 'sha': sha,
                           'integration': integration, 'prod': prod, 'method': method, 'clone': clone,
                           'tip_prod': tip_prod, 'wps': [e['wp'] for e in pkgs]}
+        mm = delivery.merge_method(module)
+        how = 'ff' if method == 'ff' else 'pr merged with --merge' + (
+            f'; merge_method {mm} is not used for a promote (it would give prod new commits)' if mm != 'merge' else '')
         facts.append(f'{repo.id}: {integration} {sha[:10]} (tip, passed the stand) -> {prod} {tip_prod[:10]} '
-                     f'({method}, no other commits)')
+                     f'({how}; prod code = stand code of {base[:10] if base else "?"})')
     gates.append(('P1', bool(promotes) and not problems, '; '.join(problems) or '; '.join(facts) or 'no promote rows'))
     waiting = [f'{e["wp"]} {rows.get(e["wp"], {}).get("status", "has no row")}' for e in entries
                if rows.get(e['wp'], {}).get('status') != 'VERIFIED_TEST']
@@ -3453,7 +3470,7 @@ def release_gates(ws, path):
                               f'this batch yourself by the sheet {rel} (backup first), or decide to hand prod '
                               'migrations over (orch.py delivery set prod_migrations orchestrator --decision D-n) ; '
                               f'expected: the release done, then orch.py verify <WP> --env prod',
-                          rel, dedup=f'Release {sheet}: migrations')
+                          rel, dedup=f'Release {sheet}: migrations', closed_too=True)
         gates.append(('P4', False, f'migrations in {wps}; prod_migrations: owner: owner item {item}'))
     else:
         missing = []
@@ -3497,8 +3514,15 @@ def release_gates(ws, path):
     ok6 = fresh['prod'] == 'orchestrator' and not fresh['hold'] and not invalid
     gates.append(('P6', ok6, f'prod {fresh["prod"]}, hold {fresh["hold"] or "none"}'
                   + (f'; configuration invalid: {"; ".join(invalid)}' if invalid else '')))
-    gates.append(('P7', None, 'after the release: the prod deploy run, verify_prod of every package (orch.py verify '
-                  '--env prod), then DONE after the first live case or log line'))
+    blind = []
+    for e in entries:
+        module = modules.get(e['module'].lower())
+        if module is None or not verify_plan(ws, module, 'prod'):
+            blind.append(f'{e["wp"]} (module {e["module"]})')
+    gates.append(('P7', None if not blind else False, 'after the release: the prod deploy run, verify_prod of every '
+                  'package (orch.py verify --env prod), then DONE after the first live case or log line' if not blind
+                  else f'nothing to verify on prod for {", ".join(blind)}: set verify_prod, version_url or '
+                  'deploy_workflows for prod before a release'))
     return gates, {'entries': entries, 'repos': repos, 'migrations': {e['wp'] for e in mig}, 'rel': rel,
                    'sheet': sheet}
 
@@ -3554,12 +3578,12 @@ def release_apply(ws, path, ctx):
     refused = [f'Release {sheet}: GitHub refused', f'Release {sheet}: the promote']
     digest = []
     for repo_id, info in ctx['repos'].items():
-        module, name, sha = info['module'], info['name'], info['sha']
+        module, repo, name, sha = info['module'], info['repo'], info['name'], info['sha']
         entries = [e for e in ctx['entries'] if e['repo'] == repo_id]
         timeout = delivery.run_timeout(module)
         has_migrations = any(e['wp'] in ctx['migrations'] for e in entries)
         if has_migrations:  # P4 green: prod_migrations orchestrator, reviewed, backup_prod configured
-            ok, out = delivery.run_command(delivery.repo_setting(module, 'backup_prod'), info['repo'].local, timeout)
+            ok, out = delivery.run_command(delivery.repo_setting(module, 'backup_prod'), repo.local, timeout)
             release_row(ws, sheet, repo_id, backup=out)
             ws.journal(f'release {sheet}: {repo_id} backup_prod: {out}', evidence='release/deliveries.md')
             if not ok:
@@ -3570,7 +3594,7 @@ def release_apply(ws, path, ctx):
                 return 1
         prod_sha, promote_note = '', ''
         try:
-            if info['method'] == 'ff':
+            if info['method'] == 'ff':  # git refuses anything but a fast-forward: prod becomes exactly sha
                 prodrelease.ff_push(info['clone'], sha, info['prod'])
                 prod_sha, promote_note = sha, f'git push origin {sha[:12]}:{info["prod"]} ({info["clone"]})'
             else:
@@ -3591,7 +3615,17 @@ def release_apply(ws, path, ctx):
                     ws.journal(f'release {sheet}: promote checks not green: {detail}', evidence=url)
                     print(f'release: promote PR checks not green ({detail}); owner item opened', file=sys.stderr)
                     return 1
-                delivery.merge(name, facts['number'], 'merge', False)  # a merge commit keeps the stand SHA
+                # The prod tip again, right before the merge: GitHub merges into whatever the tip is now.
+                fetched, fetch_detail = prodrelease.fetch(repo, info['prod'])
+                now = prodrelease.resolve(repo, f'origin/{info["prod"]}') if fetched else None
+                if now != info['tip_prod']:
+                    moved = (f'origin/{info["prod"]} moved from {info["tip_prod"][:10]} to {now[:10]} since the gates'
+                             if now else f'origin/{info["prod"]} cannot be read ({fetch_detail})')
+                    ws.journal(f'release {sheet}: {moved}: promote refused', evidence=url)
+                    print(f'release: {moved}; nothing merged: check the new commits, then release --check again',
+                          file=sys.stderr)
+                    return 1
+                delivery.merge(name, facts['number'], 'merge', False)  # a merge commit keeps the stand SHA reachable
                 for _ in range(int(os.environ.get('ORCH_MERGE_POLLS', '6'))):
                     try:
                         prod_sha = ((delivery.pr_facts(name, url).get('mergeCommit') or {}).get('oid') or '')
@@ -3609,51 +3643,91 @@ def release_apply(ws, path, ctx):
             print(f'release: the promote of {repo_id} was refused: {error}; owner item opened (never bypassed)',
                   file=sys.stderr)
             return 1
-        close_owner_items(ws, refused, f'promoted by orch.py release: {promote_note}')
-        release_row(ws, sheet, repo_id, promote=promote_note, prod_sha=prod_sha[:12] or 'unknown')
-        if not prod_sha:
-            ws.journal(f'release {sheet}: {repo_id} merged, but GitHub has not reported the merge commit',
-                       evidence=promote_note)
-            print(f'release: {repo_id} promoted, but the merge commit is unknown yet: find it (gh pr view '
-                  f'{promote_note} --json mergeCommit), then orch.py verify <WP> --env prod --sha <sha>', file=sys.stderr)
-            return 1
-        ws.journal(f'release {sheet}: {repo_id} {sha[:10]} promoted to {info["prod"]} at {prod_sha[:10]}',
-                   evidence=promote_note)
-        ok, run_detail = True, 'no prod deploy_workflows: production deploys by itself'
-        for wf in verification.workflows(module, 'prod'):
-            ok, run_detail = delivery.wait_run(name, wf, prod_sha, info['prod'], timeout, interval)
-            if not ok:
-                break
-        release_row(ws, sheet, repo_id, prod_run=run_detail)
-        for e in entries:
-            ledger_prod(ws, e['wp'], e['pr'], prod_run=run_detail,
-                        note=LEDGER[ws.lang]['release'].format(sheet=sheet))
-        if not ok:
-            return release_failure(ws, sheet, info, entries, prod_sha, run_detail, has_migrations, deploy=True)
-        for e in entries:
-            code = cmd_verify(argparse.Namespace(workspace=str(ws.root), wp=e['wp'], env='prod', sha=prod_sha,
-                                                 expect_version=None, dry_run=False, list=False))
-            if code == 2:
-                release_row(ws, sheet, repo_id, prod_verify='WAIT')
-                ws.journal(f'release {sheet}: prod verification of {e["wp"]} waits for the deploy run', evidence=rel)
-                print(f'release: prod verification waits for the deploy run: orch.py verify {e["wp"]} --env prod '
-                      f'--sha {prod_sha[:12]} when it has finished', file=sys.stderr)
-                return 2
-            if code != 0:
-                ledger_prod(ws, e['wp'], e['pr'], prod_verify='FAIL')
-                release_row(ws, sheet, repo_id, prod_verify='FAIL')
-                return release_failure(ws, sheet, info, entries, prod_sha, f'{e["wp"]}: prod verification failed',
-                                       has_migrations, deploy=False)
-            ledger_prod(ws, e['wp'], e['pr'], prod_verify='PASS')
-        release_row(ws, sheet, repo_id, prod_verify='PASS')
-        digest.append(f'{", ".join(e["wp"] for e in entries)} ({repo_id}) at {prod_sha[:10]}')
+        # Production has moved: from here on every error ends in a hold, a defect and an owner item.
+        try:
+            code = release_after_promote(ws, sheet, rel, info, entries, sha, prod_sha, promote_note, has_migrations,
+                                         refused, interval, digest)
+        except (OrchError, delivery.DeliveryError, safe_edit.EditError, streams.StreamError, OSError,
+                subprocess.SubprocessError) as error:
+            return release_stop(ws, sheet, info, entries, prod_sha, f'{type(error).__name__}: {error}')
+        if code is not None:
+            return code
     text = (f'FYI, no action needed: release {sheet} is on prod: {"; ".join(digest)}; verify_prod passed; DONE follows '
             'the first live case or log line (verify mode) ; close this item when read')
+    close_owner_items(ws, [f'Release {sheet}: migrations'], f'released by orch.py release {sheet}')
     owner_item(ws, text, 'release/deliveries.md')
     ws.journal(f'release {sheet}: PROD ({"; ".join(digest)})', evidence='release/deliveries.md')
     print(f'release {sheet}: PROD: {"; ".join(digest)}')
     print('next: the first live case or log line of each package (verify mode), then DONE')
     return 0
+
+
+def release_after_promote(ws, sheet, rel, info, entries, sha, prod_sha, promote_note, has_migrations, refused,
+                          interval, digest):
+    """Content check, prod run and verification of one repository after its promote; None when the
+    repository is on prod, else the exit code."""
+    module, repo, name, repo_id = info['module'], info['repo'], info['name'], info['repo'].id
+    close_owner_items(ws, refused, f'promoted by orch.py release: {promote_note}')
+    release_row(ws, sheet, repo_id, promote=promote_note, prod_sha=prod_sha[:12] or 'unknown')
+    if not prod_sha:
+        return release_stop(ws, sheet, info, entries, '', f'{repo_id} merged ({promote_note}), but GitHub has not '
+                            'reported the merge commit: the code on prod is unchecked')
+    ws.journal(f'release {sheet}: {repo_id} {sha[:10]} promoted to {info["prod"]} at {prod_sha[:10]}',
+               evidence=promote_note)
+    fetched, detail = prodrelease.fetch(repo, info['prod'])
+    if not fetched or not prodrelease.same_content(repo, prod_sha, sha):
+        return release_stop(ws, sheet, info, entries, prod_sha, (
+            f'the code on {info["prod"]} at {prod_sha[:10]} is not the code of the stand SHA {sha[:10]} (git diff '
+            f'--stat {sha[:12]} {prod_sha[:12]})' if fetched else f'git fetch origin {info["prod"]}: {detail}'))
+    ok, run_detail = True, 'no prod deploy_workflows: production deploys by itself'
+    for wf in verification.workflows(module, 'prod'):
+        ok, run_detail = delivery.wait_run(name, wf, prod_sha, info['prod'], delivery.run_timeout(module), interval)
+        if not ok:
+            break
+    release_row(ws, sheet, repo_id, prod_run=run_detail)
+    for e in entries:
+        ledger_prod(ws, e['wp'], e['pr'], prod_run=run_detail, note=LEDGER[ws.lang]['release'].format(sheet=sheet))
+    if not ok:
+        return release_failure(ws, sheet, info, entries, prod_sha, run_detail, has_migrations, deploy=True)
+    for e in entries:
+        code = cmd_verify(argparse.Namespace(workspace=str(ws.root), wp=e['wp'], env='prod', sha=prod_sha,
+                                             expect_version=None, dry_run=False, list=False))
+        if code == 2:
+            release_row(ws, sheet, repo_id, prod_verify='WAIT')
+            ws.journal(f'release {sheet}: prod verification of {e["wp"]} waits for the deploy run', evidence=rel)
+            print(f'release: prod verification waits for the deploy run: orch.py verify {e["wp"]} --env prod '
+                  f'--sha {prod_sha[:12]} when it has finished', file=sys.stderr)
+            return 2
+        if code != 0:
+            ledger_prod(ws, e['wp'], e['pr'], prod_verify='FAIL')
+            release_row(ws, sheet, repo_id, prod_verify='FAIL')
+            return release_failure(ws, sheet, info, entries, prod_sha, f'{e["wp"]}: prod verification failed',
+                                   has_migrations, deploy=False)
+        ledger_prod(ws, e['wp'], e['pr'], prod_verify='PASS')
+    release_row(ws, sheet, repo_id, prod_verify='PASS')
+    digest.append(f'{", ".join(e["wp"] for e in entries)} ({repo_id}) at {prod_sha[:10]}')
+    return None
+
+
+def release_stop(ws, sheet, info, entries, prod_sha, detail):
+    """An error after the promote: production moved but nothing proves its code. Hold, defect, owner
+    item; no package gets PROD, no rollback is guessed."""
+    repo, prev, sha = info['repo'], info['tip_prod'], info['sha']
+    wps = [e['wp'] for e in entries]
+    write_bug(ws, wps[0], info['module'], 'prod', prod_sha or sha, 'release/deliveries.md',
+              [{'kind': 'release', 'target': detail, 'exit': '—', 'output': []}])
+    delivery.set_key(ws.root / 'orch.yaml', 'hold', f'release {sheet}: {detail}')
+    ws.journal(f'delivery on hold: release {sheet}: {detail}', evidence='release/deliveries.md')
+    item = owner_item(ws, f'Release {sheet}: stopped after the promote of {repo.id}: {detail}; {info["prod"]} may run '
+                          f'code no gate approved and no package got PROD: compare it with the stand (git diff --stat '
+                          f'{sha[:12]} origin/{info["prod"]}) and bring it back to {prev[:10]} if needed ; expected: '
+                          f'the analysis, then orch.py unhold "<analysis>"', 'release/deliveries.md')
+    note = f'stopped after the promote; owner item {item}'
+    release_row(ws, sheet, repo.id, prod_verify='—', rollback=note)
+    for e in entries:
+        ledger_prod(ws, e['wp'], e['pr'], rollback=note, note=LEDGER[ws.lang]['hold'])
+    print(f'release: {repo.id}: {detail}; every delivery is on hold, no package got PROD; {note}', file=sys.stderr)
+    return 1
 
 
 def release_failure(ws, sheet, info, entries, prod_sha, detail, has_migrations, deploy):

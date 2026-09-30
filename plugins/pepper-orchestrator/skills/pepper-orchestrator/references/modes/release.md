@@ -42,12 +42,17 @@ command), `promote: pr | ff` and for `ff` a clean `release_clone`.
 2. **Gates.** `orch.py release --check [<sheet>]` prints P1-P7 with facts: P1 the promote SHA is the
    tip of `origin/<integration_branch>` (for `ff`: on it), every package's stand SHA is in it, prod
    has no commit the stand never saw (merge commits of earlier promotes aside; `ff` needs prod to be
-   an ancestor), a clean `release_clone` for `ff`; P2 every package of the sheet is `VERIFIED_TEST`;
+   an ancestor), and the **code** on prod is the code of the stand SHA of the last promote (the trees
+   are compared, so a hand-resolved promote merge or a revert on prod is red with the recovery step:
+   revert the same change on the integration branch through a package, or bring prod back); a
+   clean `release_clone` for `ff`; P2 every package of the sheet is `VERIFIED_TEST`;
    P3 no open defect of severity blocker, critical or high in `bugs/`; P4 migrations: with
    `prod_migrations: owner` an owner item `R-n` (once) and stop; with `orchestrator` the review
    report of each package says `migrations: safe, reversible` and `backup_prod` is set; P5 inside
    the release window and under the daily limit (releases in the ledger); P6 `prod: orchestrator`
-   and no hold after re-reading `orch.yaml`, configuration valid; P7 after the release. P1 also
+   and no hold after re-reading `orch.yaml`, configuration valid; P7 after the release, but red
+   before it when a package has nothing to verify on prod (no `verify_prod`, `version_url` or prod
+   `deploy_workflows`). P1 also
    refuses a sheet planned for other branches or another promote method than `orch.yaml` now has,
    and a promote SHA that would ship another package not in the sheet (merged, not on prod yet):
    release such packages together in a batch sheet, or in merge order. With `per_package` and
@@ -57,11 +62,14 @@ command), `promote: pr | ff` and for `ff` a clean `release_clone`.
    `backup_prod` when the batch has migrations (output in the ledger; a failure stops before
    anything changes), promotes (a PR `integration_branch` -> `prod_branch` titled `[TAG] release
    <date>` with the sheet as body, its checks waited for, merged with `--merge` so prod contains the
-   stand SHA (a repository that allows only squash or rebase merges refuses it: use `promote: ff`); or `git push origin <sha>:refs/heads/<prod_branch>` from the clean clone, never
-   forced), waits for the prod deploy run (`deploy_workflows`, `run_timeout`), then `orch.py verify
+   stand SHA (a repository that allows only squash or rebase merges refuses it: use `promote: ff`);
+   the prod tip is read again right before the merge and a move since the gates refuses it; or `git push origin <sha>:refs/heads/<prod_branch>` from the clean clone, never
+   forced). Then the promoted commit's tree is compared with the stand SHA's tree; waits for the
+   prod deploy run (`deploy_workflows`, `run_timeout`), then `orch.py verify
    <WP> --env prod --sha <prod SHA>` for every package; PASS gives `PROD`, a ledger row and an FYI
    item in the owner queue. A run still in progress at verification ends with exit code 2: verify
-   again later, no hold.
+   again later, no hold. Any error after the promote (other code on prod, an unknown merge commit,
+   a failed command) holds every delivery, writes a defect and an owner item; no package gets `PROD`.
 4. **Failure.** A failed prod run or verification puts every delivery **on hold**, writes a defect
    and runs `rollback_prod` only for a batch without migrations; otherwise (no `rollback_prod`, a
    batch with migrations, or a failed rollback) an owner item with the ready rollback command (a

@@ -172,6 +172,26 @@ def is_ancestor(repo, older, newer):
     return streams.git(repo.local, 'merge-base', '--is-ancestor', older, newer).returncode == 0
 
 
+def tree(repo, ref):
+    result = streams.git(repo.local, 'rev-parse', '--verify', '-q', f'{ref}^{{tree}}')
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def same_content(repo, a, b):
+    """True when commits a and b have the same tree (the same code, whatever the history)."""
+    first, second = tree(repo, a), tree(repo, b)
+    return bool(first) and first == second
+
+
+def prod_content(repo, prod_tip, sha):
+    """(ok, base): the prod tip carries exactly the code of a commit the stand passed: base, the
+    merge base of the prod tip and sha (the stand SHA of the last promote, or the initial commit). A
+    hand-resolved promote merge, a revert or a hotfix on prod makes the trees differ."""
+    result = streams.git(repo.local, 'merge-base', prod_tip, sha)
+    base = result.stdout.strip() if result.returncode == 0 else None
+    return bool(base) and same_content(repo, prod_tip, base), base
+
+
 def own_commits(repo, prod_tip, sha):
     """Commits of the prod branch that sha lacks, merge commits of earlier promotes aside: code that
     never passed the stand."""
