@@ -1,0 +1,78 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//nonexistent-fixture/mono/**)",
+      "Read(//nonexistent-fixture/orch/ws/**)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(sed -n *)",
+      "Bash(ls *)",
+      "Bash(find *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git fetch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git switch *)",
+      "Bash(git restore --staged *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr diff *)",
+      "Read(//nonexistent-fixture/mono/apps/app/**)",
+      "Bash(gh pr create *)",
+      "Bash(pnpm --filter app test)",
+      "Bash(./scripts/check.sh)",
+      "Bash(pnpm install --frozen-lockfile)"
+    ],
+    "ask": [
+      "Bash(git push *)"
+    ],
+    "deny": [
+      "Bash(gh pr merge *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push * --force)",
+      "Bash(git push * --force *)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(git push --force-with-lease*)",
+      "Bash(git push * --force-with-lease*)",
+      "Bash(git push * +*)",
+      "Bash(gh workflow run *)",
+      "Bash(gh release *)",
+      "Edit(//nonexistent-fixture/orch/ws/**)",
+      "Bash(git push origin main)",
+      "Bash(git push origin main *)",
+      "Bash(git push * main)",
+      "Bash(git push * main *)",
+      "Bash(git push origin HEAD:main)",
+      "Bash(git push *:main)",
+      "Bash(git push *:main *)",
+      "Bash(git push *:refs/heads/main)",
+      "Bash(git push *:refs/heads/main *)",
+      "Bash(git push * refs/heads/main)",
+      "Bash(git push * refs/heads/main *)",
+      "mcp__example-prod__*",
+      "Bash(ssh *)",
+      "Bash(psql *)",
+      "Bash(mysql *)",
+      "Skill(m-release)",
+      "Skill(m-release *)"
+    ]
+  },
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Trusted repo: local git repository /nonexistent-fixture/mono"
+    ]
+  },
+  "crossSessionInbound": "accept"
+}

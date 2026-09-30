@@ -1,5 +1,61 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.8.0 (preview)
+
+Plugin defect channel: `report` mode and `orch.py report` (anonymized record, Issue in this
+repository after the owner's yes, duplicates commented), an issue form for agent reports,
+CODEOWNERS, a merge rule and agent sections in CONTRIBUTING. Also fixes the indentation of the bug
+issue form, which GitHub could not parse. Preview, not yet released.
+
+## Unreleased — pepper-orchestrator 0.7.1 (preview)
+
+Windows fix: settings files use the documented Windows form of rule paths (`//c/...`), so
+`init`, `settings` and `dispatch` work on Windows again; PowerShell start commands on request.
+Preview, not yet released.
+
+## Unreleased — pepper-orchestrator 0.7.0 (preview)
+
+Verification by facts: `verify` mode and `orch.py verify <WP> --env test|prod` (deploy run for the
+merge commit, served version, read-only verify commands, report, `VERIFIED_TEST`/`PROD`, defects),
+a read-only verifier agent and a live-scenario brief. Preview, not yet released.
+
+## Unreleased — pepper-orchestrator 0.6.0 (preview)
+
+Session permissions: generated settings files for module and orchestrator sessions (narrow allow,
+deny for merge, base pushes, releases and production, owner checkpoints, auto mode environment,
+cross-session message delivery), the owner's explicit permission mode at init, worktrees without
+secrets through `.worktreeinclude`, on-demand locks, and fixes from the first field run. Preview,
+not yet released.
+
+## Unreleased — pepper-orchestrator 0.5.0 (preview)
+
+Implementer model and effort per package in start commands, the owner's explicit session-kind
+choice at init, cloud environment and prefill links for cloud sessions, escalation after repeated
+REVISE rounds. Preview, not yet released.
+
+## Unreleased — pepper-orchestrator 0.4.0 (preview)
+
+Program completion: goal and completion condition in the plan, `close` by facts with a closeout
+report, backlog carry-over, archive steps for the owner, `reopen`. Preview, not yet released.
+
+## Unreleased — pepper-orchestrator 0.3.0 (preview)
+
+PR review: `review` mode with a read-only reviewer agent and a disposable clone, automatic findings
+from the stream rules and a stale merge-base, a scout agent, and "Typical workflows" in the plugin
+README. Preview, not yet released.
+
+## Unreleased — pepper-orchestrator 0.2.1 (preview)
+
+Cloud sessions over one repository: in-repo workspace on `orch/<program>` in a deploy-ignored
+directory, cloud-session prompts from `dispatch`, readiness by branches and pull requests, and
+`scripts/install-skill.sh` for cloud environment setup scripts. Preview, not yet released.
+
+## Unreleased — pepper-orchestrator 0.2.0 (preview)
+
+Streams in one repository: modules as areas and domains with their own paths, worktree start
+commands, locks on shared paths and resources, a merge queue, `dispatch` and `overlap`. 0.1.0
+workspaces keep working unchanged. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.1.0 (preview)
 
 New plugin `pepper-orchestrator` (stage 1 core): single-orchestrator method for programs that

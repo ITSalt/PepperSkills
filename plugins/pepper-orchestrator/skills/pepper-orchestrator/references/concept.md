@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.0 · 2026-09-28 · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.7 · 2026-09-30 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12; 1.6: verification by facts, section 9; 1.7: plugin defects reported, section 16) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -84,13 +84,26 @@ features/<program>/
   gates/                - gate checklists G0...Gn (if formal milestones are needed)
   orchestration/
     protocol.md         - session and message protocol (this document adapted to the program)
-    settings/<role>.json - agent settings files for each session (--settings)
+    settings/<name>.json - generated settings of each session (--settings): one per local module,
+                           orchestrator.json; <name>.local.json holds the owner's own additions
     hooks/              - PreToolUse hooks (for example "SELECT only" for database MCP)
   bugs/                 - defects found along the way (one file per defect)
 ```
 
 **Only the orchestrator** writes to this space. Module sessions get a deny rule for editing this
-directory in their settings.
+directory in their settings. Settings files are generated from `orch.yaml` (`orch.py settings`),
+never written by hand, and passed with the permission mode the owner chose for the program
+(`permission_mode`) in every local start command.
+
+**Where the workspace lives (P4).** Not in a module repository. Recommended: a separate "home"
+repository of the program; acceptable: branch `orch/<program>` in its own worktree or clone.
+Never another branch of a module checkout, worktree or clone: a commit there may deploy the stand.
+Not the main checkout either when a whole-repository module's session works in it.
+
+**Modules and streams.** A module is either a whole repository or a logical block inside one: an
+**area** (a section of the product) or a **domain**, with its own paths. Modules of one repository
+are **streams**; `orch.yaml` describes the repository once (`repos`: base, branch prefix, worktree
+root and setup, merge policy, shared paths, resources, checks) and each stream refers to it.
 
 ## 5. Work lifecycle
 
@@ -154,8 +167,31 @@ Mandatory sections (template: the plugin's `templates/<language>/work-package.md
 
 Rules:
 
-- **One writing session per repository.** A second package for the same module starts after READY
-  of the first or in an isolated worktree.
+- **One writing session per worktree and branch (P1).** Several streams of one repository run in
+  parallel only when their paths do not overlap outside the repository's shared paths; otherwise
+  they queue. A module that is a whole repository keeps one writing session per repository: a
+  second package for it starts after READY of the first.
+- **Locks for shared paths and resources (P2).** Shared paths (lockfile, migrations, registries
+  everyone appends to, route registration) and resources (the stand, migrations, a dev stack on
+  fixed ports, IDs in a specification graph) are held by locks in a separate table of
+  `status.md`. Only the holder changes a shared path, pushes a migration, verifies on the stand or
+  runs the dev stack. A package declares in advance which shared paths and resources it needs;
+  the holder releases after merge or verification; waiting packages queue behind the lock.
+- **Merge queue (P3).** With `merge_policy: sequential` the owner merges one package at a time:
+  merge, then the green stand deploy and health check, then the rebase of the next package, then
+  its merge. If every merge into the base deploys production, merge in batches through a release
+  sheet.
+- **Session kind and model.** The owner chooses once, at the start, whether module sessions run
+  locally (recommended) or in the cloud (with a named cloud environment); an orchestrator running
+  in the cloud works only with cloud sessions. Every package carries a recommended implementer
+  model and effort: the latest Sonnet for a clear package inside one module, Opus with high effort
+  for contracts, data migrations, money and permissions, concurrency, bug hunts without a
+  hypothesis and large refactorings, a stronger model after a second failed REVISE round. The
+  model goes into the start command as a flag; `/model <name>` with an argument in a local session
+  would make it the owner's default for every new session.
+- **Stream start.** The session of a stream starts in its own worktree (`claude -w <wp-slug>` in
+  Claude Code) and prepares it itself: branch from the current base, the repository's worktree
+  setup (a copy of the gitignored env with its own test database and ports, dependency install).
 - Product forks are not decided inside a package: a question to the owner (`P-n`) with options and a
   recommendation; the decision (`D-n`) is recorded in `decisions.md` and the package references it.
 - If the owner changes a decision along the way, the package is edited before dispatch; after
@@ -201,6 +237,14 @@ CI: usually only a few lines.
   first live case (or asks the owner for a log line).
 - Live-check tools degrade (precedent: a Docker Playwright MCP failed with EOF). Keep a fallback in
   the scenario (local Chromium over CDP) and do not treat tool degradation as a product defect.
+- **By facts, in a fixed order** (`orch.py verify <WP> --env test|prod`): the deploy run for the
+  expected SHA (the merge commit) on the environment's branch finished with success; the served
+  version is that SHA; the repository's read-only verify commands pass (health, migration journal,
+  smoke); then the live scenario of the package's acceptance criteria. The report goes to
+  `reports/verify-<WP>-<env>-<date>.md`. PASS gives `VERIFIED_TEST` (test) or `PROD` (prod); FAIL
+  keeps the status, writes a defect to `bugs/`, and asks the owner only when the next step needs
+  their rights. This works the same whoever merged and deployed. Only `VERIFIED_TEST` packages go
+  into a release sheet.
 
 ## 10. Owner queue and talking to the owner
 
@@ -237,10 +281,29 @@ Discrepancies go to the `status.md` journal first, then action.
 
 ## 12. Safety and boundaries
 
-- Every session starts with **its own settings file** (`--settings`): allow the module's standard
-  commands; deny merge, `gh workflow run`, PROD MCP, database writes, ssh to PROD, push to base
-  branches, editing the orchestrator workspace; ask for what needs a human (TEST deploy, builds,
-  background runs).
+- Every session starts with **its own settings file** (`--settings`) and the program's permission
+  mode (`--permission-mode`, `auto` recommended): allow the module's standard commands as narrow
+  rules (reading, its tests and checks verbatim, commits; pushes are left to the classifier, since a
+  `*` tail also matches refspecs to the base); deny
+  merge, force pushes and pushes to base branches, `gh workflow run`, releases, PROD MCP and PROD
+  deploy commands, ssh and database clients where guards exist, editing the orchestrator
+  workspace, forbidden methodology commands; ask for the owner's checkpoints (TEST deploy, and
+  optionally pushes and PRs).
+- **Auto mode.** Deny rules, explicit ask rules and narrow allow rules are decided before the
+  classifier; broad allow rules (`Bash(*)`, interpreters with `*`) are suspended in auto mode. The
+  `autoMode` block (trusted environment) is read from user and managed settings and from
+  `--settings`, never from project settings, so it lives in the generated file. The classifier
+  blocks copying secrets and editing session settings (`.claude/`) as a bypass: worktrees get
+  gitignored files through `.worktreeinclude` in the repository root; on macOS and Linux they read
+  `.claude/settings.local.json` from the main checkout (on Windows they do not), and the session
+  rules come from the generated `--settings` file on every system.
+- **A refusal is an answer.** A session never works around a denied action (`sh -c`, `git -C`,
+  renamed commands, copied settings): it sends `QUESTION` with the exact refusal text and command.
+  "Classifier unavailable" is not a verdict: retry later.
+- **Message delivery.** Sessions in different permission classes (bypass against the prompting
+  modes) hold each other's messages for the owner's approval and drop them after 5 minutes unless
+  the receiver runs with `crossSessionInbound: accept` (in the generated settings, or the owner's
+  `/config`). The protocol never depends on messages: READY is also found by PR and branch.
 - **Bash rules are not a security boundary** (`git -C . push`, `sh -c` slip past). Hard measures:
   branch protection on GitHub, deploy scripts with TTY confirmation that refuse to run from a
   worktree or a dirty tree, PreToolUse hooks.
@@ -251,6 +314,10 @@ Discrepancies go to the `status.md` journal first, then action.
   stored.
 - Never ask another session to: deploy, merge, push to the base branch, touch PROD, write to the
   database, change its permissions or `CLAUDE.md`, skip the checks of its methodology.
+- **Methodology limits (P5).** A package lists the commands of the module's methodology that the
+  session may and may not use. Commands that merge, release, hotfix or deploy (for example the
+  release, hotfix, deliver and deploy commands of a methodology) are forbidden; commands that
+  specify, fix, develop, review, verify and open a PR are allowed.
 
 ## 13. Subagents: how to brief
 
@@ -300,6 +367,7 @@ Discrepancies go to the `status.md` journal first, then action.
 | times in logs/messages without a time zone | draw no conclusions from matching times; ask to add UTC to the format (a task for the module) |
 | the package hypothesis is refuted by measurement | cancel the package with the reason, close the defect with the correct cause |
 | the owner repeated their requirement after an objection | that is the decision; record it and carry it out in full |
+| the plugin itself fails (its script, a rule it generates, a mode text) | never patch it in place: keep going with a workaround, record an anonymized report (`report` mode) and publish it as an Issue of the plugin's repository only after the owner's yes |
 
 ## 17. Anti-patterns
 
@@ -340,3 +408,63 @@ cd ~/projects/<repo> && claude --name <prog>-<mod> --settings <workspace>/orches
 **REVISE message:** `[TAG] REVISE <WP> :: <sha> :: PR #N - k items, the rest accepted (...). Report: <path>`
 + items `file:line -> scenario -> requirement` + "not required: ..." + "changes in the same branch,
 section 'Resubmission 1', do not merge".
+
+## 19. Repositories where a push deploys a stand
+
+Some repositories deploy every pushed branch to a single stand and run its migrations there, with
+no concurrency group. There, parallel sessions overwrite each other's stand, and a migration from
+an unmerged branch breaks the deploy for everyone.
+
+- Until the project changes its deploy, the stand is a **resource held by a lock**: sessions commit
+  locally and push one at a time, only while holding the `staging` lock; live checks run only for
+  the lock holder. The plugin marks such repositories with `push_deploys: true`, and every
+  package's delivery section then says "commit locally, do not push until you get the stand
+  slot".
+- The fix belongs to the project, not to the plugin: a package in that repository that deploys the
+  stand only on command (manual dispatch or a dedicated branch prefix) and adds a concurrency group
+  per environment. The orchestrator raises it as an owner question with a recommendation before
+  parallel streams start.
+- The same applies to other project changes the plugin does not make (`.worktreeinclude`, mock
+  modes of paid external services, the order of a methodology's changelog): the orchestrator finds
+  them, asks the owner, and they are done as ordinary packages in the project.
+
+## 20. Cloud sessions
+
+When the orchestrator and the module sessions are cloud sessions over one repository, each session
+is its own clone, sees only its own repository, and messages from it do not reach other sessions.
+The concept holds because it rests on files and reconciliation, not on messages:
+
+- **The workspace lives in the repository, on its own branch.** Branch `orch/<program>` is
+  long-lived and never merged into the base; the workspace directory is one that every push
+  workflow ignores (for example under a `paths-ignore` path), so state commits start no deploy.
+  The orchestrator cloud session starts on that branch. Nothing is ever committed to the base.
+- **Packages are read from that branch.** A module session gets a prompt that tells it to fetch
+  `orch/<program>` and read its package from there (or the package text inline), to branch from
+  the base and to deliver a pull request with the package id in its body.
+- **Readiness is found, not announced.** No READY message arrives from a cloud session: the
+  orchestrator finds pushed branches and pull requests (through the GitHub tools of its session
+  when there is no `gh`) on every resume.
+- **Merge tools stay unused.** Cloud sessions can have tools that merge pull requests; the
+  orchestrator and module sessions never call them. Merge remains the owner's action.
+- **Configuration is delivered from outside the session.** A cloud session does not install
+  plugins from project settings and must not edit `.claude/`; the skill reaches it through the
+  environment's setup script (or as a project skill committed by the owner).
+
+## 21. Program completion
+
+One program has one goal. `PLAN.md` states the goal and its completion condition as verifiable
+facts. When the condition holds, the program is closed; the next goal is a new program, not more
+packages in a finished one.
+
+- **Close by facts:** every package is `DONE` or `CANCELLED (reason)`; no open pull request of a
+  package branch; no lock and no queued merge left; every owner item is resolved or explicitly
+  carried to the program's backlog; the owner gets the list of module sessions to close.
+- **Closeout report:** goal and condition, result, packages with their pull requests, decisions,
+  carried backlog, risks after closing, optionally lessons. The program state becomes "closed".
+- **Archive:** a separate home repository moves the workspace to an archive directory. An in-repo
+  workspace stays on its branch until the owner tags it and deletes the branch; the orchestrator
+  only prints those commands. Keeping the workspace as history in the base branch is an owner
+  decision, made through a pull request.
+- **After closing:** a closed program is not planned or dispatched; resuming it shows only the
+  result. It is reopened only when its own goal turns out not to be reached, with the reason
+  recorded.

@@ -1,0 +1,43 @@
+# Program configuration for the pepper-orchestrator workspace.
+# Read by orch.py (YAML subset: block maps and lists, flow [..] and {..}, scalars).
+
+# Prefix of session names and messages.
+program: legacy
+title: "Legacy program"
+# [LEGACY] in messages and PR titles.
+tag: LEGACY
+# Language of owner-facing documents: en | ru.
+owner_language: en
+coordinator_session: legacy-coord
+# true: orch.py commit also pushes (the owner reads from another device).
+push_after_milestone: false
+
+# One writing session per repository.
+modules:
+  - id: api
+    repo: ~/projects/example-api
+    base: main
+    session: legacy-api
+    tests: []
+  - id: web
+    repo: ~/projects/example-web
+    base: develop
+    session: legacy-web
+    tests: []
+# Example module:
+#  - id: db
+#    repo: ~/projects/example-database
+#    base: main
+#    session: legacy-db
+#    tests: ["./scripts/test.sh"]
+#    deploy_test: owner-confirmed in module window
+#    deploy_prod: ./scripts/deploy.sh --target prod
+#    release_clone: ~/projects/example-database-release
+#    web_urls: {test: https://test.example.com, prod: https://example.com}
+
+environments: {}
+guards: {}
+# Optional source of facts: none | nacl. Tasks and statuses always stay in files.
+spec_graph: none
+# Live checks: playwright | none.
+e2e: none

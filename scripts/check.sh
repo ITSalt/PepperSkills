@@ -12,6 +12,9 @@ trap 'rm -rf "$qa_dir"' EXIT
 export PEPPERSKILLS_NETWORK_AUDIT_LOG="$qa_dir/network-attempts.log"
 export PYTHONPATH="$(pwd)/scripts/offline_guard${PYTHONPATH:+:$PYTHONPATH}"
 "$PYTHON" scripts/test-offline-guard.py
+"$PYTHON" scripts/test-private-traces.py
+"$PYTHON" scripts/check-private-traces.py
+"$PYTHON" scripts/test-github-templates.py
 skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" scripts/sync-skill-versions.py --check
 "$PYTHON" scripts/sync-plugin-manifests.py --check
@@ -30,6 +33,7 @@ skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" plugins/pepper-ru-web-compliance/submission/run_tests.py --out "$qa_dir/submission"
 bash scripts/test-install-links.sh
 "$PYTHON" scripts/test-install-docs.py
+"$PYTHON" scripts/test-install-skill.py
 bash scripts/build-skills.sh
 bash scripts/build-plugins.sh
 "$PYTHON" scripts/sync-compat-archives.py --check

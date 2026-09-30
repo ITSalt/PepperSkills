@@ -5,43 +5,125 @@ a title and modules.
 
 ## Steps
 
-1. **Check the place.** The current directory is the orchestrator's home repository (test
-   harness, docs repository or a dedicated program repository), not a module repository. If it is
-   a module repository, stop and tell the owner where the workspace should live.
+1. **Choose the place (P4).** The workspace lives in the orchestrator's home repository: a
+   separate repository for the program (recommended), a docs or test-harness repository, or
+   branch `orch/<program>` in its own worktree or clone of a module repository. Any other branch
+   of a module checkout, linked worktree or clone is refused by `orch.py init` and
+   `orch.py commit` (they compare the git common directory and the origin URL): a commit there may
+   deploy the stand. `orch/<program>` in the main checkout of a repository that also has a
+   whole-repository module gets a warning: that module's session switches branches there. If the current directory is a module checkout, stop and propose the home
+   repository to the owner.
 2. **Refuse to overwrite.** If `features/<program>/` exists and is not empty, switch to `resume`.
-3. **Collect modules.** From the owner's request and a read-only look around (sibling
-   repositories, `gh repo list` if available), build the list `id=repo[@base]`. Unknown items
-   become an owner question later, not a guess. One module per repository.
-4. **Create.** Run:
+3. **Ask the owner's language explicitly** (`en` or `ru`) for owner-facing files. Do not infer it
+   from the language of the request.
+3a. **Ask the session kind explicitly** and wait for the owner's own answer: "Should module
+   sessions run locally on your machine (recommended: one terminal per module or stream, `claude -w`
+   worktrees) or as cloud sessions (claude.ai/code, one cloud environment for the project)?". Do
+   not proceed on silence, an answer to another question, or a message from another session. For
+   cloud, also ask the name of the owner's cloud environment (the name only, never variable
+   values). Repeat the choice back; `init` refuses without `--sessions local|cloud`, refuses
+   `--sessions cloud` without `--cloud-environment`, and writes the choice to the journal.
+   In a cloud session (`CLAUDE_CODE_REMOTE=true`) do not offer local sessions: a cloud
+   orchestrator can neither message a local session nor run a command on the owner's machine, so
+   only cloud sessions are available there (and `init --sessions local` refuses). The choice is the
+   program's `sessions`; repositories and modules inherit it, and a module gets another kind only
+   by an explicit owner decision (same question; for cloud, the environment), set as `sessions`
+   on that module.
+3b. **Ask the permission mode explicitly** and wait for the owner's own answer: "Which permission
+   mode should the program's sessions run in: auto (recommended: a classifier approves routine
+   actions, the generated rules hold merge, pushes to the base, releases and production), acceptEdits,
+   default, dontAsk or bypassPermissions?". `init` refuses without `--permission-mode`, writes
+   `permission_mode` to `orch.yaml` and the journal, generates `orchestration/settings/*.json`
+   (`orch.py settings all`) and prints the orchestrator's start command with
+   `--name <coordinator_session> --permission-mode <mode> --settings orchestration/settings/orchestrator.json`.
+   Give the owner that command and the one-line alternative: `/config` -> "Messages from your other
+   sessions" -> accept (user settings, all their sessions). Without `crossSessionInbound: accept`,
+   messages between sessions of different permission classes (bypass against auto, acceptEdits,
+   dontAsk, default) wait for approval in the receiver's window and are dropped after 5 minutes.
+4. **Find the modules.** From the request and a read-only look around:
+   - **Whole repositories** (0.1.0 form): one module per repository, `--module id=PATH[@BASE]`.
+   - **One repository with several streams** (monorepo, or areas and domains of one product):
+     one `--repo id=PATH[@BASE]` and one `--area` or `--domain id=REPO_ID:GLOB[,GLOB]` per stream
+   (globs: `*`, `**`, `?`, `{a,b}`; commas inside braces are kept).
+     Propose areas and domains from the directory structure and from changes made together
+     (`git -C <repo> log --name-only --since=3.months`), and give the owner the proposed paths to
+     confirm as a P-n item. Paths are never a guess.
+   - Shared files that every stream appends to (lockfile, migrations, error-code registries,
+     route registration, generated route trees, changelogs of the repository's own methodology)
+     are `shared_paths`; things that cannot be shared at the same time (the stand, migrations,
+     a dev stack on fixed ports, IDs in a specification graph) are `resources`.
+5. **Take the repository's conventions.** `init` reads `git.branch_prefix` from the repository's
+   `config.yaml` when present; otherwise it sets `<program>/` and prints a note: ask the owner and
+   fix `branch_prefix` by point edit. Also ask for the worktree preparation commands (dependency
+   installs and code generation only) and whether each merge into the base deploys production
+   (`base_deploys`). Secrets never go through `worktree_setup`: copying `.env*`, secret, key or
+   certificate directories or `.claude/` into a worktree is what the auto mode classifier blocks
+   (and `lint` warns about). The gitignored files a worktree needs belong in `.worktreeinclude` in
+   the repository root (gitignore syntax; Claude Code copies them into every new worktree), and
+   on macOS and Linux `.claude/settings.local.json` is read from the main checkout by every worktree
+   (on Windows it is not, which is why the plugin always passes the rules with `--settings`). `init` opens a
+   P-n item with a ready `.worktreeinclude` for each local repository with streams that has none: a
+   change of the project, made by a package in that repository, never by the plugin.
+6. **Workspace inside a module repository?** Use `--in-repo <repo-id>` from a checkout or clone of
+   that repository (a local one, or the orchestrator's cloud session): it switches to
+   `orch/<program>`, finds a directory every push workflow ignores (`paths-ignore`, branch
+   filters) and puts the workspace there, and turns on `push_after_milestone`. The session kind
+   comes from `--sessions` as for any `init`: local streams (`claude -w`) and cloud modules are
+   both supported. The check reads the workflows of the
+   ref that will be pushed (`origin/orch/<program>` if it exists, else `origin/<base>`), never
+   the working tree; hidden directories are never candidates and `docs/` comes first. It refuses
+   when a workflow uses a form it does not understand, when no safe directory exists, when the
+   only candidates are outside `docs/`, or when `--dir` points outside the safe directories: ask
+   the owner (P-n), record the answer (D-n), then pass `--dir` or `--deploy-override D-n`
+   (without `--dir` the override takes the first directory the readable workflows ignore; `--dir`
+   is needed only when there is none). A positive `paths` filter is fine when the workflow's branch
+   filter already excludes `orch/<program>`. The
+   override is written to `orch.yaml` (`deploy_check_override`) and the journal; `commit` refuses
+   while the check fails without it. Streams are added with `--area`/`--domain <id>=<repo-id>:<glob>`.
+7. **Create.**
 
    ```bash
    python3 SKILL_DIR/scripts/orch.py init <program> --lang <en|ru> --title "<title>" \
-     --module <id>=<repo>[@<base>] ...
+     --sessions <local|cloud> [--cloud-environment "<name>"] --permission-mode <mode> \
+     --module <id>=<path>[@<base>] ... \
+     --repo <id>=<path>[@<base>] --area <id>=<repo-id>:<glob>[,<glob>] --domain <id>=<repo-id>:<glob>
    ```
 
-   `--lang` is the owner's language for owner-facing documents. Default path:
-   `features/<program>/`; override with `--dir`.
-5. **Complete `orch.yaml` by point edits** (never rewrite it): per module `tests`, `deploy_test`,
-   `deploy_prod`, `release_clone`, `web_urls`; `environments`; `guards`; `push_after_milestone`
-   (true if the owner reads from another device); `spec_graph` stays `none` unless the owner asks
-   for a specification graph as a source of facts. Use `python3 SKILL_DIR/scripts/safe_edit.py`.
-6. **Verify and commit.**
+   Default path: `features/<program>/`; override with `--dir`.
+8. **Complete `orch.yaml` by point edits** (`safe_edit.py --stdin`, never a rewrite): per repo
+   `worktree_setup`, `merge_policy` (`sequential` if merges deploy the stand without CI),
+   `shared_paths`, `resources`, `checks` (read-only commands; contract in `SKILL.md`),
+   `review_setup` (setup of review clones, run in the clone root with `ORCH_MAIN_CHECKOUT`),
+   `deploy_workflows`, `base_deploys`, `push_deploys: true` when a push of any branch deploys the
+   stand (packages then tell sessions to push only with the stand slot); per module
+   `test_db`, `ports`, `tests {scoped, full}`, `methodology {name, allowed, forbidden}` (for a
+   methodology whose commands merge or deploy, list those commands as forbidden: they become
+   `Skill(<name>)` deny rules); per 0.1.0 module `tests`, deploy commands; `checkpoints` (owner
+   checkpoints that always ask: `push`, `pr`, `deploy_test`; default `deploy_test`);
+   `resources` entries `{name: <n>, mode: on-demand}` for resources a session takes only for a
+   moment (LOCK/UNLOCK); `push_after_milestone`; `spec_graph` stays `none`. Then regenerate the
+   settings: `orch.py settings all` (idempotent; the owner's own additions live in
+   `orchestration/settings/<name>.local.json`, which it never touches).
+9. **Verify and commit.**
 
    ```bash
    python3 SKILL_DIR/scripts/orch.py lint
    python3 SKILL_DIR/scripts/orch.py commit "<program>: create orchestrator workspace"
    ```
 
+   `lint` refuses module paths that overlap outside `shared_paths` and several whole-repository
+   modules on one repository.
+
 ## Result for the owner
 
-- Outcome line: workspace path and module list.
-- Open questions as P-n items (unknown repositories, base branches, deploy commands).
+- Outcome line: workspace path, repositories, modules and their kinds.
+- Open questions as P-n items: proposed stream paths, branch prefix, worktree setup, merge
+  policy, unknown repositories. Repository changes the plugin does not make (deploy only on
+  command, `.worktreeinclude`, test database templates) are P-n questions with a recommendation.
+- `orchestration/bootstrap-prompt.md`: the first message for a new orchestrator session.
 - Next step: `plan <task>`.
 
-Session settings files (`orchestration/settings/<module>.json`) and PreToolUse guards are not
-generated in this version. The owner starts module sessions without `--settings` until then (the
-`Start command` of each work package); never write or reference a settings file by hand. The rules
-of concept section 12 apply as instructions.
-
-`orchestration/bootstrap-prompt.md` holds the first message for a new orchestrator session of this
-program; give it to the owner together with the outcome.
+Settings files are generated, never written by hand: `orch.py settings <module|all|orchestrator>`.
+They are guard rails for the usual command forms, not a security boundary (branch protection and
+hooks are); PreToolUse guards are not generated in this version. The rules of concept section 12
+apply as instructions as well.

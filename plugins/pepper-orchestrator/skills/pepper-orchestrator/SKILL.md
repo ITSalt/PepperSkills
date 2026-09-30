@@ -1,8 +1,8 @@
 ---
 name: pepper-orchestrator
-description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modes init, plan, resume, owner, decide. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
+description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, resume, owner, decide, close, reopen, report. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.1.0
+  version: 0.8.0
 ---
 
 # Pepper Orchestrator
@@ -34,34 +34,82 @@ action in a session; read other sections when a mode points to them.
    wholesale.
 7. **No secrets** in workspace files, messages or reports; reference where they are stored.
 8. **Product forks go to the owner** as `P-n` with options and a recommendation; answers become
-   `D-n`. Do not decide them inside a work package.
+   `D-n`. Do not decide them inside a work package, and do not write the recommended option into
+   `PLAN.md` as if it were decided.
+9. **One writing session per worktree and branch.** Several streams in one repository run in
+   parallel only when their paths do not overlap outside `shared_paths`; otherwise they queue.
+   A module that is a whole repository keeps the 0.1.0 rule: one writing session per repository.
+10. **Locks before shared work.** Changing a shared path, pushing a migration, verifying on the
+    stand or running the dev stack on fixed ports is done only by the lock holder
+    (`orch.py lock`). With `merge_policy: sequential`, merges go one at a time through the merge
+    queue. An on-demand resource (`{name, mode: on-demand}`) is not taken at dispatch: the session
+    sends `LOCK <resource>`, you run `orch.py lock acquire`, and `UNLOCK` or READY gives it back.
+11. **A defect of the plugin is reported, not patched.** When the plugin's own scripts, rules or
+    mode texts are wrong, keep the program going with a workaround and use the `report` mode: an
+    anonymized record in `bugs/PLUGIN-BUG-<n>.md`, an Issue in `ITSalt/PepperSkills` only after the
+    owner's explicit yes (or `bug_reports: auto` by a decision D-n). Never edit the installed plugin.
+12. **Never in a module's checkout.** The workspace lives in a separate home repository, or on
+    branch `orch/<program>` in its own worktree or clone of a module repository; never on another
+    branch of a module checkout, linked worktree or clone (`init` and `commit` refuse it, comparing
+    the git common directory and the origin URL): a commit there may deploy the stand. An in-repo
+    workspace (`workspace_mode: in-repo`) commits only to its `workspace_branch`, never to the base.
+13. **No merge tools, anywhere.** Never call a merge operation: `gh pr merge`, the GitHub MCP or
+    built-in GitHub tools' merge (for example `mcp__github__merge_pull_request`), auto-merge,
+    or a push to a base branch. Cloud sessions have such tools; the rule is the same as locally.
 
 ## Modes
 
 The mode is the first word of the arguments (`plan add export to reports`) or the intent of the
-request. A short command such as `/pepper-orchestrator:plan` passes the mode explicitly.
+request. A short command such as `/pepper-orchestrator:plan` passes the mode explicitly. Where the
+plugin's commands are not installed (a cloud session that got the skill from a setup script), call
+the skill as `/pepper-orchestrator <mode> <arguments>` or by a phrase.
 
 | Mode | Intent | Instructions |
 |------|--------|--------------|
 | `init <program>` | create the program workspace and `orch.yaml` | [references/modes/init.md](references/modes/init.md) |
 | `plan <task>` | facts -> plan -> work packages -> owner questions | [references/modes/plan.md](references/modes/plan.md) |
+| `dispatch <WP>` | checks, locks, start command or TASK line, `DISPATCHING` | [references/modes/dispatch.md](references/modes/dispatch.md) |
+| `review <WP> [PR]` | automatic findings, reviewer agent or revision diff, verdict, report | [references/modes/review.md](references/modes/review.md) |
+| `verify <WP> --env test\|prod` | deploy run, served version, verify commands, live scenario; `VERIFIED_TEST` / `PROD` | [references/modes/verify.md](references/modes/verify.md) |
 | `resume` | restore from files, reconcile with reality, next step | [references/modes/resume.md](references/modes/resume.md) |
 | `owner [id]` | owner queue as commands; on "done" verify and close | [references/modes/owner.md](references/modes/owner.md) |
 | `decide <text>` | record D-n / A-n / Q-n or open P-n | [references/modes/decide.md](references/modes/decide.md) |
+| `close [result]` | goal reached: completion check by facts, closeout report, archive | [references/modes/close.md](references/modes/close.md) |
+| `reopen <reason>` | make a closed program active again | [references/modes/reopen.md](references/modes/reopen.md) |
+| `report [what]` | defect of the plugin itself: anonymized record, Issue after the owner's yes | [references/modes/report.md](references/modes/report.md) |
 
 Without a clear mode: if a workspace exists, run `resume`; otherwise propose `init`.
 
-Planned modes, not automated in this version: `dispatch`, `review`, `verify`, `release`, `retro`.
-When the program needs them, follow the concept directly: review per section 8, verify per
-section 9, release per section 15. Record every result through `scripts/orch.py` as usual.
+**Session kind and models.** The owner chooses at init whether module sessions run locally
+(recommended) or in the cloud (with a named cloud environment); a cloud orchestrator works only
+with cloud sessions. Every package carries a recommended implementer model and effort (default
+`sonnet`; `opus` + `high` for risky packages; `review` suggests a restart on the escalation model
+from round 3). Locally never suggest `/model <name>` with an argument: it becomes the owner's
+default for all new sessions.
 
-**Dispatch in this version:** give the owner the `Start command` from section 5 of the work
-package, exactly as written, then `orch.py set <WP> status DISPATCHING`. The command has no
-`--settings`: session settings files are not generated before a later version. Never add
-`--settings`, never point to a settings file and never invent one (a missing settings file makes
-the session fail to start). The command shape in concept section 18 applies only once
-`orchestration/settings/` exists. Until then the rules of concept section 12 reach the session as
-instructions in the work package.
+**One program, one goal.** `PLAN.md` states the goal and its completion condition. When the
+condition holds, close the program (`close`); the next goal is a new program (`init`), not more
+packages in a finished one. A closed program refuses `plan`, `dispatch`, `new-wp`, `set`,
+`decide`, `owner add`, `review-start`, `lock` and `merge` changes; `reopen` is only for its own
+unfinished goal. `ORCH_NO_GH=1` makes the scripts ignore `gh` (offline checks).
+
+Planned modes, not automated in this version: `release`, `retro`. When the program needs them,
+follow the concept directly: release per section 15. Verification after a merge or deploy is the
+`verify` mode (`orch.py verify`, concept section 9), whoever merged or deployed. Record every result through `scripts/orch.py` as usual.
+
+**Session settings.** `orch.py settings <module|all|orchestrator>` generates
+`orchestration/settings/<name>.json` from `orch.yaml`: narrow allow rules (reading, the module's
+tests, checks and worktree setup verbatim, commits; no allow for `git push`), deny rules
+(merge, pushes to the base, force pushes, `gh workflow run`, `gh release`, production MCP servers and
+deploy commands, the orchestrator workspace, forbidden methodology commands as `Skill(<name>)`),
+owner checkpoints as ask rules, `autoMode.environment` and `crossSessionInbound: accept`. `dispatch`
+puts `--permission-mode <permission_mode> --settings <absolute path>` into every local start command
+and refuses without the file. On Windows rule paths take the documented form `//c/...`, and
+commands must be written with forward slashes (`python3 C:/.../scripts/orch.py`; `python` and
+`py -3` forms are allowed too), since Bash rules match the command text. Never write or edit a settings file by hand, never copy settings into
+a worktree; the owner's own additions live in `<name>.local.json`. A session that is denied never
+works around it: it sends `QUESTION` with the exact refusal text. Rules are guard rails for the
+usual command forms, not a security boundary: branch protection and hooks are.
 
 ## Tools
 
@@ -74,7 +122,7 @@ python3 SKILL_DIR/scripts/orch.py --help
 
 | Command | Use |
 |---------|-----|
-| `init <program> --lang en\|ru --module id=REPO[@BASE]` | workspace from `templates/` |
+| `init <program> --lang en\|ru --sessions local\|cloud [--cloud-environment NAME] [--module id=REPO[@BASE]] [--repo id=PATH[@BASE] --area\|--domain id=REPO_ID:GLOB,...]` | workspace from `templates/` |
 | `new-wp <module> <slug> --title "..."` | next work package file + `DRAFT` row |
 | `set <WP> status <STATUS> --evidence "..."` | status change + journal line |
 | `set <WP> pr\|session\|title "..."` | edit one cell |
@@ -85,9 +133,53 @@ python3 SKILL_DIR/scripts/orch.py --help
 | `decide D\|A\|Q "..." [--closes P-n]` | append to `decisions.md` |
 | `lint` | integrity: rows vs files, IDs, dates, journal order, secrets, empty files |
 | `commit "<message>"` | lint, commit only the workspace, push if configured |
+| `dispatch <WP> [--live] [--dry-run]` | checks READY, dependencies, writers, overlaps, locks; takes locks; prints the start command |
+| `overlap [--planned] [--no-checks]` | declared and actual path overlaps, undeclared or unlocked shared paths (git reads only); also runs the repository's `checks` commands unless `--no-checks` |
+| `lock acquire\|release\|list <name> --wp <WP>` | locks on shared paths (colliding by glob) and resources (only names from `resources`); busy -> queued; a released lock with a queue stays as a free row |
+| `merge add\|done\|drop\|list <WP>` | merge queue per repository; `done` releases path locks |
+| `worktrees` | worktrees of every repository: branch, dirty, ahead/behind, package (read-only) |
+| `upgrade` | add the locks and merge queue tables to a 0.1.0 `status.md` |
+| `ready [--json]` | dispatched packages whose branch is on origin (READY without messages) |
+| `model <WP> <model> [--effort E] --reason "..."` | implementer model and effort in the package header and its start command |
+| `cloud-env "<name>" [--module id]` | record the owner's cloud environment name (journaled) |
+| `owner carry <id> "<reason>"` | move an open owner item to `backlog.md` |
+| `close --check \| --apply [--summary "..."] [--prs-verified "<concrete evidence>"] [--goal-confirmed "..."]` | completion check by facts; closeout report, `state: closed`, archive (a second `--apply` finishes an unfinished close) |
+| `reopen "<reason>"` | `state: active` again, journal line |
+| `review-start <WP> --pr URL --ref <PR head sha> [--since OLD --round N] [--no-fetch]` | automatic review findings, report skeleton, clone command; status `REVIEW` |
 
-`scripts/safe_edit.py FILE --old-file A --new-file B` replaces exactly one fragment of any
-workspace file; use it for prose sections (`PLAN.md`, work package bodies, `orch.yaml`).
+`scripts/review_clone.sh --repo <url|path> --sha <sha> [--setup CMD]... [--test CMD]... [--keep]`
+clones at a SHA into a new temporary directory, runs setup and tests, and deletes the clone
+(`--keep` for mutations, then `--cleanup <dir>`). It never pushes. Setup commands come from the
+repository's `review_setup` and run in the clone root with `ORCH_MAIN_CHECKOUT` set.
+
+`scripts/safe_edit.py FILE --stdin` replaces fragments of any workspace file, each exactly once,
+all or nothing, from one or more stdin blocks (no temporary files). Never put a marker line
+inside a fragment; `lint` rejects leftover marker lines:
+
+```bash
+python3 SKILL_DIR/scripts/safe_edit.py <file> --stdin <<'EOF'
+<<<<<<< OLD
+exact text to replace
+=======
+new text
+>>>>>>> NEW
+EOF
+```
+
+Use it for prose sections (`PLAN.md`, work package bodies, `orch.yaml`).
+
+Paths in `orch.yaml` and work packages are globs: `*` (within one directory), `**` (any depth),
+`?` (one character), `{a,b}` (alternatives, may nest); `[` and `]` are literal.
+
+Repository `checks` are the owner's commands, run by `overlap` and `review-start` through the
+shell in the repository's main checkout, with `ORCH_BASE_REF` (base ref) and `ORCH_BRANCHES` (active package
+branches, space separated) in the environment and a 300-second timeout; a non-zero exit is a
+finding. They must only read (no checkout, no writes, no network side effects).
+
+`orch.yaml` holds `repos` (shared repositories: base, branch prefix, worktree setup, merge policy,
+shared paths, resources, checks, `push_deploys`) and `modules` (`kind: repo` with `repo: <path>`, the 0.1.0 form,
+or `kind: area|domain` with `repo: <repos id>` and `paths`). The commented template in the
+workspace lists every key.
 
 Message format, message types and the work package status vocabulary are in
 [references/protocol.md](references/protocol.md). The owner answer shape and the R/P/D line
@@ -105,12 +197,44 @@ owner has not seen. Use the owner's language; owner-facing files use `owner_lang
 The core (roles, files, protocol, templates, `scripts/`) works on any agent stack that can read
 files and run Python. Client-specific capabilities are adapters:
 
-- **Subagents** for fact finding and review: use them where the client has them; otherwise do the
-  same work yourself, read-only, and keep only conclusions in context.
+- **Subagents** for fact finding and review: the plugin ships `orchestrator-scout` (read-only
+  facts across repositories; `model: opus`) and `orchestrator-reviewer` (read-only PR review with a
+  disposable clone and mutations; no `model` field, it runs on the orchestrator's model). Where the
+  client has no plugin agents (cloud sessions, a skill installed alone), give the same brief to a
+  general subagent, passing `model: opus` for the scout brief, or do the work yourself, read-only,
+  and keep only conclusions in context.
 - **Cross-session messaging** (Claude Code `SendMessage` / `ListAgents`): where it is missing, the
   owner relays the one-line pointers and `resume` learns READY from `gh pr list`.
-- **Session start commands** (`claude --name ...`): elsewhere, give the owner the start prompt
-  from the work package to paste into a new session in the module repository.
+- **Session start commands** (`claude --name ...`, `claude -w <name>` for a stream worktree):
+  elsewhere, the owner creates the worktree (`git worktree add <dir> -b <branch> origin/<base>`)
+  and pastes the start prompt from the work package into a new session there.
+
+## Cloud sessions
+
+For programs run in cloud sessions (claude.ai/code): every session is its own clone, sees only its
+own repository, and its messages do not reach other sessions.
+
+- **Workspace in the repository:** `orch.py init <program> --in-repo <repo-id> --sessions cloud
+  --cloud-environment "<name>" ...` switches the
+  checkout to `orch/<program>` (never the base), puts the workspace in a non-hidden directory every
+  push workflow ignores (judged from the workflows of the pushed ref, `docs/` first), and commits
+  and pushes state only to that branch. A workflow form the check does not understand, or an
+  unsafe `--dir`, is refused; only an owner decision passed as `--deploy-override D-n` overrides
+  it. Start the orchestrator cloud session on `orch/<program>`.
+- **Modules as cloud sessions** (the program's `sessions: cloud`, or a module's own after an owner
+  decision): `dispatch` prints a block for a new cloud session (environment, repository and
+  branch, model and effort, a prefill link) and the prompt instead of a terminal command. The session reads the package with
+  `git fetch origin orch/<program> && git show origin/orch/<program>:<path>` (or gets the text
+  inline with a separate workspace or `--inline`), branches from the base and delivers a PR whose
+  body starts with the package id. No message back. Commit and push the package before
+  `dispatch`; it refuses otherwise. With `push_deploys`, the package holds the `staging` lock.
+- **Readiness:** `orch.py ready` lists dispatched packages whose branch is on origin; find the PR by
+  head branch and by package id with `gh` when present, otherwise with the session's GitHub tools
+  (list or search pull requests, read workflow runs). Never merge with them (hard rule 13).
+- **No writes to `.claude/`** in a cloud session: project skills and settings are committed by the
+  owner or a local session.
+- The skill needs no plugin: it runs from `~/.claude/skills/pepper-orchestrator` installed by the
+  environment's setup script (plugin README, "Cloud sessions"); `SKILL_DIR` is its base directory.
 
 ## Optional specification graph
 

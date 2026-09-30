@@ -85,6 +85,33 @@ When you add a skill, also add a row to the **Skills** table in the root
 5. **Review.** A maintainer will respond within a few days. Changes may be
    requested; please rebase rather than merge `main` into your branch.
 
+**Merge rule.** Anyone may open a pull request, agents included. Only the
+maintainer merges into `main`, after review: `.github/CODEOWNERS` requests the
+maintainer's review on every pull request, and branch protection on `main`
+requires a pull request and green checks.
+
+## Report a defect from an agent
+
+Agents that hit a defect of a plugin report it instead of patching the plugin in
+place. In pepper-orchestrator this is the `report` mode (`orch.py report
+--check`, then `--apply --confirmed` after the owner's explicit yes): it collects
+the plugin version, Claude Code, OS, Python, shell, the command and the first
+lines of its output, replaces every name, path and address of the reporter's
+program with placeholders, scans the result for private traces, searches
+existing Issues by a fingerprint (plugin, version, first error line) and either
+comments on a match or opens an Issue with the "Plugin defect (agent report)"
+template and the labels `bug`, `from-agent`, `needs-triage`. Other plugins use
+the same template by hand. Security problems go through `SECURITY.md`, never a
+public Issue.
+
+## Fix from an agent
+
+A fix comes as a pull request from a fork: a separate developer session works in
+the fork (branch from `main`, `bash scripts/check.sh` green, no private traces),
+never the orchestrator session of a program. The pull request starts with
+`Fixes #N` for the Issue it closes and follows the PR template. The maintainer
+reviews and merges.
+
 ## Style
 
 - **Markdown only.** No HTML except where unavoidable.
@@ -95,6 +122,22 @@ When you add a skill, also add a row to the **Skills** table in the root
 - **Line length:** soft-wrap at ~80–100 columns in long-form prose; do not
   hard-wrap code blocks or YAML frontmatter.
 - **Links** between files must be relative (`./foo.md`, `../bar/baz.md`).
+
+## No private traces
+
+This repository is public. Never commit names, addresses, domains or paths of private
+projects, and never commit absolute paths of your machine (home directories on macOS,
+Linux or Windows): use repository-relative paths, `~/projects/example` placeholders and
+reserved example domains (`example.com`, `app.example.com`, RFC 2606). This covers
+documentation, test fixtures, logs, commit messages, pull request bodies and built
+archives.
+
+`scripts/check-private-traces.py` (part of `scripts/check.sh` and CI) fails on absolute
+home-directory paths in every tracked text file and in the text members of tracked
+`.skill`/`.zip` archives. Keep your own list of private terms (project names, domains)
+in `.private-terms.local` in the repository root, one term per line with `#` comments:
+the file is gitignored, and when it exists the same check also fails on those terms, so
+the names themselves never enter the public tree.
 
 ## Reporting security issues
 
@@ -145,7 +188,7 @@ to chat content must update the reviewed golden differences in
 `plugin.json` owns the shipped version; `sync-skill-versions.py` updates only
 `metadata.version` in the corresponding `SKILL.md` frontmatter. Current product
 versions are 2.0.1 for Creative Mode, 2.3.0 for Compliance, 2.5.1 for Prompt
-Engineer and 0.1.0 (preview, unreleased) for Orchestrator.
+Engineer and 0.8.0 (preview, unreleased) for Orchestrator.
 Future release tags use `<name>-v<version>`; existing historical tags
 remain unchanged.
 
