@@ -945,12 +945,27 @@ def escalate_on_revise(ws, wp):
 PR_NUMBER = re.compile(r'^#?(\d+)$')
 
 
+def forge_host(host):
+    """True for a host a pull request URL can live on: not loopback, private, link-local or dotless."""
+    import ipaddress
+    host = (host or '').split(':')[0].lower()
+    if not host or host == 'localhost' or '.' not in host:
+        return False
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+    return not (address.is_loopback or address.is_private or address.is_link_local)
+
+
 def pr_from_number(repo, number):
-    """The PR URL of number in the repository's hosted origin, or None."""
+    """The PR URL of number in the repository's hosted origin (owner/name from origin_name), or None when
+    the origin is not a forge (for example the loopback git proxy of a cloud session)."""
     origin = streams.normalized_origin(repo.local) if repo.local.is_dir() else None
-    if not origin or origin.startswith('/') or origin.count('/') < 2:
+    name = streams.origin_name(repo)
+    if not origin or origin.startswith('/') or not name or not forge_host(origin.split('/')[0]):
         return None
-    return f'https://{origin}/pull/{number}'
+    return f'https://{origin.split("/")[0]}/{name}/pull/{number}'
 
 
 def pr_cell(ws, wp, value):
@@ -963,8 +978,9 @@ def pr_cell(ws, wp, value):
     head, note = (match.group(1), match.group(2)) if match else (value, None)
     if head is None and note:
         return note
-    if head and re.fullmatch(r'https?://\S+/pull/\d+', head):
-        return head + (f' {note}' if note else '')
+    url = re.match(r'https?://\S+?/pull/\d+', head or '')  # .../pull/87/files, ?w=1, #issuecomment-1
+    if url:
+        return url.group(0) + (f' {note}' if note else '')
     number = PR_NUMBER.match(head or '')
     if number:
         _, module, _ = wp_context(ws, wp)
@@ -2023,6 +2039,8 @@ def cmd_merge(args):
     if args.action == 'add':
         if any(q['wp'] == args.wp and q['status'] == 'queued' for q in rows):
             raise OrchError(f'{args.wp} is already in the merge queue')
+        if args.pr:  # validated before anything is written
+            args.pr = pr_cell(ws, args.wp, args.pr)
         same = [q for q in rows if q['repo'] == module.repo.id and q['status'] == 'queued']
         after = same[-1]['wp'] if same and module.repo.merge_policy == 'sequential' else '—'
         number = max([int(q['n']) for q in rows if q['n'].isdigit()], default=0) + 1
@@ -2149,6 +2167,8 @@ def cmd_review_start(args):
     ws.require_open('review-start')
     wp = args.wp
     r, module, meta = wp_context(ws, wp)
+    if args.pr:  # validated and normalized before any file or table is written
+        args.pr = pr_cell(ws, wp, args.pr)
     if not module.repo.local.is_dir():
         raise OrchError(f'{module.repo.path} is not available locally: clone it (read-only) or pass --workspace '
                         'from a place where it is')
@@ -2255,7 +2275,7 @@ def pr_url(value, repo=None):
     match = re.search(r'https?://\S+/pull/\d+', value or '')
     if match:
         return match.group(0)
-    number = re.match(r'^\s*#?(\d+)\b', value or '')
+    number = re.fullmatch(r'\s*#?(\d+)\s*(\(accepted [0-9a-f]{7,40}\))?\s*', value or '')
     return pr_from_number(repo, number.group(1)) if number and repo is not None else None
 
 
@@ -2704,13 +2724,14 @@ def cmd_accept(args):
     if module.repo.local.is_dir():
         full = streams.git(module.repo.local, 'rev-parse', '--verify', '-q', f'{sha}^{{commit}}').stdout.strip()
         sha = full or sha
+    # The PR URL is extracted by search, so an older free-text cell never refuses the acceptance.
+    url = pr_url(r['pr'], module.repo)
+    note = f'{url} (accepted {sha[:10]})' if url else f'(accepted {sha[:10]})'
     if r['status'] != 'ACCEPTED':
         cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='status', text='ACCEPTED', quiet=True,
                                    evidence=f'{sha[:10]}; {rel}'))
-    base_pr = re.sub(r'\s*\(accepted [0-9a-f]+\)', '', r['pr']).strip()
-    note = f'{base_pr} (accepted {sha[:10]})' if base_pr not in ('', '—') else f'(accepted {sha[:10]})'
-    cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='pr', text=note, quiet=True, evidence=None))
     ws.journal(f'{args.wp}: accepted at {sha}', wp=args.wp, evidence=f'report {rel}')
+    cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='pr', text=note, quiet=True, evidence=None))
     print(f'{args.wp}: ACCEPTED at {sha[:10]} (report {rel})')
     return 0
 
@@ -3213,7 +3234,7 @@ def close_blockers(ws, prs_verified=None):
             unverified.append(f'{wp}: {error}')
             continue
         branch = meta['branch']
-        url = r['pr'] if re.match(r'https?://', r['pr'] or '') else None
+        url = pr_url(r['pr'], module.repo)
         if url and gh:
             state = subprocess.run(['gh', 'pr', 'view', url, '--json', 'state', '-q', '.state'], encoding='utf-8',
                                    errors='replace', capture_output=True)

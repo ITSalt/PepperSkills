@@ -18,16 +18,24 @@ Hotfix for three field reports (Issues #20, #21, #24).
   `stdout = stdout[0] if stdout else None`. On POSIX the same decoding happens in the main thread and
   raises instead, which is why it did not reproduce there. Fixed by the UTF-8 reading above; besides,
   `parse_push_trigger` refuses a non-string text (`DeployFormError`: "could not be read") and
-  `deploy_safe_dirs` offers no directory at all when a workflow could not be read. A test reproduces
-  the thread mechanism.
+  `deploy_safe_dirs` offers no directory at all when a workflow could not be read, or contains bytes
+  that are not UTF-8 (a replaced character never reaches a candidate name). The fix is guarded by the
+  pipe tests (cp1252 output encoding, C locale); a separate selftest block only illustrates the
+  CPython thread behaviour and would pass on 0.9.0 too.
 - **#21, escalation.** `review-start --round 3+` prints and writes a conditional line ("if the same
   REVISE items are still open after this review, restart ..."); the owner item opens only when the
   package is set to `REVISE` again from round 3 (the round comes from the newest review report),
   once per open item.
-- **#24, PR cell.** `set <WP> pr` takes a pull request URL or a number (`#87`, `87`), expanded by the
-  module repository's hosted origin; anything else, or a number without a hosted origin, is refused
-  with an example. `pr_url()` expands such numbers too, so cells written before 0.9.1 work as they
-  are. `merge add --pr` also fills an empty PR cell of the package.
+- **#24, PR cell.** `set <WP> pr` takes a pull request URL (a tail such as `/files`, `?w=1` or
+  `#issuecomment-…` is cut) or a number (`#87`, `87`), expanded to `https://<host>/<owner>/<repo>/pull/<n>`
+  from `origin_name()` of the module repository, only when the host is a forge (never loopback or a
+  private address such as the cloud git proxy); anything else is refused with an example. `pr_url()`
+  expands a cell that is exactly such a number, so cells written before 0.9.1 work as they are.
+  `review-start --pr`, `merge add --pr` and `accept` validate and normalize the value before anything
+  is written (no partial state); `accept` extracts the URL from an older cell by search and never
+  refuses because of it; `merge add --pr` also fills an empty PR cell; `close --check` reads numbered
+  cells too.
+- The self-test reads child output as UTF-8 itself, so it runs under a non-UTF-8 locale too.
 
 ## 0.9.0 — preview, unreleased
 

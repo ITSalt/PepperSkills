@@ -885,6 +885,8 @@ def parse_push_trigger(text, name):
     list): it only matters when the push runs on the workspace branch at all."""
     if not isinstance(text, str):
         raise DeployFormError(f'{name}: could not be read (git returned no text)')
+    if '\ufffd' in text:  # bytes that are not UTF-8: a name read wrongly must never become a candidate
+        raise DeployFormError(f'{name}: not valid UTF-8, could not be read reliably')
     lines = text.split('\n')
     for line in lines:
         code = '' if line.lstrip().startswith('#') else line.split(' #')[0]
@@ -984,7 +986,7 @@ def deploy_safe_dirs(repo_root, branch, program, ref):
     if not texts:
         notes.append(f'{ref} has no .github/workflows: no push workflow runs')
     for name, text in sorted(texts.items()):
-        if not isinstance(text, str):
+        if not isinstance(text, str) or '\ufffd' in text:
             unreadable = True
         try:
             on_push, branches, branches_ignore, paths_ignore, paths = parse_push_trigger(text, name)
