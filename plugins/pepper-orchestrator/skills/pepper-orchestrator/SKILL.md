@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, resume, owner, decide, close, reopen. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.7.0
+  version: 0.7.1
 ---
 
 # Pepper Orchestrator
@@ -99,7 +99,9 @@ tests, checks and worktree setup verbatim, commits; no allow for `git push`), de
 deploy commands, the orchestrator workspace, forbidden methodology commands as `Skill(<name>)`),
 owner checkpoints as ask rules, `autoMode.environment` and `crossSessionInbound: accept`. `dispatch`
 puts `--permission-mode <permission_mode> --settings <absolute path>` into every local start command
-and refuses without the file. Never write or edit a settings file by hand, never copy settings into
+and refuses without the file. On Windows rule paths take the documented form `//c/...`, and
+commands must be written with forward slashes (`python3 C:/.../scripts/orch.py`; `python` and
+`py -3` forms are allowed too), since Bash rules match the command text. Never write or edit a settings file by hand, never copy settings into
 a worktree; the owner's own additions live in `<name>.local.json`. A session that is denied never
 works around it: it sends `QUESTION` with the exact refusal text. Rules are guard rails for the
 usual command forms, not a security boundary: branch protection and hooks are.

@@ -9,7 +9,8 @@ guard rails for the usual command forms, not a security boundary: branch protect
 are. Standard library only. Imported by orch.py.
 """
 import json
-from pathlib import Path
+import os
+from pathlib import Path, PureWindowsPath
 import re
 import shlex
 
@@ -28,8 +29,54 @@ SAMPLE_ENV = re.compile(r'\.(example|sample|template|dist)$')
 RULE = re.compile(r'^(Bash|Read|Edit|Skill|WebFetch)\((.+)\)$', re.S)
 MCP_RULE = re.compile(r'^mcp__[A-Za-z0-9_-]+(__[A-Za-z0-9_*-]+)?$')
 WORKTREEINCLUDE_HINT = ('move it to `.worktreeinclude` in the repository root (gitignore syntax: Claude Code copies '
-                        'the listed gitignored files into every new worktree); `.claude/settings.local.json` is '
-                        'read from the main checkout by every worktree and is never copied')
+                        'the listed gitignored files into every new worktree); never copy `.claude/`: on macOS and '
+                        'Linux worktrees read `.claude/settings.local.json` from the main checkout, on Windows they '
+                        'do not, and session rules come from the generated --settings file on every system')
+
+
+class PathError(ValueError):
+    """A path that cannot become a permission rule (relative, or a Windows network path)."""
+
+
+SHELLS = ('bash', 'powershell')
+
+
+def is_windows():
+    """The host kind; tests replace this function to generate Windows rules on any machine."""
+    return os.name == 'nt'
+
+
+def real_path(path):
+    """The absolute real path of a local directory. On a simulated Windows host (tests) the string is
+    taken as a Windows path as it is."""
+    if is_windows() and os.name != 'nt':
+        return PureWindowsPath(str(path))
+    return Path(path).resolve()
+
+
+def abs_rule_path(path):
+    """The absolute form of a path in Read/Edit rules: //<path> on macOS and Linux; on Windows the
+    documented POSIX form //<drive letter in lower case>/<path with forward slashes>
+    (C:\\projects\\x -> //c/projects/x). Network (UNC) paths and relative paths are refused."""
+    text = str(path)
+    if is_windows():
+        win = PureWindowsPath(text)
+        if text.startswith(('\\\\', '//')) or win.drive.startswith('\\\\'):
+            raise PathError(f'{text}: network (UNC) paths cannot be used in permission rules; map the share to a '
+                            'drive letter or work from a local clone')
+        if not win.drive or not win.root:
+            raise PathError(f'{text}: not an absolute path with a drive letter')
+        rest = '/'.join(win.parts[1:])
+        return f'//{win.drive[0].lower()}/{rest}'.rstrip('/')
+    if not text.startswith('/'):
+        raise PathError(f'{text}: not an absolute path')
+    return '/' + text.rstrip('/')
+
+
+def command_path(path):
+    """A path as it appears in a command a rule must match: forward slashes on Windows."""
+    text = str(path)
+    return PureWindowsPath(text).as_posix() if is_windows() else text
 
 
 def settings_path(root, name):
@@ -128,9 +175,8 @@ def mcp_server(name):
 
 
 def path_rule(tool, path, glob='**'):
-    """Read(//abs/path/**): a double slash anchors at the filesystem root."""
-    text = str(path).rstrip('/')
-    return f'{tool}(/{text}/{glob})' if text.startswith('/') else f'{tool}({text}/{glob})'
+    """Read(//abs/path/**): a double slash anchors at the filesystem root (see abs_rule_path)."""
+    return f'{tool}({abs_rule_path(path)}/{glob})'
 
 
 def bash_rule_matches(rule, command):
@@ -212,12 +258,13 @@ def _unique(items):
 def environment(repos):
     lines = ['$defaults']
     for repo in repos:
-        origin = streams.normalized_origin(repo.local) if repo.local.is_dir() else None
+        local = real_path(repo.local)
+        origin = streams.normalized_origin(repo.local) if os.path.isdir(str(local)) else None
         if origin and not origin.startswith('/'):
             lines.append(f'Trusted repo: {origin}')
             lines.append(f'Source control: {"/".join(origin.split("/")[:2])}')
         else:
-            lines.append(f'Trusted repo: local git repository {repo.local.resolve()}')
+            lines.append(f'Trusted repo: local git repository {local}')
     return _unique(lines)
 
 
@@ -259,8 +306,8 @@ def module_settings(config, workspace_root, module, in_repo=False):
     repo = module.repo
     notes = []
     points = checkpoints(config, module)
-    local = repo.local.resolve()  # rules match real paths (a symlinked /var is /private/var)
-    data = _template('module', {'REPO': '/' + str(local), 'WORKSPACE': '/' + str(Path(workspace_root).resolve())})
+    local = real_path(repo.local)  # rules match real paths (a symlinked /var is /private/var)
+    data = _template('module', {'REPO': abs_rule_path(local), 'WORKSPACE': abs_rule_path(real_path(workspace_root))})
     perms = data['permissions']
     allow, ask, deny = perms['allow'], perms['ask'], perms['deny']
     for pattern in module.paths:
@@ -304,13 +351,17 @@ def module_settings(config, workspace_root, module, in_repo=False):
 def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, workspace_branch=None):
     """Settings for the orchestrator session: reading everything it reconciles, its own scripts,
     no merge, no deploy, no push to any base."""
-    root = Path(workspace_root).resolve()
-    data = _template('orchestrator', {'WORKSPACE': '/' + str(root), 'SKILL_DIR': str(Path(skill_dir).resolve())})
+    root = real_path(workspace_root)
+    scripts = command_path(real_path(skill_dir))
+    data = _template('orchestrator', {'WORKSPACE': abs_rule_path(root), 'SKILL_DIR': scripts})
     perms = data['permissions']
+    if is_windows():  # `python3` may be missing on Windows: the forms the py launcher and python accept
+        for script in ('orch.py', 'safe_edit.py'):
+            perms['allow'] += [f'Bash(python {scripts}/scripts/{script} *)', f'Bash(py -3 {scripts}/scripts/{script} *)']
     all_repos = list({m.repo.key: m.repo for m in modules.values()}.values())
     all_repos += [r for r in repos.values() if r.key not in {x.key for x in all_repos}]
     for repo in all_repos:
-        perms['allow'].append(path_rule('Read', repo.local.resolve()))
+        perms['allow'].append(path_rule('Read', real_path(repo.local)))
         if streams.has_remote(repo):
             perms['deny'].extend(_base_push_rules(repo.base))
     for module in modules.values():
@@ -336,8 +387,22 @@ def apply_flags(command, settings, mode):
         return command
     head = command.split(' "', 1)[0]
     anchor = min((head.find(a) for a in (' --model ', ' --effort ', ' --name ') if head.find(a) >= 0))
-    flags = (f' --permission-mode {mode}' if mode else '') + f' --settings {shlex.quote(str(settings))}'
+    flags = (f' --permission-mode {mode}' if mode else '') + f' --settings {shlex.quote(command_path(settings))}'
     return command[:anchor] + flags + command[anchor:]
+
+
+def shell_command(command, shell):
+    """A start command `cd <dir> && claude ...` in the owner's shell: PowerShell gets
+    `cd "<dir with forward slashes>"; claude ...` (idempotent; bash is unchanged)."""
+    if shell != 'powershell':
+        return command
+    match = re.match(r'^cd (.+?) && (claude .*)$', command, re.S)
+    if not match:
+        return command
+    where = match.group(1).strip()
+    if len(where) >= 2 and where[0] == where[-1] and where[0] in '\'"':
+        where = where[1:-1]
+    return f'cd "{PureWindowsPath(where).as_posix() if re.match(r"^[A-Za-z]:", where) else where}"; {match.group(2)}'
 
 
 def render(data):

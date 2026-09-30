@@ -8,6 +8,8 @@ state: active
 # Session kind of module sessions, the owner's explicit choice at init: local (recommended) | cloud.
 # Repositories and modules inherit it; a module may set its own `sessions` after an owner decision.
 sessions: local
+# Shell of the start commands printed by init and dispatch: bash (default) | powershell (asked on
+# Windows: `cd "<dir>"; claude ...`). Written as `shell: powershell` only when chosen.
 # Permission mode of the program's sessions, the owner's explicit choice at init: auto (recommended) |
 # acceptEdits | default | dontAsk | bypassPermissions. dispatch passes it with --permission-mode.
 permission_mode: {{PERMISSION_MODE}}
@@ -68,7 +70,8 @@ repos: []
 # worktree_setup: commands a session runs in its new worktree - dependency installs and code generation
 # only. Never copy .env files, secret/key/cert directories or .claude/ there: list the gitignored files
 # in `.worktreeinclude` in the repository root (Claude Code copies them into every new worktree), and
-# `.claude/settings.local.json` is read from the main checkout by every worktree.
+# on macOS and Linux `.claude/settings.local.json` is read from the main checkout by every worktree
+# (not on Windows: the session rules always come from the generated --settings file).
 # resources: a name is held by a package from dispatch until merge or verification (mode package);
 # {name: <n>, mode: on-demand} is taken only when the session sends LOCK <n> (orch.py lock acquire)
 # and given back on UNLOCK or READY.

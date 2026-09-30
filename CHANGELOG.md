@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.7.1 (preview)
+
+Windows fix: settings files use the documented Windows form of rule paths (`//c/...`), so
+`init`, `settings` and `dispatch` work on Windows again; PowerShell start commands on request.
+Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.7.0 (preview)
 
 Verification by facts: `verify` mode and `orch.py verify <WP> --env test|prod` (deploy run for the

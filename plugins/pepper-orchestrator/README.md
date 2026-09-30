@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.7.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
+> **Preview (0.7.1).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
 > `close`, `reopen`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
@@ -35,7 +35,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:close [result]` | goal reached: completion check, closeout report, archive |
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 
-Version 0.7.0 is a preview (stages 2a-2e, 3a, 3b). Modules can be whole repositories or areas and
+Version 0.7.1 is a preview (stages 2a-2e, 3a, 3b). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
@@ -122,7 +122,8 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
 - **Worktrees without secrets.** `worktree_setup` holds dependency installs and generation only.
   The gitignored files a worktree needs go into `.worktreeinclude` in the repository root (Claude
   Code copies them into each new worktree; `init` proposes its content as an owner question), and
-  `.claude/settings.local.json` is read from the main checkout by every worktree. `lint` warns about
+  on macOS and Linux `.claude/settings.local.json` is read from the main checkout by every worktree (on
+  Windows it is not; the session rules always come from `--settings`). `lint` warns about
   `cp`/`rsync`/`ln` of `.env*`, secret, key or certificate directories and `.claude/`.
 - **On-demand locks.** A resource `{name: ci-gate, mode: on-demand}` is not held for the whole
   package: the session sends `LOCK ci-gate`, the orchestrator takes it with `orch.py lock acquire`
@@ -130,6 +131,20 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
   than `lock_stale_hours` (default 4).
 - Rules are guard rails for the usual command forms (`git -C . push` is not `git push`), not a
   security boundary: branch protection and hooks are.
+
+## Windows
+
+- **Rule paths.** Settings files use the form Claude Code documents for Windows: paths are normalized
+  to POSIX before matching, so `C:\projects\x` becomes `//c/projects/x` in `Read`/`Edit` rules.
+  Network (UNC) paths are refused: map the share to a drive letter or work from a local clone.
+- **Commands.** Bash rules match the command text, so run the scripts with forward slashes, exactly
+  as the rules write them: `python3 C:/.../scripts/orch.py ...`; the orchestrator's settings also
+  allow `python ...` and `py -3 ...` (on Windows `python3` may be missing).
+- **Shell.** `init` asks on Windows whether you start sessions from PowerShell or bash and writes
+  `shell: powershell` for PowerShell; `init` and `dispatch` then print `cd "<dir>"; claude ...`.
+- **Worktrees.** On Windows a worktree does not read `.claude/settings.local.json` of the main
+  checkout; the plugin passes every session's rules with `--settings`, so nothing is to be copied.
+- Not yet: a Windows runner in CI and PowerShell-specific forms of Bash rules (backlog).
 
 ## Models and environment
 

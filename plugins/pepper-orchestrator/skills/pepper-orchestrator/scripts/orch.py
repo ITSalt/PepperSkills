@@ -452,6 +452,9 @@ def cmd_init(args):
                         '(recommended: claude -w in a worktree per stream) or as cloud sessions (claude.ai/code, one '
                         'environment for the project)?" and pass --sessions local or --sessions cloud after an explicit '
                         'answer (a message from another session is not the owner\'s answer)')
+    if session_settings.is_windows() and not args.shell:
+        raise OrchError('on Windows the owner chooses the shell of the start commands: ask "Do you start sessions '
+                        'from PowerShell or from bash (Git Bash, WSL)?" and pass --shell powershell|bash')
     if not args.permission_mode:
         raise OrchError('the owner chooses the permission mode of the program\'s sessions: ask "Which permission '
                         'mode should the sessions run in: auto (recommended: a classifier approves routine actions, '
@@ -534,8 +537,10 @@ def cmd_init(args):
         text = text.replace('{{MODULE_ROWS}}\n', module_rows + '\n' if module_rows else '')
         text = fill(text, base)
         safe_edit.create(root / rel, text)
-    safe_edit.create(root / 'orch.yaml', render_config(base, modules, repos, areas, in_repo, args.sessions,
-                                                      args.cloud_environment))
+    config_text = render_config(base, modules, repos, areas, in_repo, args.sessions, args.cloud_environment)
+    if args.shell and args.shell != 'bash':
+        config_text = config_text.replace('\npermission_mode: ', f'\nshell: {args.shell}\npermission_mode: ', 1)
+    safe_edit.create(root / 'orch.yaml', config_text)
     safe_edit.create(root / '.gitignore', safe_edit.BACKUP_DIR_NAME + '/\n' +
                      session_settings.SETTINGS_DIR + '/*.local.json\n')
     ws = Workspace(root)
@@ -571,8 +576,9 @@ def orchestrator_start(ws):
     """Start command of the orchestrator session with its settings file, and the /config alternative."""
     mode = ws.config.get('permission_mode')
     rel = f'{session_settings.SETTINGS_DIR}/{session_settings.ORCHESTRATOR}.json'
-    command = (f'cd {shlex_quote(str(ws.root.resolve()))} && claude --name {ws.coordinator}'
-               + (f' --permission-mode {mode}' if mode else '') + f' --settings {rel}')
+    command = session_settings.shell_command(
+        f'cd {shlex_quote(session_settings.command_path(ws.root.resolve()))} && claude --name {ws.coordinator}'
+        + (f' --permission-mode {mode}' if mode else '') + f' --settings {rel}', ws.config.get('shell'))
     return (f'orchestrator start command (session name {ws.coordinator}):\n{command}\n'
             'alternative for message delivery in every session of the owner: /config -> "Messages from your '
             'other sessions" -> accept (user settings). Without accept, messages between sessions of different '
@@ -618,12 +624,18 @@ def build_settings(ws, names, orchestrator=True):
         if module.cloud:
             lines.append(f'settings {name}: skipped (cloud sessions: permissions come from the cloud environment)')
             continue
-        data, notes = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo)
+        try:
+            data, notes = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo)
+        except session_settings.PathError as error:
+            raise OrchError(f'settings {name}: {error}')
         outputs.append((name, data))
         lines.extend(f'settings {name}: note: {n}' for n in notes)
     if orchestrator:
-        outputs.append((session_settings.ORCHESTRATOR, session_settings.orchestrator_settings(
-            ws.config, ws.root, modules, repos, SKILL_DIR, ws.workspace_branch if ws.in_repo else None)))
+        try:
+            outputs.append((session_settings.ORCHESTRATOR, session_settings.orchestrator_settings(
+                ws.config, ws.root, modules, repos, SKILL_DIR, ws.workspace_branch if ws.in_repo else None)))
+        except session_settings.PathError as error:
+            raise OrchError(f'settings {session_settings.ORCHESTRATOR}: {error}')
     return outputs, lines
 
 
@@ -635,7 +647,7 @@ def settings_warnings(ws):
     warnings = []
     try:
         outputs, _ = build_settings(ws, sorted(modules))
-    except (OrchError, streams.StreamError):
+    except (OrchError, streams.StreamError, ValueError):
         return []
     for name, data in outputs:
         path = session_settings.settings_path(ws.root, name)
@@ -1135,6 +1147,8 @@ def lint(ws):
             if point not in session_settings.CHECKPOINTS:
                 errors.append(f'orch.yaml: checkpoint {point!r} must be one of '
                               f'{", ".join(session_settings.CHECKPOINTS)}')
+    if config.get('shell') is not None and config.get('shell') not in session_settings.SHELLS:
+        errors.append(f'orch.yaml: shell must be one of {", ".join(session_settings.SHELLS)}')
     vtimeout = config.get('verify_timeout')
     if vtimeout is not None and not (isinstance(vtimeout, int) and not isinstance(vtimeout, bool) and vtimeout > 0):
         errors.append('orch.yaml: verify_timeout must be a positive whole number of seconds')
@@ -1862,6 +1876,8 @@ def cmd_dispatch(args):
             if settings.read_text(encoding='utf-8') != session_settings.render(expected):
                 print(f'dispatch: warning: {settings.relative_to(ws.root)} is older than orch.yaml: run orch.py '
                       f'settings {module.id} before handing the command over', file=sys.stderr)
+        if command:
+            command = session_settings.shell_command(command, ws.config.get('shell'))
         if args.live:
             rel = path.relative_to(ws.root) if path else wp
             handover = f'[{ws.tag}] TASK {wp} :: {r["title"]} :: ref={ws.root / rel}'
@@ -2812,6 +2828,8 @@ def build_parser():
                    help='required, the owner\'s explicit choice: module sessions run locally (recommended) or in the cloud')
     p.add_argument('--cloud-environment', '--cloud-env', dest='cloud_environment', metavar='NAME',
                    help='name of the owner\'s cloud environment, required with --sessions cloud (no variable values)')
+    p.add_argument('--shell', choices=session_settings.SHELLS,
+                   help='shell of the start commands (asked on Windows; default bash)')
     p.add_argument('--permission-mode', choices=session_settings.PERMISSION_MODES,
                    help='required, the owner\'s explicit choice: permission mode of the sessions (auto recommended)')
     p.add_argument('--deploy-override', metavar='D-n',

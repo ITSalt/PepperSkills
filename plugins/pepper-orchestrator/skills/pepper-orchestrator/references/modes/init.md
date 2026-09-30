@@ -60,7 +60,8 @@ a title and modules.
    certificate directories or `.claude/` into a worktree is what the auto mode classifier blocks
    (and `lint` warns about). The gitignored files a worktree needs belong in `.worktreeinclude` in
    the repository root (gitignore syntax; Claude Code copies them into every new worktree), and
-   `.claude/settings.local.json` is read from the main checkout by every worktree. `init` opens a
+   on macOS and Linux `.claude/settings.local.json` is read from the main checkout by every worktree
+   (on Windows it is not, which is why the plugin always passes the rules with `--settings`). `init` opens a
    P-n item with a ready `.worktreeinclude` for each local repository with streams that has none: a
    change of the project, made by a package in that repository, never by the plugin.
 6. **Workspace inside a module repository?** Use `--in-repo <repo-id>` from a checkout or clone of
