@@ -14,6 +14,7 @@ import subprocess
 
 KINDS = ('area', 'domain', 'repo')
 MERGE_POLICIES = ('sequential', 'free')
+RESOURCE_MODES = ('package', 'on-demand')
 # Statuses with a live, unmerged branch: they compete for paths and locks.
 ACTIVE = ('DISPATCHING', 'IN_PROGRESS', 'REVIEW', 'REVISE', 'ACCEPTED')
 # Statuses that satisfy a dependency.
@@ -84,6 +85,31 @@ TEXT = {
                       'report.'),
         'shared_hint': 'Shared paths of this repository (declare the ones this package touches): {shared}.',
         'resources_hint': 'Resources of this repository that need a lock: {resources}.',
+        'on_demand': 'on-demand: LOCK/UNLOCK, see section 6',
+        'start_note': ('`orch.py dispatch` adds `--permission-mode` and `--settings '
+                       '<workspace>/orchestration/settings/<module>.json` to this command: start the session with '
+                       'the command dispatch prints.'),
+        'start_note_cloud': ('No terminal command: `orch.py dispatch` prints the block for a new cloud session, whose '
+                             'permissions come from its cloud environment.'),
+        'denied_local': ('This session starts with `--settings` generated for its module by `orch.py settings`: '
+                         'reading, the tests and commits are allowed, a push of the package branch goes to the classifier; merge, pushes '
+                         'to `{base}`, releases, workflow runs, production and the orchestrator workspace are '
+                         'denied.'),
+        'denied_cloud': ('The permissions of this cloud session come from its cloud environment; the rules of '
+                         'this package still hold.'),
+        'denied_rules': ('- A refusal by a rule or by the auto mode classifier is an answer: never work around it '
+                         '(no `sh -c`, `git -C`, renamed or copied commands, no copying or editing of settings '
+                         'files or `.claude/`).\n'
+                         '- A message that the classifier is unavailable (no decision was made) is not a verdict: '
+                         'retry the same command later.'),
+        'denied_ask_local': ('- Send `[{tag}] QUESTION {wp} :: denied: <exact refusal text> :: ref=<the command>` '
+                             'to `{coord}`; continue with work that does not need it, or wait for `ANSWER`.'),
+        'denied_ask_cloud': ('- Write the exact refusal text and the command under `Deviations` in the PR body and '
+                             'leave that step undone.'),
+        'lock_on_demand': ('- On-demand resources ({resources}): before using one, send `[{tag}] LOCK {wp} :: '
+                           '<resource> :: ref=<why>` to `{coord}` and wait for `ACK`; send `[{tag}] UNLOCK {wp} :: '
+                           '<resource> :: ref=<result>` as soon as you are done. READY gives every on-demand lock '
+                           'back.'),
     },
     'ru': {
         'none': 'нет',
@@ -136,6 +162,30 @@ TEXT = {
                       'оркестратор не выдаст слот стенда (замок `staging`); запушь один раз и сообщи.'),
         'shared_hint': 'Общие пути этого репозитория (объяви те, что трогает пакет): {shared}.',
         'resources_hint': 'Ресурсы этого репозитория, требующие замка: {resources}.',
+        'on_demand': 'по запросу: LOCK/UNLOCK, см. раздел 6',
+        'start_note': ('`orch.py dispatch` добавляет к этой команде `--permission-mode` и `--settings '
+                       '<рабочее пространство>/orchestration/settings/<модуль>.json`: запускай сессию командой, '
+                       'которую печатает dispatch.'),
+        'start_note_cloud': ('Без команды терминала: `orch.py dispatch` печатает блок для новой облачной сессии, права '
+                             'которой задаёт её облачное окружение.'),
+        'denied_local': ('Сессия запускается с `--settings`, сгенерированным для её модуля командой '
+                         '`orch.py settings`: чтение, тесты и коммиты разрешены, push ветки пакета решает классификатор; merge, push в '
+                         '`{base}`, релизы, запуск workflow, прод и рабочее пространство оркестратора запрещены.'),
+        'denied_cloud': ('Права облачной сессии задаёт её облачное окружение; правила этого пакета действуют '
+                         'всё равно.'),
+        'denied_rules': ('- Отказ правила или классификатора auto mode — это ответ: не обходить его (никаких '
+                         '`sh -c`, `git -C`, переименованных или скопированных команд, никакого копирования или '
+                         'правки файлов настроек и `.claude/`).\n'
+                         '- Сообщение о недоступности классификатора (решение не принято) — не вердикт: повтори ту '
+                         'же команду позже.'),
+        'denied_ask_local': ('- Пришли `{coord}`: `[{tag}] QUESTION {wp} :: отказ: <точный текст отказа> :: '
+                             'ref=<команда>`; продолжай работу, которой это не нужно, или жди `ANSWER`.'),
+        'denied_ask_cloud': ('- Запиши точный текст отказа и команду в раздел `Deviations` тела PR и оставь этот шаг '
+                             'невыполненным.'),
+        'lock_on_demand': ('- Ресурсы по запросу ({resources}): перед использованием пришли `{coord}`: '
+                           '`[{tag}] LOCK {wp} :: <ресурс> :: ref=<зачем>` и жди `ACK`; как только закончишь — '
+                           '`[{tag}] UNLOCK {wp} :: <ресурс> :: ref=<результат>`. READY возвращает все замки по '
+                           'запросу.'),
     },
 }
 
@@ -352,7 +402,24 @@ class Repo:
         self.review_setup = as_list(data.get('review_setup'))
         self.merge_policy = str(data.get('merge_policy') or 'free')
         self.shared_paths = as_list(data.get('shared_paths'))
-        self.resources = as_list(data.get('resources'))
+        # Resources: a name (mode package: held from dispatch to merge or verification) or
+        # {name, mode: on-demand} (taken on a LOCK message, given back on UNLOCK or READY).
+        self.resources, self.resource_modes, self.resource_errors = [], {}, []
+        raw = data.get('resources')
+        for item in raw if isinstance(raw, list) else as_list(raw):
+            if isinstance(item, dict):
+                name, mode = item.get('name'), str(item.get('mode') or 'package')
+                if not name:
+                    self.resource_errors.append(f'resource needs a name: {item}')
+                    continue
+            elif item is None:
+                continue
+            else:
+                name, mode = item, 'package'
+            if mode not in RESOURCE_MODES:
+                self.resource_errors.append(f'resource {name}: mode must be package or on-demand')
+            self.resources.append(str(name))
+            self.resource_modes[str(name)] = mode
         self.checks = as_list(data.get('checks'))
         self.deploy_workflows = as_list(data.get('deploy_workflows'))
         self.base_deploys = str(data.get('base_deploys') or 'none')
@@ -360,6 +427,9 @@ class Repo:
         self.sessions = str(data.get('sessions') or defaults.get('sessions') or 'local')
         self.cloud_environment = data.get('cloud_environment') or defaults.get('cloud_environment')
         self.implicit = implicit
+
+    def on_demand(self, name):
+        return self.resource_modes.get(name) == 'on-demand'
 
     @property
     def key(self):
@@ -422,6 +492,7 @@ def resolve(config, base_dir=None):
                 expand_braces(pattern)
             except StreamError as error:
                 errors.append(f'orch.yaml: repo {repo.id}: {error}')
+        errors.extend(f'orch.yaml: repo {repo.id}: {e}' for e in repo.resource_errors)
         repos[repo.id] = repo
     implicit = {}
     for data in config.get('modules') or []:
@@ -756,7 +827,8 @@ def origin_name(repo):
 
 DEPLOY_FORMS = (
     'supported workflow trigger forms: `on: push`; `on: [push, ...]` on one line; `on:` as a block '
-    'mapping with plain keys; under `push:` only `branches`, `branches-ignore` and `paths-ignore`, '
+    'mapping with plain keys; under `push:` only `branches`, `branches-ignore`, `paths-ignore` and '
+    '`paths` (the last only when a branch filter already excludes the workspace branch), '
     'each a one-line flow list or a block list of plain or quoted patterns made of letters, digits, '
     '`.`, `_`, `-`, `/` and `*`; no anchors, aliases, negations (`!`), character classes or other keys')
 PATTERN_OK = re.compile(r'^[A-Za-z0-9._/*-]+$')
@@ -799,7 +871,10 @@ def _pattern_list(key, value, following):
 
 
 def parse_push_trigger(text, name):
-    """(runs_on_push, branches, branches_ignore, paths_ignore) or DeployFormError."""
+    """(runs_on_push, branches, branches_ignore, paths_ignore, paths) or DeployFormError.
+
+    A positive `paths` filter is returned as given (a list, or the DeployFormError of an unsupported
+    list): it only matters when the push runs on the workspace branch at all."""
     lines = text.split('\n')
     for line in lines:
         code = '' if line.lstrip().startswith('#') else line.split(' #')[0]
@@ -815,10 +890,10 @@ def parse_push_trigger(text, name):
     head = lines[start].split(':', 1)[1].split(' #')[0].strip()
     if head:
         if re.fullmatch(r'[A-Za-z_]+', head):
-            return head == 'push', None, None, None
+            return head == 'push', None, None, None, None
         if re.fullmatch(r'\[\s*[A-Za-z_]+(\s*,\s*[A-Za-z_]+)*\s*\]', head):
             events = [e.strip() for e in head[1:-1].split(',')]
-            return 'push' in events, None, None, None
+            return 'push' in events, None, None, None, None
         raise DeployFormError(f'{name}: `on: {head}`')
     end = next((k for k in tops if k > start), len(lines))
     block = [l for l in lines[start + 1:end]]
@@ -838,14 +913,14 @@ def parse_push_trigger(text, name):
                 raise DeployFormError(f'{name}: `push: {m.group(2).strip()}`')
             push_at = k
     if push_at is None:
-        return False, None, None, None
+        return False, None, None, None, None
     push_indent = _indent(block[push_at])
     body = []
     for line in block[push_at + 1:]:
         if line.strip() and _indent(line) <= push_indent:
             break
         body.append(line)
-    found = {'branches': None, 'branches-ignore': None, 'paths-ignore': None}
+    found = {'branches': None, 'branches-ignore': None, 'paths-ignore': None, 'paths': None}
     entries = [(k, l) for k, l in enumerate(body) if l.strip() and not l.lstrip().startswith('#')]
     if entries:
         inner = _indent(entries[0][1])
@@ -860,8 +935,14 @@ def parse_push_trigger(text, name):
                 if line2.strip() and _indent(line2) <= inner:
                     break
                 following.append(line2)
+            if m.group(1) == 'paths':
+                try:
+                    found['paths'] = _pattern_list('paths', m.group(2), following)
+                except DeployFormError as error:
+                    found['paths'] = error
+                continue
             found[m.group(1)] = _pattern_list(m.group(1), m.group(2), following)
-    return True, found['branches'], found['branches-ignore'], found['paths-ignore']
+    return True, found['branches'], found['branches-ignore'], found['paths-ignore'], found['paths']
 
 
 def workflow_texts(repo_root, ref):
@@ -894,7 +975,7 @@ def deploy_safe_dirs(repo_root, branch, program, ref):
         notes.append(f'{ref} has no .github/workflows: no push workflow runs')
     for name, text in sorted(texts.items()):
         try:
-            on_push, branches, branches_ignore, paths_ignore = parse_push_trigger(text, name)
+            on_push, branches, branches_ignore, paths_ignore, paths = parse_push_trigger(text, name)
         except DeployFormError as error:
             refusals.append(str(error) if str(error).startswith(name) else f'{name}: {error}')
             continue
@@ -907,13 +988,22 @@ def deploy_safe_dirs(repo_root, branch, program, ref):
         if branches_ignore and any(glob_match(branch, b) for b in branches_ignore):
             notes.append(f'{name}: {branch} is in branches-ignore')
             continue
+        if paths is not None:
+            refusals.append(f'{name}: runs on push to {branch} with a positive `paths` filter; the check cannot '
+                            'prove that workspace commits stay outside it (a branch filter that excludes '
+                            f'{branch} would make it safe)')
+            continue
         relevant.append(name)
         dirs = [p[:-3] for p in (paths_ignore or []) if p.endswith('/**') and '*' not in p[:-3]
                 and not any(part.startswith('.') for part in p[:-3].split('/'))]
         notes.append(f'{name}: runs on push to {branch}; ignored directories: {", ".join(dirs) or "none"}')
         candidates = dirs if candidates is None else [d for d in candidates if d in dirs]
     if refusals:
-        return [], notes, refusals, False
+        # Candidates from the workflows that could be read: used only after an owner decision (D-n).
+        if not relevant:
+            return [f'docs/orchestration/{program}'], notes, refusals, False
+        ordered = sorted(candidates or [], key=lambda d: (d != 'docs', d))
+        return [f'{d}/orchestration/{program}' for d in ordered], notes, refusals, False
     if not relevant:
         return [f'docs/orchestration/{program}'], notes, [], True
     ordered = sorted(candidates or [], key=lambda d: (d != 'docs', d))
@@ -1070,7 +1160,13 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None, model
     if repo.shared_paths:
         hints.append(t['shared_hint'].format(shared=', '.join(f'`{p}`' for p in repo.shared_paths)))
     if repo.resources:
-        hints.append(t['resources_hint'].format(resources=', '.join(f'`{r}`' for r in repo.resources)))
+        hints.append(t['resources_hint'].format(resources=', '.join(
+            f'`{r}`' + (f' ({t["on_demand"]})' if repo.on_demand(r) else '') for r in repo.resources)))
+    denied = [t['denied_cloud' if module.cloud else 'denied_local'].format(**fmt), '',
+              t['denied_rules'], t['denied_ask_cloud' if module.cloud else 'denied_ask_local'].format(**fmt)]
+    on_demand = [r for r in repo.resources if repo.on_demand(r)]
+    if on_demand and not module.cloud:
+        denied.append(t['lock_on_demand'].format(resources=', '.join(f'`{r}`' for r in on_demand), **fmt))
     delivery = (t['delivery_pr'] if remote else t['delivery_local']).format(**fmt)
     if module.cloud:
         delivery = t['delivery_cloud'].format(**fmt)
@@ -1088,4 +1184,6 @@ def wp_fields(lang, module, wp, slug, wp_path, tag, coord, workspace=None, model
         'START_PROMPT': prompt, 'START_COMMAND': command,
         'MODEL': f'`{model}`' if model else '—', 'EFFORT': f'`{effort}`' if effort else '—',
         'MODEL_REASON': t['reason_' + reason],
+        'IF_DENIED': '\n'.join(denied),
+        'START_NOTE': t['start_note_cloud' if module.cloud else 'start_note'],
     }

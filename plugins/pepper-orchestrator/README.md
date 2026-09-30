@@ -1,8 +1,8 @@
 # Pepper Orchestrator
 
-> **Preview (0.5.0).** Modes `init`, `plan`, `dispatch`, `review`, `resume`, `owner`, `decide`,
+> **Preview (0.6.0).** Modes `init`, `plan`, `dispatch`, `review`, `resume`, `owner`, `decide`,
 > `close`, `reopen`;
-> streams in one repository with worktrees and locks; cloud sessions.
+> streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
 
 Portable Agent Plugin for the single-orchestrator (hub-and-spoke) method: one orchestrator
@@ -34,7 +34,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:close [result]` | goal reached: completion check, closeout report, archive |
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 
-Version 0.5.0 is a preview (stages 2a-2e). Modules can be whole repositories or areas and
+Version 0.6.0 is a preview (stages 2a-2e, 3a). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
@@ -78,6 +78,50 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
     `PLAN.md` holds, run `close` (it checks packages, PRs, locks and owner items by facts; carry
     leftovers with `orch.py owner carry <id> "<reason>"`), then start the next goal as a new
     program with `init`. In-repo, the owner runs the printed tag and branch-deletion commands.
+11. **A stream got a refusal.** The session does not work around it: it sends
+    `QUESTION <WP> :: denied: <exact text> :: ref=<command>`. The orchestrator answers on the facts:
+    a narrow rule that is missing (a test command, a generator) goes into `orch.yaml` and
+    `orch.py settings <module>`, then the session is restarted with the same command (or you answer
+    the prompt in its window); an action only the owner does (merge, deploy, production) becomes an
+    owner item. "Classifier unavailable" is not a verdict: the session retries later.
+
+## Session permissions and permission mode
+
+- **Permission mode.** `init` asks which mode the program's sessions run in (`auto` recommended,
+  or `acceptEdits`, `default`, `dontAsk`, `bypassPermissions`) and writes `permission_mode`.
+- **Settings files.** `orch.py settings all` writes `orchestration/settings/<module>.json` for every
+  local module and `orchestrator.json`: narrow allow rules (reading the repository and the
+  workspace, `cat`/`grep`/`rg`/`sed -n`/..., git status/diff/log/add/commit/switch, `gh pr
+  create`, the module's tests, checks and worktree setup verbatim), deny rules (merge, force
+  pushes and pushes to the base in their usual forms, `gh workflow run`, `gh release`, production
+  MCP servers and deploy commands, editing the orchestrator workspace, forbidden methodology commands as
+  `Skill(<name>)`), owner checkpoints as ask rules (`checkpoints`, default `deploy_test`),
+  `autoMode.environment` (`$defaults` plus the trusted repository) and
+  `crossSessionInbound: accept`. There is no allow rule for `git push`: a `*` tail would also match
+  `<branch>:<base>` and force flags, so pushes go to the classifier (or ask you with the `push`
+  checkpoint). The command is idempotent; your own additions go to
+  `<name>.local.json`, which it never touches and `dispatch` never passes.
+- **Start commands.** `dispatch` adds `--permission-mode <mode> --settings <absolute path>` to every
+  local start command and refuses while the file is missing; `init` prints the orchestrator's
+  command: `cd <workspace> && claude --name <program>-coord --permission-mode <mode> --settings
+  orchestration/settings/orchestrator.json`. Cloud sessions take their permissions from the cloud
+  environment.
+- **Message delivery.** Without `crossSessionInbound: accept`, messages between sessions of
+  different permission classes (bypass against auto, acceptEdits, dontAsk, default) wait for your
+  approval in the receiver's window and are dropped after 5 minutes. Alternative for all your
+  sessions: `/config` -> "Messages from your other sessions" -> accept. The protocol never relies on
+  messages: READY is also found by the PR and the pushed branch.
+- **Worktrees without secrets.** `worktree_setup` holds dependency installs and generation only.
+  The gitignored files a worktree needs go into `.worktreeinclude` in the repository root (Claude
+  Code copies them into each new worktree; `init` proposes its content as an owner question), and
+  `.claude/settings.local.json` is read from the main checkout by every worktree. `lint` warns about
+  `cp`/`rsync`/`ln` of `.env*`, secret, key or certificate directories and `.claude/`.
+- **On-demand locks.** A resource `{name: ci-gate, mode: on-demand}` is not held for the whole
+  package: the session sends `LOCK ci-gate`, the orchestrator takes it with `orch.py lock acquire`
+  (or queues the package), and `UNLOCK` or READY gives it back; `lint` warns about a lock held longer
+  than `lock_stale_hours` (default 4).
+- Rules are guard rails for the usual command forms (`git -C . push` is not `git push`), not a
+  security boundary: branch protection and hooks are.
 
 ## Models and environment
 
@@ -142,6 +186,7 @@ boundaries: [concept](skills/pepper-orchestrator/references/concept.md).
 | Skill (core) | `skills/pepper-orchestrator/` | any agent that reads files and runs Python 3 |
 | Workspace CLI | `skills/pepper-orchestrator/scripts/orch.py`, `safe_edit.py` | standard library + git |
 | Templates (en, ru) | `skills/pepper-orchestrator/templates/` | portable |
+| Session settings | `scripts/session_settings.py`, `templates/settings/*.json` -> `orchestration/settings/*.json` | Claude Code settings format |
 | Short commands | `commands/` | Claude Code adapter |
 | Agents `orchestrator-reviewer`, `orchestrator-scout` | `agents/` | Claude Code adapter; elsewhere the same brief goes to any subagent |
 | Plugin manifest | `plugin.json` | canonical; client manifests are generated |

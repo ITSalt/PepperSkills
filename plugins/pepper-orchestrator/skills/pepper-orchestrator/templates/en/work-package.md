@@ -72,7 +72,11 @@ Start command (for the owner, run in a new terminal):
 {{START_COMMAND}}
 ```
 
-No `--settings` in this version: settings files are generated only in a later version.
+{{START_NOTE}}
+
+## 6. If a permission is denied
+
+{{IF_DENIED}}
 
 ## Resubmissions
 

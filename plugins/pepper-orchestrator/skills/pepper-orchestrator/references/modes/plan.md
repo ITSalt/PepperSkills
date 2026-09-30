@@ -66,6 +66,6 @@ free text. Requires a workspace; if none exists, run `init` first and say so.
 - Outcome: number of waves and packages, which are READY, which wait for answers.
 - P-n questions with recommendations, in the owner format.
 - Next step: `dispatch <WP>` for each READY package (it checks overlaps and locks and prints the
-  start command). No `--settings` in this version; never invent a settings file.
+  start command with the generated `--settings`). Never write or edit a settings file by hand.
 
 Do not start sessions, merge, deploy or write to databases in this mode.

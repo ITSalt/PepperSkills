@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.4 · 2026-09-29 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7) · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.5 · 2026-09-29 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -84,13 +84,16 @@ features/<program>/
   gates/                - gate checklists G0...Gn (if formal milestones are needed)
   orchestration/
     protocol.md         - session and message protocol (this document adapted to the program)
-    settings/<role>.json - agent settings files for each session (--settings)
+    settings/<name>.json - generated settings of each session (--settings): one per local module,
+                           orchestrator.json; <name>.local.json holds the owner's own additions
     hooks/              - PreToolUse hooks (for example "SELECT only" for database MCP)
   bugs/                 - defects found along the way (one file per defect)
 ```
 
 **Only the orchestrator** writes to this space. Module sessions get a deny rule for editing this
-directory in their settings.
+directory in their settings. Settings files are generated from `orch.yaml` (`orch.py settings`),
+never written by hand, and passed with the permission mode the owner chose for the program
+(`permission_mode`) in every local start command.
 
 **Where the workspace lives (P4).** Not in a module repository. Recommended: a separate "home"
 repository of the program; acceptable: branch `orch/<program>` in its own worktree or clone.
@@ -270,10 +273,28 @@ Discrepancies go to the `status.md` journal first, then action.
 
 ## 12. Safety and boundaries
 
-- Every session starts with **its own settings file** (`--settings`): allow the module's standard
-  commands; deny merge, `gh workflow run`, PROD MCP, database writes, ssh to PROD, push to base
-  branches, editing the orchestrator workspace; ask for what needs a human (TEST deploy, builds,
-  background runs).
+- Every session starts with **its own settings file** (`--settings`) and the program's permission
+  mode (`--permission-mode`, `auto` recommended): allow the module's standard commands as narrow
+  rules (reading, its tests and checks verbatim, commits; pushes are left to the classifier, since a
+  `*` tail also matches refspecs to the base); deny
+  merge, force pushes and pushes to base branches, `gh workflow run`, releases, PROD MCP and PROD
+  deploy commands, ssh and database clients where guards exist, editing the orchestrator
+  workspace, forbidden methodology commands; ask for the owner's checkpoints (TEST deploy, and
+  optionally pushes and PRs).
+- **Auto mode.** Deny rules, explicit ask rules and narrow allow rules are decided before the
+  classifier; broad allow rules (`Bash(*)`, interpreters with `*`) are suspended in auto mode. The
+  `autoMode` block (trusted environment) is read from user and managed settings and from
+  `--settings`, never from project settings, so it lives in the generated file. The classifier
+  blocks copying secrets and editing session settings (`.claude/`) as a bypass: worktrees get
+  gitignored files through `.worktreeinclude` in the repository root and read
+  `.claude/settings.local.json` from the main checkout.
+- **A refusal is an answer.** A session never works around a denied action (`sh -c`, `git -C`,
+  renamed commands, copied settings): it sends `QUESTION` with the exact refusal text and command.
+  "Classifier unavailable" is not a verdict: retry later.
+- **Message delivery.** Sessions in different permission classes (bypass against the prompting
+  modes) hold each other's messages for the owner's approval and drop them after 5 minutes unless
+  the receiver runs with `crossSessionInbound: accept` (in the generated settings, or the owner's
+  `/config`). The protocol never depends on messages: READY is also found by PR and branch.
 - **Bash rules are not a security boundary** (`git -C . push`, `sh -c` slip past). Hard measures:
   branch protection on GitHub, deploy scripts with TTY confirmation that refuse to run from a
   worktree or a dirty tree, PreToolUse hooks.

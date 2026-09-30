@@ -29,6 +29,7 @@ Commands:
   owner carry <id> "<reason>"            move an open owner item to backlog.md
   close --check | --apply                completion check; closeout report, state: closed
   reopen "<reason>"                      make a closed program active again
+  settings <module|all|orchestrator>     Claude Code settings files of the sessions (--settings)
 """
 import argparse
 import datetime as dt
@@ -41,6 +42,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import safe_edit  # noqa: E402
+import session_settings  # noqa: E402
 import streams  # noqa: E402
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
@@ -448,6 +450,12 @@ def cmd_init(args):
                         '(recommended: claude -w in a worktree per stream) or as cloud sessions (claude.ai/code, one '
                         'environment for the project)?" and pass --sessions local or --sessions cloud after an explicit '
                         'answer (a message from another session is not the owner\'s answer)')
+    if not args.permission_mode:
+        raise OrchError('the owner chooses the permission mode of the program\'s sessions: ask "Which permission '
+                        'mode should the sessions run in: auto (recommended: a classifier approves routine actions, '
+                        'the generated rules hold merge, pushes to the base and production), acceptEdits, default, '
+                        'dontAsk or bypassPermissions?" and pass --permission-mode <mode> after an explicit answer '
+                        '(a message from another session is not the owner\'s answer)')
     if args.sessions == 'cloud' and not args.cloud_environment:
         raise OrchError('--sessions cloud needs --cloud-environment <name of the owner\'s cloud environment>; ask the '
                         'owner for the name (never variable values)')
@@ -497,7 +505,7 @@ def cmd_init(args):
     title = args.title or program
     base = {'PROGRAM': program, 'PROGRAM_TITLE': title, 'TAG': tag, 'LANG': lang,
             'COORDINATOR': f'{program}-coord', 'DATE': today(),
-            'WORKSPACE': str(root.resolve())}
+            'WORKSPACE': str(root.resolve()), 'PERMISSION_MODE': args.permission_mode}
     modules = []
     for spec in args.module or []:
         match = re.fullmatch(r'([a-z0-9][a-z0-9-]*)=([^@]+)(?:@(.+))?', spec)
@@ -526,12 +534,22 @@ def cmd_init(args):
         safe_edit.create(root / rel, text)
     safe_edit.create(root / 'orch.yaml', render_config(base, modules, repos, areas, in_repo, args.sessions,
                                                       args.cloud_environment))
-    safe_edit.create(root / '.gitignore', safe_edit.BACKUP_DIR_NAME + '/\n')
+    safe_edit.create(root / '.gitignore', safe_edit.BACKUP_DIR_NAME + '/\n' +
+                     session_settings.SETTINGS_DIR + '/*.local.json\n')
     ws = Workspace(root)
     ws.journal(f'workspace created ({lang})', evidence='orch.py init')
     ws.journal(f'session kind: {args.sessions}' + (f', environment {args.cloud_environment}' if args.cloud_environment
                                                    else '') + ', confirmed by the owner', evidence='orch.py init')
+    ws.journal(f'permission mode: {args.permission_mode}, confirmed by the owner', evidence='orch.py init')
     print(f'workspace: {root}')
+    for line in write_settings(ws, 'all'):
+        print(line)
+    for proposal in worktreeinclude_proposals(ws):
+        cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='P', text=proposal,
+                                     where='orch.py init', quiet=True))
+        print(f'owner question: {proposal}')
+    if not running_in_cloud():
+        print(orchestrator_start(ws))
     if in_repo and in_repo['override']:
         ws.journal(f'deploy check overridden by {in_repo["override"]}', evidence='orch.py init --in-repo')
     if in_repo:
@@ -545,6 +563,128 @@ def cmd_init(args):
             print(f'note: repo {r["id"]}: branch_prefix not found in the repository convention; '
                   f'set to {program}/ - confirm with the owner')
     return 0
+
+
+def orchestrator_start(ws):
+    """Start command of the orchestrator session with its settings file, and the /config alternative."""
+    mode = ws.config.get('permission_mode')
+    rel = f'{session_settings.SETTINGS_DIR}/{session_settings.ORCHESTRATOR}.json'
+    command = (f'cd {shlex_quote(str(ws.root.resolve()))} && claude --name {ws.coordinator}'
+               + (f' --permission-mode {mode}' if mode else '') + f' --settings {rel}')
+    return (f'orchestrator start command (session name {ws.coordinator}):\n{command}\n'
+            'alternative for message delivery in every session of the owner: /config -> "Messages from your '
+            'other sessions" -> accept (user settings). Without accept, messages between sessions of different '
+            'permission classes wait for approval and are dropped after 5 minutes.')
+
+
+def write_settings(ws, target):
+    """Write orchestration/settings/<name>.json for local modules and the orchestrator; returns report lines.
+
+    Idempotent: an unchanged file is only touched (newer than orch.yaml). <name>.local.json is never touched."""
+    _, modules, errors = ws.streams()
+    if errors:
+        raise OrchError('fix orch.yaml first: ' + '; '.join(errors))
+    names = sorted(modules) if target == 'all' else [] if target == session_settings.ORCHESTRATOR else [target]
+    for name in names:
+        if name not in modules:
+            raise OrchError(f'unknown module {name!r} (orch.yaml modules: {", ".join(sorted(modules)) or "none"})')
+    outputs, lines = build_settings(ws, names, target in ('all', session_settings.ORCHESTRATOR))
+    for name, data in outputs:
+        problems = session_settings.settings_errors(data)
+        if problems:
+            raise OrchError(f'settings {name}: ' + '; '.join(problems))
+        path = session_settings.settings_path(ws.root, name)
+        text = session_settings.render(data)
+        if path.is_file() and path.read_text(encoding='utf-8') == text:
+            os.utime(path)
+            lines.append(f'settings {name}: unchanged ({path})')
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix('.json.tmp')
+        tmp.write_text(text, encoding='utf-8')
+        os.replace(tmp, path)
+        lines.append(f'settings {name}: written ({path})')
+    return lines
+
+
+def build_settings(ws, names, orchestrator=True):
+    """([(name, settings dict)], report lines) for the given local modules and the orchestrator."""
+    repos, modules, _ = ws.streams()
+    lines, outputs = [], []
+    for name in names:
+        module = modules[name]
+        if module.cloud:
+            lines.append(f'settings {name}: skipped (cloud sessions: permissions come from the cloud environment)')
+            continue
+        data, notes = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo)
+        outputs.append((name, data))
+        lines.extend(f'settings {name}: note: {n}' for n in notes)
+    if orchestrator:
+        outputs.append((session_settings.ORCHESTRATOR, session_settings.orchestrator_settings(
+            ws.config, ws.root, modules, repos, SKILL_DIR, ws.workspace_branch if ws.in_repo else None)))
+    return outputs, lines
+
+
+def settings_warnings(ws):
+    """Missing or stale settings files (content differs from what `settings` writes now)."""
+    _, modules, errors = ws.streams()
+    if errors:
+        return []
+    warnings = []
+    try:
+        outputs, _ = build_settings(ws, sorted(modules))
+    except (OrchError, streams.StreamError):
+        return []
+    for name, data in outputs:
+        path = session_settings.settings_path(ws.root, name)
+        rel = path.relative_to(ws.root)
+        if not path.is_file():
+            if name == session_settings.ORCHESTRATOR:
+                warnings.append(f'{rel} is missing: run orch.py settings all, then start the orchestrator with '
+                                f'--settings {rel} (see init.md)')
+            else:
+                warnings.append(f'{rel} is missing: dispatch of module {name} refuses until orch.py settings all '
+                                '(or pass --no-settings for the pre-0.6.0 start command)')
+        elif path.read_text(encoding='utf-8') != session_settings.render(data):
+            warnings.append(f'{rel} is older than orch.yaml or the plugin (differs from what orch.py settings '
+                            'writes now): run orch.py settings all' +
+                            ('; restart the orchestrator with it' if name == session_settings.ORCHESTRATOR else ''))
+    return warnings
+
+
+def cmd_settings(args):
+    ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('settings')
+    for line in write_settings(ws, args.target.lower()):
+        print(line)
+    if not ws.config.get('permission_mode'):
+        print('note: orch.yaml has no permission_mode: ask the owner (auto recommended) and add '
+              '`permission_mode: <mode>`; dispatch then adds --permission-mode')
+    print(f'owner changes go to {session_settings.SETTINGS_DIR}/<name>.local.json, which settings never touches '
+          'and dispatch never passes: merge them into the generated rules by hand or into your own settings')
+    return 0
+
+
+def worktreeinclude_proposals(ws):
+    """P-n texts: a .worktreeinclude for each local repository with worktree streams that has none."""
+    _, modules, _ = ws.streams()
+    seen, out = set(), []
+    for module in modules.values():
+        repo = module.repo
+        if module.cloud or not module.worktree_mode or repo.key in seen or not repo.local.is_dir():
+            continue
+        seen.add(repo.key)
+        if (repo.local / '.worktreeinclude').exists():
+            continue
+        listed = streams.git(repo.local, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory')
+        found = [f for f in listed.stdout.split('\n') if f and re.search(r'(^|/)\.env(\.[^/]+)?$', f)
+                 and not session_settings.SAMPLE_ENV.search(f)]
+        content = ', '.join(found) if found else '.env, .env.local'
+        out.append(f'Repository {repo.id}: add `.worktreeinclude` in its root (a change of the project, made by a '
+                   f'package there) so that every new worktree gets the gitignored files it needs: {content} '
+                   '(gitignore syntax, one pattern per line; directories as dir/**). Recommend (a) yes: sessions '
+                   'then never copy secrets or settings themselves')
+    return out
 
 
 def in_repo_setup(args, program):
@@ -574,9 +714,13 @@ def in_repo_setup(args, program):
         raise OrchError(f'neither origin/{branch} nor origin/{base} exists: nothing to judge the deploy by')
     candidates, notes, refusals, any_dir = streams.deploy_safe_dirs(top, branch, program, ref)
     if refusals and not override:
+        where = (f'--deploy-override D-n (the workspace then goes to {candidates[0]}, the first directory the '
+                 'readable workflows ignore) or --deploy-override D-n --dir <directory>' if candidates else
+                 '--deploy-override D-n together with --dir <directory>: no readable workflow leaves a directory '
+                 'known to be safe')
         raise OrchError('the deploy check cannot tell whether workspace commits would start a workflow: '
                         + '; '.join(refusals) + f'. {streams.DEPLOY_FORMS}. Ask the owner; after a '
-                        'recorded decision pass --deploy-override D-n')
+                        f'recorded decision pass {where}')
     if args.dir:
         rel = os.path.normpath(os.path.relpath(Path(args.dir).expanduser().resolve(), top))
         if rel.startswith('..'):
@@ -587,9 +731,14 @@ def in_repo_setup(args, program):
                             '--deploy-override D-n with the recorded decision')
     else:
         if not candidates:
-            raise OrchError('no non-hidden directory is ignored by every push workflow '
-                            f'({"; ".join(notes)}); ask the owner where the workspace may live, then pass --dir')
-        if not any_dir and not candidates[0].startswith('docs/'):
+            reasons = ('no non-hidden directory is ignored by every push workflow '
+                       f'({"; ".join(notes) or "no readable push workflow"})')
+            if refusals:
+                reasons = ('the deploy check cannot verify ' + '; '.join(refusals) + ', and ' + reasons)
+            raise OrchError(f'{reasons}; ask the owner where the workspace may live, then pass --dir <directory>'
+                            + (' (with --deploy-override D-n, already given)' if override else
+                               ' (and --deploy-override D-n if the owner accepts an unverifiable check)'))
+        if not any_dir and not override and not candidates[0].startswith('docs/'):
             raise OrchError(f'no docs/ directory is ignored by the deploy; candidates: {", ".join(candidates)}. '
                             'Ask the owner which one to use, then pass --dir')
         rel = candidates[0]
@@ -709,13 +858,22 @@ def cmd_new_wp(args):
     mapping.update(streams.wp_fields(ws.lang, sm, wp, args.slug, str(path.resolve()), ws.tag,
                                      ws.coordinator, workspace, ws.config.get('models')))
     template = ws.wp_dir / '_TEMPLATE.md'
-    safe_edit.create(path, fill(template.read_text(encoding='utf-8'), mapping))
+    text = template.read_text(encoding='utf-8')
+    for old in OLD_SETTINGS_NOTES:  # templates before 0.6.0 contradict the start command dispatch prints
+        text = text.replace(old, '{{START_NOTE}}')
+    safe_edit.create(path, fill(text, mapping))
     link = f'[{wp}](work-packages/{path.name})'
     line = row([link, mod, title, 'DRAFT', session, '—', today()])
     ws.rewrite_table(ws.status, 'wp', lambda body: body + [line])
     ws.journal(f'{wp} created (DRAFT)', wp=wp, evidence=f'work-packages/{path.name}')
     print(f'{wp} {path}')
     return 0
+
+
+OLD_SETTINGS_NOTES = (
+    'No `--settings` in this version: settings files are generated only in a later version.',
+    'Без `--settings` в этой версии: файлы настроек появятся только в следующей версии.',
+)
 
 
 def cmd_set(args):
@@ -748,9 +906,27 @@ def cmd_set(args):
     if column == 'status':
         ws.journal(f'{args.wp}: {found["old"]} -> {value}', wp=args.wp,
                    evidence=args.evidence or '—')
+        if value in ('REVIEW', 'DONE') or value.startswith('CANCELLED'):
+            release_on_demand(ws, args.wp)
     if not getattr(args, 'quiet', False):
         print(f'{args.wp} {column} = {value}')
     return 0
+
+
+def release_on_demand(ws, wp):
+    """READY (status REVIEW) or the end of a package gives back its on-demand locks."""
+    if not ws.has_table(ws.status, 'locks'):
+        return
+    repos = repos_by_id(ws)
+    for lock in locks(ws):
+        repo = repos.get(lock['repo'])
+        if lock['holder'] != wp or repo is None or not repo.on_demand(lock['lock'].split(':', 1)[-1]):
+            continue
+        waiting = release(ws, lock['lock'], wp)
+        ws.journal(f'on-demand lock {lock["lock"]} released at READY' +
+                   (f'; next in queue: {", ".join(waiting)}' if waiting else ''), wp=wp, evidence='orch.py set')
+        print(f'lock {lock["lock"]}: released' + (f'; next in queue: {", ".join(waiting)}' if waiting else ''),
+              file=sys.stderr)
 
 
 def _has_wp(ws, wp):
@@ -947,6 +1123,19 @@ def lint(ws):
         errors.append(f'orch.yaml: owner_language must be one of {LANGUAGES}')
     if config.get('spec_graph', 'none') not in ('none', 'nacl'):
         errors.append('orch.yaml: spec_graph must be none or nacl')
+    if config.get('permission_mode') is not None and \
+            config.get('permission_mode') not in session_settings.PERMISSION_MODES:
+        errors.append(f'orch.yaml: permission_mode must be one of {", ".join(session_settings.PERMISSION_MODES)}')
+    raw_points = [config.get('checkpoints')] + [m.get('checkpoints') for m in config.get('modules') or []
+                                               if isinstance(m, dict)]
+    for points in raw_points:
+        for point in streams.as_list(points):
+            if point not in session_settings.CHECKPOINTS:
+                errors.append(f'orch.yaml: checkpoint {point!r} must be one of '
+                              f'{", ".join(session_settings.CHECKPOINTS)}')
+    stale = config.get('lock_stale_hours')
+    if stale is not None and not (isinstance(stale, int) and stale > 0):
+        errors.append('orch.yaml: lock_stale_hours must be a positive whole number')
     ids = [str(m.get('id')) for m in config.get('modules') or [] if isinstance(m, dict)]
     for module in config.get('modules') or []:
         if not isinstance(module, dict) or not module.get('id') or not module.get('repo'):
@@ -1111,7 +1300,84 @@ def lint_warnings(ws):
     warning = streams.main_checkout_warning(ws.root, local)
     if warning:
         warnings.append(warning)
+    if not ws.config.get('permission_mode'):
+        warnings.append('orch.yaml has no permission_mode (workspace before 0.6.0): ask the owner which permission '
+                        'mode the sessions run in (auto recommended), add `permission_mode: <mode>` and run '
+                        'orch.py settings all')
+    warnings.extend(settings_warnings(ws))
+    seen = set()
+    for module in local:
+        repo = module.repo
+        if repo.key in seen:
+            continue
+        seen.add(repo.key)
+        for command in session_settings.secret_copies(repo.worktree_setup):
+            warnings.append(f'repo {repo.id}: worktree_setup `{command}` copies secrets or session settings into '
+                            f'the worktree: {session_settings.WORKTREEINCLUDE_HINT}')
+    template = ws.wp_dir / '_TEMPLATE.md'
+    if template.is_file() and '{{IF_DENIED}}' not in template.read_text(encoding='utf-8'):
+        warnings.append('work-packages/_TEMPLATE.md predates 0.6.0 (no section 6 "If a permission is denied"): new '
+                        'packages lack it while dispatch starts sessions with --settings; copy section 6 and the '
+                        f'Start command note from the plugin template templates/{ws.lang}/work-package.md by point '
+                        'edit (new-wp already replaces the old "No --settings" note)')
+    if ws.wp_dir.is_dir():
+        rows = ws.wp_rows()
+        for path in sorted(ws.wp_dir.glob('WP-*.md')):
+            wp = re.match(r'^(WP-[A-Z0-9-]+?-\d+)', path.name)
+            module = modules.get(rows.get(wp.group(1), {}).get('module', '').lower()) if wp else None
+            if module is None:
+                continue
+            _, unknown = lock_names(module.repo, streams.wp_meta(path, module))
+            for name in unknown:
+                warnings.append(f'work-packages/{path.name}: `{name}` in the Shared paths or Resources row is not '
+                                f'a lock of repo {module.repo.id} (not in its shared_paths or resources); '
+                                'dispatch ignores it')
+    warnings.extend(stale_on_demand(ws))
     return warnings
+
+
+def clock():
+    """Now in UTC; ORCH_NOW ('YYYY-MM-DD HH:MMZ') replaces it for age checks in tests."""
+    fixed = os.environ.get('ORCH_NOW')
+    if fixed:
+        return dt.datetime.strptime(fixed, '%Y-%m-%d %H:%MZ').replace(tzinfo=dt.timezone.utc)
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def repos_by_id(ws):
+    repos, modules, _ = ws.streams()
+    found = {m.repo.id: m.repo for m in modules.values()}
+    found.update(repos)
+    return found
+
+
+def stale_on_demand(ws):
+    """On-demand locks held longer than lock_stale_hours (default 4): the session may have forgotten UNLOCK."""
+    if not ws.has_table(ws.status, 'locks'):
+        return []
+    limit = ws.config.get('lock_stale_hours') or 4
+    limit = limit if isinstance(limit, int) and limit > 0 else 4
+    repos = repos_by_id(ws)
+    out = []
+    try:
+        rows = locks(ws)
+    except OrchError:
+        return []
+    for lock in rows:
+        repo = repos.get(lock['repo'])
+        name = lock['lock'].split(':', 1)[-1]
+        if lock['holder'] == FREE or repo is None or not repo.on_demand(name):
+            continue
+        try:
+            since = dt.datetime.strptime(lock['since'], '%Y-%m-%d %H:%MZ').replace(tzinfo=dt.timezone.utc)
+        except ValueError:
+            continue
+        hours = (clock() - since).total_seconds() / 3600
+        if hours >= limit:
+            out.append(f'on-demand lock {lock["lock"]} held by {lock["holder"]} for {int(hours)} h (limit {limit} h): '
+                       f'ask the session whether it still needs it; release with orch.py lock release {name} '
+                       f'--wp {lock["holder"]} after its UNLOCK')
+    return out
 
 
 def cmd_lint(args):
@@ -1294,6 +1560,20 @@ def lock_kind(repo, name):
                     f'({", ".join(repo.shared_paths) or "none"})')
 
 
+def lock_names(repo, meta):
+    """(known, unknown) backticked names of the Shared paths and Resources rows: only names within the
+    repository's shared_paths or resources are locks; other text is a lint warning, never a refusal."""
+    known, unknown = [], []
+    for name in meta['shared'] + meta['resources']:
+        try:
+            lock_kind(repo, name)
+        except OrchError:
+            unknown.append(name)
+            continue
+        known.append(name)
+    return known, unknown
+
+
 def lock_conflicts(ws, repo, name, wp):
     """Locks of the same repository held by others that collide with name (paths by glob)."""
     kind = lock_kind(repo, name)
@@ -1415,9 +1695,14 @@ def cmd_lock(args):
             print(json.dumps(rows, ensure_ascii=False, indent=2))
         elif not rows:
             print('locks: none')
+        repos = repos_by_id(ws)
         for r in [] if args.json else rows:
             holder = 'free' if r['holder'] == FREE else f'holder {r["holder"]}'
-            print(f'{r["lock"]} | {holder} | since {r["since"]} | waiting {r["waiting"]}')
+            repo = repos.get(r['repo'])
+            mode = ' (on-demand)' if repo and repo.on_demand(r['lock'].split(':', 1)[-1]) else ''
+            print(f'{r["lock"]}{mode} | {holder} | since {r["since"]} | waiting {r["waiting"]}')
+        for warning in [] if args.json else stale_on_demand(ws):
+            print(f'warning: {warning}')
         return 0
     if not args.name or not args.wp:
         raise OrchError(f'lock {args.action} needs a lock name and --wp')
@@ -1469,12 +1754,11 @@ def dispatch_problems(ws, wp):
                                                        module.repo.shared_paths):
                 problems.append(f'paths overlap with {other} outside shared paths: {a} ~ {b}')
     wanted, busy = [], {}
-    for name in meta['shared'] + meta['resources']:
-        try:
-            conflicts = lock_conflicts(ws, module.repo, name, wp)
-        except OrchError as error:
-            problems.append(str(error))
-            continue
+    known, _ = lock_names(module.repo, meta)
+    for name in known:
+        if module.repo.on_demand(name):
+            continue  # taken by a LOCK message while the package runs, not at dispatch
+        conflicts = lock_conflicts(ws, module.repo, name, wp)
         wanted.append(name)
         for lock in conflicts:
             busy[lock['lock']] = lock
@@ -1523,6 +1807,19 @@ def cmd_dispatch(args):
     ws.require_open('dispatch')
     wp = args.wp
     problems, wanted, busy, r, module = dispatch_problems(ws, wp)
+    settings = session_settings.settings_path(ws.root, module.id)
+    use_settings = not module.cloud and not args.live and not args.no_settings
+    if use_settings and not settings.is_file():
+        raise OrchError(f'{settings.relative_to(ws.root)} is missing: run orch.py settings {module.id} (the session '
+                        'starts with --settings <that file>); --no-settings keeps the pre-0.6.0 start command')
+    _, _, meta0 = wp_context(ws, wp)
+    known, unknown = lock_names(module.repo, meta0)
+    for name in unknown:
+        print(f'dispatch: warning: `{name}` in the Shared paths or Resources row is not a lock of repo '
+              f'{module.repo.id} (not in its shared_paths or resources): ignored', file=sys.stderr)
+    on_demand = [n for n in known if module.repo.on_demand(n)]
+    if on_demand:
+        print(f'dispatch: on-demand locks, taken when the session sends LOCK: {", ".join(on_demand)}', file=sys.stderr)
     if wanted:
         require_table(ws, 'locks')
     if problems:
@@ -1550,6 +1847,12 @@ def cmd_dispatch(args):
         blocks = [b.strip() for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)]
         commands = [b for b in blocks if b.startswith('cd ') and ' claude ' in b]
         command = streams.apply_model_flags(commands[-1], model, effort) if commands else None
+        if command and use_settings:
+            command = session_settings.apply_flags(command, settings.resolve(), ws.config.get('permission_mode'))
+            expected, _ = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo)
+            if settings.read_text(encoding='utf-8') != session_settings.render(expected):
+                print(f'dispatch: warning: {settings.relative_to(ws.root)} is older than orch.yaml: run orch.py '
+                      f'settings {module.id} before handing the command over', file=sys.stderr)
         if args.live:
             rel = path.relative_to(ws.root) if path else wp
             handover = f'[{ws.tag}] TASK {wp} :: {r["title"]} :: ref={ws.root / rel}'
@@ -1854,6 +2157,10 @@ def cmd_overlap(args):
             for p in sorted(both):
                 findings.append(('declared', f'{a} and {b} both declare shared path {p}: '
                                  'serialize them with the lock'))
+            for res in sorted(set(meta_a['resources']) & set(meta_b['resources'])):
+                if res in ma.repo.resources and not ma.repo.on_demand(res):
+                    findings.append(('declared', f'{a} and {b} both declare resource {res}: '
+                                     'serialize them with the lock'))
     if not args.planned:
         held = {}
         for lock in locks(ws):
@@ -2276,6 +2583,8 @@ def build_parser():
                    help='required, the owner\'s explicit choice: module sessions run locally (recommended) or in the cloud')
     p.add_argument('--cloud-environment', '--cloud-env', dest='cloud_environment', metavar='NAME',
                    help='name of the owner\'s cloud environment, required with --sessions cloud (no variable values)')
+    p.add_argument('--permission-mode', choices=session_settings.PERMISSION_MODES,
+                   help='required, the owner\'s explicit choice: permission mode of the sessions (auto recommended)')
     p.add_argument('--deploy-override', metavar='D-n',
                    help='owner decision that accepts an unverifiable deploy check or an unsafe --dir')
     p.set_defaults(func=cmd_init)
@@ -2343,7 +2652,14 @@ def build_parser():
     p.add_argument('--dry-run', action='store_true', help='only check; change nothing')
     p.add_argument('--inline', action='store_true',
                    help='cloud module: append the whole package text to the prompt')
+    p.add_argument('--no-settings', action='store_true',
+                   help='local module: start command without --settings (the pre-0.6.0 form)')
     p.set_defaults(func=cmd_dispatch)
+
+    p = sub.add_parser('settings', parents=[common],
+                       help='write orchestration/settings/<name>.json for session start commands')
+    p.add_argument('target', help='module id, all, or orchestrator')
+    p.set_defaults(func=cmd_settings)
 
     p = sub.add_parser('ready', parents=[common], help='pushed branches of dispatched packages (READY by branch)')
     p.add_argument('--json', action='store_true')
