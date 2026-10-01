@@ -39,8 +39,17 @@ def main():
                            if s.get('pluginId') == args.expected_plugin]
                 assert len(matches) == 1, loaded
                 entrypoint = Path(matches[0]['path'])
-                assert 'Pepper Orchestrator for Codex CLI' in entrypoint.read_text(encoding='utf-8')
+                text = entrypoint.read_text(encoding='utf-8')
+                if 'Pepper Orchestrator for Codex CLI' not in text:
+                    # Portable root plugin.json owns fixed skills/ discovery;
+                    # .codex-plugin skills is only a native compatibility fallback.
+                    assert '**Client routing — read first.**' in text, entrypoint
+                    assert '[Codex workflow](references/codex.md)' in text, entrypoint
+                    workflow = (entrypoint.parent / 'references/codex.md').read_text(encoding='utf-8')
+                    assert '# Codex CLI adapter' in workflow, entrypoint
                 assert (entrypoint.parent / 'scripts/orch.py').is_file(), entrypoint
+                print(json.dumps({'installed_entrypoint': entrypoint.relative_to(entrypoint.parents[2]).as_posix(),
+                                  'codex_workflow': 'PASS'}, ensure_ascii=True))
         print(json.dumps({'native_transport': caps, 'app_server': 'PASS'}))
     if args.powershell:
         with tempfile.TemporaryDirectory(prefix="pepper smoke проба ' spaces ") as temp:

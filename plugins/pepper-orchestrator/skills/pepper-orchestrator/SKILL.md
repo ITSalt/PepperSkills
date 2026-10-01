@@ -7,7 +7,13 @@ metadata:
 
 # Pepper Orchestrator
 
-For Codex use the dedicated Codex entrypoint and [Codex adapter](references/codex.md).
+**Client routing — read first.** If running in Codex, load the
+[Codex workflow](references/codex.md) as the governing instructions for this skill.
+Follow its modes, native roles, models and transport; do not apply the Claude-specific
+instructions below. Portable plugin hosts discover this `skills/` entrypoint even
+when a compatibility manifest points elsewhere. The dedicated Codex entrypoint
+is also bundled for native compatibility and manual skill installations.
+If running in Claude Code, continue with the instructions below.
 For both clients, [the local runtime contract](references/runtime.md) governs atomic
 IDs, short state writes and project instruction pairs. Read both CLAUDE.md and
 AGENTS.md with applicable nested rules. Only module sessions synchronize their

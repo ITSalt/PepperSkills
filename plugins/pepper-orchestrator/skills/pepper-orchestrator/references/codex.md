@@ -8,6 +8,14 @@ agents, and file-based recovery. Messages do not approve permissions or prove wo
 Read common concept sections 1, 2 and 12 for these boundaries; use this document
 for Codex models, roles, launch, messaging and recovery instead of Claude mode texts.
 
+Portable `plugin.json` hosts always discover the canonical `skills/` directory;
+their entrypoint explicitly routes Codex to this workflow before any Claude modes.
+The `.codex-plugin` manifest selects the dedicated Codex entrypoint when used as
+a native compatibility package. Manual Codex skill copies from the plugin ZIP use
+that dedicated entrypoint with the same generated resources. Neither route changes
+Claude instructions or creates another editable runtime implementation.
+See [portable plugin component discovery](https://developers.openai.com/plugins/build/plugins).
+
 ## Modes
 
 - `init`: confirm the owner's language and program scope. Run `orch.py init NAME
