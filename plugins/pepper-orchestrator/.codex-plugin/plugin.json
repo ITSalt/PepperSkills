@@ -1,6 +1,6 @@
 {
   "name": "pepper-orchestrator",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Preview: one orchestrator session runs work across several repositories or parallel streams of one repository - plan, work packages, dispatch with worktrees and locks, PR review with a read-only reviewer agent, owner queue, closing a program when its goal is reached, state in files. Start with /pepper-orchestrator:init <program>, then /pepper-orchestrator:plan <task>.",
   "author": {
     "name": "ITSalt",
@@ -22,7 +22,7 @@
     "code-review",
     "model-selection"
   ],
-  "skills": "./skills/",
+  "skills": "./codex/skills/",
   "interface": {
     "displayName": "Pepper Orchestrator",
     "shortDescription": "Multi-repo orchestration",

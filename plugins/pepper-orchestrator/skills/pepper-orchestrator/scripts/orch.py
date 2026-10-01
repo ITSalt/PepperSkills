@@ -48,6 +48,12 @@ import session_settings  # noqa: E402
 import plugin_report  # noqa: E402
 import streams  # noqa: E402
 import verification  # noqa: E402
+import state_io  # noqa: E402
+import id_allocator  # noqa: E402
+import project_instructions  # noqa: E402
+import codex_adapter  # noqa: E402
+import codex_transport  # noqa: E402
+import runtime_commands  # noqa: E402
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES = SKILL_DIR / 'templates'
@@ -403,11 +409,12 @@ class Workspace:
         return '\n'.join(block), header, rows
 
     def rewrite_table(self, path, name, transform):
-        block, _, _ = self.table(path, name)
-        lines = block.split('\n')
-        head, body = lines[:3], lines[3:]
-        new_body = transform(body)
-        safe_edit.replace_once(path, block, '\n'.join(head + new_body))
+        with state_io.transaction(self.root):
+            block, _, _ = self.table(path, name)
+            lines = block.split('\n')
+            head, body = lines[:3], lines[3:]
+            new_body = transform(body)
+            safe_edit.replace_once(path, block, '\n'.join(head + new_body))
 
     def journal(self, event, wp='—', evidence='—'):
         line = row([now_utc(), wp, event, evidence])
@@ -449,6 +456,10 @@ def cmd_init(args):
     if not re.fullmatch(r'[a-z0-9][a-z0-9-]*', program):
         raise OrchError('program must match [a-z0-9][a-z0-9-]*')
     lang = args.lang
+    if args.client == 'codex':
+        args.sessions = args.sessions or 'local'
+        if args.sessions != 'local':
+            raise OrchError('Codex v1 supports local sessions only')
     if not args.sessions:
         raise OrchError('the owner chooses the session kind: ask "Should module sessions run locally on your machine '
                         '(recommended: claude -w in a worktree per stream) or as cloud sessions (claude.ai/code, one '
@@ -457,7 +468,7 @@ def cmd_init(args):
     if session_settings.is_windows() and not args.shell:
         raise OrchError('on Windows the owner chooses the shell of the start commands: ask "Do you start sessions '
                         'from PowerShell or from bash (Git Bash, WSL)?" and pass --shell powershell|bash')
-    if not args.permission_mode:
+    if args.client == 'claude' and not args.permission_mode:
         raise OrchError('the owner chooses the permission mode of the program\'s sessions: ask "Which permission '
                         'mode should the sessions run in: auto (recommended: a classifier approves routine actions, '
                         'the generated rules hold merge, pushes to the base and production), acceptEdits, default, '
@@ -472,8 +483,9 @@ def cmd_init(args):
         raise OrchError('--cloud-environment is only for --sessions cloud; local sessions use no cloud environment')
     in_repo = in_repo_setup(args, program) if args.in_repo else None
     root = in_repo['root'] if in_repo else Path(args.dir or Path('features') / program).expanduser()
-    if root.exists() and any(root.iterdir()):
-        raise OrchError(f'{root} exists and is not empty')
+    with state_io.transaction(root):
+        if root.exists() and any(not p.is_dir() for p in root.rglob('*')):
+            raise OrchError(f'{root} exists and is not empty')
     repos = [in_repo['repo']] if in_repo else []
     for spec in args.repo or []:
         match = re.fullmatch(r'([a-z0-9][a-z0-9-]*)=([^@]+)(?:@(.+))?', spec)
@@ -534,29 +546,51 @@ def cmd_init(args):
     module_rows = '\n'.join([row([m['id'], m['repo'], m['base'], m['session']]) for m in modules] +
                             [row([a['id'], a['repo'] + ' (' + a['kind'] + ')',
                                   ', '.join(a['paths']), a['session']]) for a in areas])
-    for rel, template in files.items():
-        text = template.read_text(encoding='utf-8')
-        text = text.replace('{{MODULE_ROWS}}\n', module_rows + '\n' if module_rows else '')
-        text = fill(text, base)
-        safe_edit.create(root / rel, text)
-    config_text = render_config(base, modules, repos, areas, in_repo, args.sessions, args.cloud_environment)
-    if args.shell and args.shell != 'bash':
-        config_text = config_text.replace('\npermission_mode: ', f'\nshell: {args.shell}\npermission_mode: ', 1)
-    safe_edit.create(root / 'orch.yaml', config_text)
-    safe_edit.create(root / '.gitignore', safe_edit.BACKUP_DIR_NAME + '/\n' +
-                     session_settings.SETTINGS_DIR + '/*.local.json\n')
-    ws = Workspace(root)
-    ws.journal(f'workspace created ({lang})', evidence='orch.py init')
-    ws.journal(f'session kind: {args.sessions}' + (f', environment {args.cloud_environment}' if args.cloud_environment
-                                                   else '') + ', confirmed by the owner', evidence='orch.py init')
-    ws.journal(f'permission mode: {args.permission_mode}, confirmed by the owner', evidence='orch.py init')
-    print(f'workspace: {root}')
-    for line in write_settings(ws, 'all'):
-        print(line)
-    for proposal in worktreeinclude_proposals(ws):
-        cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='P', text=proposal,
-                                     where='orch.py init', quiet=True))
-        print(f'owner question: {proposal}')
+    with state_io.transaction(root):
+        if root.exists() and any(not p.is_dir() for p in root.rglob('*')):
+            raise OrchError(f'{root} became nonempty during init; retry')
+        for rel, template in files.items():
+            text = template.read_text(encoding='utf-8')
+            text = text.replace('{{MODULE_ROWS}}\n', module_rows + '\n' if module_rows else '')
+            text = fill(text, base)
+            if args.client == 'codex' and rel == 'orchestration/bootstrap-prompt.md':
+                text = ('# Codex coordinator bootstrap\n\nRead README.md, PLAN.md, orch.yaml, status.md, '
+                        'decisions.md and protocol.md. Use the Codex adapter. Coordinate independent '
+                        'owner-launched module sessions; delegate only research/review/verification. '
+                        'Run orch.py settings all and use its generated Codex start command.\n')
+            safe_edit.create(root / rel, text)
+        config_text = render_config(base, modules, repos, areas, in_repo, args.sessions, args.cloud_environment)
+        if args.client == 'codex':
+            config_text = 'client: codex\ncodex:\n  approval_policy: on-request\n  sandbox_mode: workspace-write\n' + config_text
+            config_text = re.sub(r'(?m)^permission_mode: .*\n', '', config_text)
+            config_text = config_text.replace('branch_prefix: ' + program + '/', 'branch_prefix: codex/')
+        if args.sessions == 'local':
+            scope = id_allocator.new_scope()
+            id_allocator.register(scope, {})
+            config_text += '\nnumbering:\n  scope: ' + scope + '\n  version: 1\n'
+        if args.shell and args.shell != 'bash':
+            if args.client == 'claude':
+                config_text = config_text.replace('\npermission_mode: ', f'\nshell: {args.shell}\npermission_mode: ', 1)
+            else:
+                config_text = config_text.replace('client: codex\n', f'client: codex\nshell: {args.shell}\n', 1)
+        safe_edit.create(root / 'orch.yaml', config_text)
+        safe_edit.create(root / '.gitignore', safe_edit.BACKUP_DIR_NAME + '/\n' +
+                         session_settings.SETTINGS_DIR + '/*.local.json\n')
+        ws = Workspace(root)
+        ws.journal(f'workspace created ({lang})', evidence='orch.py init')
+        ws.journal(f'session kind: {args.sessions}' + (f', environment {args.cloud_environment}' if args.cloud_environment
+                                                       else '') + ', confirmed by the owner', evidence='orch.py init')
+        if args.client == 'claude':
+            ws.journal(f'permission mode: {args.permission_mode}, confirmed by the owner', evidence='orch.py init')
+        else:
+            ws.journal('client Codex; local launch policy defaults in orch.yaml', evidence='orch.py init --client codex')
+        print(f'workspace: {root}')
+        for line in write_settings(ws, 'all'):
+            print(line)
+        for proposal in worktreeinclude_proposals(ws):
+            cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='P', text=proposal,
+                                         where='orch.py init', quiet=True))
+            print(f'owner question: {proposal}')
     if not running_in_cloud():
         print(orchestrator_start(ws))
     if in_repo and in_repo['override']:
@@ -576,6 +610,12 @@ def cmd_init(args):
 
 def orchestrator_start(ws):
     """Start command of the orchestrator session with its settings file, and the /config alternative."""
+    if ws.config.get('client') == 'codex':
+        import shlex
+        return 'orchestrator start command:\n' + codex_adapter.shell_join([
+            'codex', '--cd', str(ws.root.resolve()), *codex_adapter.read_flags(ws, 'orchestrator'),
+            'Use Pepper Orchestrator in this program. Read status.md, orch.yaml and both project instruction files. '
+            'Coordinate module sessions; do not edit their code. Check session capabilities before sending tasks.'], ws.config.get('shell'))
     mode = ws.config.get('permission_mode')
     rel = f'{session_settings.SETTINGS_DIR}/{session_settings.ORCHESTRATOR}.json'
     command = session_settings.shell_command(
@@ -591,6 +631,8 @@ def write_settings(ws, target):
     """Write orchestration/settings/<name>.json for local modules and the orchestrator; returns report lines.
 
     Idempotent: an unchanged file is only touched (newer than orch.yaml). <name>.local.json is never touched."""
+    if ws.config.get('client') == 'codex':
+        return codex_adapter.write_settings(ws, target)
     _, modules, errors = ws.streams()
     if errors:
         raise OrchError('fix orch.yaml first: ' + '; '.join(errors))
@@ -609,10 +651,10 @@ def write_settings(ws, target):
             os.utime(path)
             lines.append(f'settings {name}: unchanged ({path})')
             continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix('.json.tmp')
-        tmp.write_text(text, encoding='utf-8')
-        os.replace(tmp, path)
+        if path.exists():
+            safe_edit.replace_once(path, path.read_text(encoding='utf-8'), text)
+        else:
+            safe_edit.create(path, text)
         lines.append(f'settings {name}: written ({path})')
     return lines
 
@@ -646,6 +688,14 @@ def settings_warnings(ws):
     _, modules, errors = ws.streams()
     if errors:
         return []
+    if ws.config.get('client') == 'codex':
+        result = []
+        for name in [*modules, 'orchestrator']:
+            try:
+                codex_adapter.read_flags(ws, name)
+            except (streams.StreamError, ValueError) as e:
+                result.append(str(e))
+        return result
     warnings = []
     try:
         outputs, _ = build_settings(ws, sorted(modules))
@@ -673,6 +723,9 @@ def cmd_settings(args):
     ws.require_open('settings')
     for line in write_settings(ws, args.target.lower()):
         print(line)
+    if ws.config.get('client') == 'codex':
+        print('Codex uses launch arguments, native agent files and existing user/project configuration.')
+        return 0
     if not ws.config.get('permission_mode'):
         print('note: orch.yaml has no permission_mode: ask the owner (auto recommended) and add '
               '`permission_mode: <mode>`; dispatch then adds --permission-mode')
@@ -859,9 +912,20 @@ def cmd_new_wp(args):
                if (m := re.match(re.escape(prefix) + r'(\d+)', p.name))]
     numbers += [int(m.group(1)) for r in rows
                 if (m := re.fullmatch(re.escape(prefix) + r'(\d+)', plain_id(r['wp'])))]
-    wp = f'{prefix}{max(numbers, default=0) + 1:02d}'
+    number = runtime_commands.allocate(ws, prefix.rstrip('-'), max(numbers, default=0) + 1,
+                                       getattr(args, 'request_id', None))
+    wp = f'{prefix}{number:02d}'
     path = ws.wp_dir / f'{wp}-{args.slug}.md'
     title = args.title or args.slug.replace('-', ' ')
+    if getattr(args, 'request_id', None):
+        existing = ws.wp_rows().get(wp)
+        if existing:
+            if ws.wp_path(existing['wp']) != path or existing['title'] != title:
+                raise OrchError('request-id already created a WP with different slug or title')
+            print(f'{wp} {path} (already created)')
+            return 0
+        if any(ws.wp_dir.glob(wp + '-*.md')):
+            raise OrchError('reserved WP has a different or orphaned file; reconcile it before retry')
     _, stream_modules, _ = ws.streams()
     sm = stream_modules[mod]
     session = sm.session
@@ -872,7 +936,14 @@ def cmd_new_wp(args):
     workspace = {'mode': 'in-repo' if ws.in_repo else 'separate', 'branch': ws.workspace_branch,
                  'wp_rel': os.path.relpath(path.resolve(), ws.git_top) if ws.in_repo else None}
     mapping.update(streams.wp_fields(ws.lang, sm, wp, args.slug, str(path.resolve()), ws.tag,
-                                     ws.coordinator, workspace, ws.config.get('models')))
+                                     ws.coordinator, workspace, streams.active_models(ws.config)))
+    if ws.config.get('client') == 'codex':
+        mapping.update(codex_adapter.fields(ws.lang, sm, wp, args.slug, str(path.resolve()), ws.tag,
+                                            ws.coordinator, streams.active_models(ws.config)))
+    else:
+        prompt = mapping['START_PROMPT']
+        mapping['START_PROMPT'] += '\n\n' + project_instructions.GUIDANCE
+        mapping['START_COMMAND'] = mapping['START_COMMAND'].replace(prompt, mapping['START_PROMPT'])
     template = ws.wp_dir / '_TEMPLATE.md'
     text = template.read_text(encoding='utf-8')
     for old in OLD_SETTINGS_NOTES:  # templates before 0.6.0 contradict the start command dispatch prints
@@ -958,7 +1029,7 @@ def cmd_model(args):
     ws = Workspace(find_workspace(args.workspace))
     ws.require_open('model')
     model, effort = args.model, args.effort
-    errors = streams.model_errors('model', model, effort)
+    errors = streams.model_errors('model', model, effort, ws.config.get('client', 'claude'))
     if errors:
         raise OrchError('; '.join(errors))
     r, module, _ = wp_context(ws, args.wp)
@@ -1022,9 +1093,10 @@ def cmd_journal(args):
     return 0
 
 
-def next_id(ids, prefix):
+def next_id(ids, prefix, ws=None):
     numbers = [int(m.group(1)) for i in ids if (m := re.fullmatch(prefix + r'-(\d+)', i))]
-    return f'{prefix}-{max(numbers, default=0) + 1}'
+    number = runtime_commands.allocate(ws, prefix, max(numbers, default=0) + 1) if ws else max(numbers, default=0) + 1
+    return f'{prefix}-{number}'
 
 
 def cmd_owner(args):
@@ -1036,7 +1108,7 @@ def cmd_owner(args):
         kind = args.target.upper()
         if kind not in ('R', 'P'):
             raise OrchError('owner add takes R (action) or P (question)')
-        new = next_id([plain_id(r['id']) for r in rows], kind)
+        new = next_id([plain_id(r['id']) for r in rows], kind, ws)
         cells = [new, cell(args.text), cell(args.where or '—'), today(), '']
         line = '| ' + ' | '.join(cells) + ' |'
         ws.rewrite_table(ws.status, 'owner', lambda body: body + [line])
@@ -1079,7 +1151,7 @@ def carry_to_backlog(ws, item_id, item, reason):
         template = (TEMPLATES / ws.lang / 'backlog.md').read_text(encoding='utf-8')
         safe_edit.create(path, fill(template, {'PROGRAM_TITLE': ws.config.get('title') or ws.config.get('program')}))
     _, _, rows = ws.table(path, 'backlog')
-    new = next_id([plain_id(r['id']) for r in rows], 'B')
+    new = next_id([plain_id(r['id']) for r in rows], 'B', ws)
     line = row([new, today(), item['text'], item_id, reason])
     ws.rewrite_table(path, 'backlog', lambda body: body + [line])
     return new
@@ -1110,7 +1182,7 @@ def cmd_decide(args):
     if kind not in ('D', 'A', 'Q'):
         raise OrchError('decide takes D (decision), A (assumption) or Q (question)')
     _, _, rows = ws.table(ws.decisions, 'decisions')
-    new = next_id([plain_id(r['id']) for r in rows], kind)
+    new = next_id([plain_id(r['id']) for r in rows], kind, ws)
     source = args.source or (args.closes and f'answer to {args.closes.upper()}') or '—'
     line = row([new, today(), args.text, source])
     if args.closes:
@@ -1196,7 +1268,7 @@ def lint(ws):
     for path in files:
         meta = streams.wp_meta(path, None)
         errors.extend(f'work-packages/{path.name}: {e}'
-                      for e in streams.model_errors('header', meta.get('model'), meta.get('effort')))
+                      for e in streams.model_errors('header', meta.get('model'), meta.get('effort'), ws.config.get('client', 'claude')))
     for path in files:
         wp = re.match(r'^(WP-[A-Z0-9-]+?-\d+)', path.name)
         if not wp or wp.group(1) not in wp_ids:
@@ -1331,7 +1403,7 @@ def lint_warnings(ws):
     warning = streams.main_checkout_warning(ws.root, local)
     if warning:
         warnings.append(warning)
-    if not ws.config.get('permission_mode'):
+    if ws.config.get('client', 'claude') == 'claude' and not ws.config.get('permission_mode'):
         warnings.append('orch.yaml has no permission_mode (workspace before 0.6.0): ask the owner which permission '
                         'mode the sessions run in (auto recommended), add `permission_mode: <mode>` and run '
                         'orch.py settings all')
@@ -1787,6 +1859,11 @@ def dispatch_problems(ws, wp):
     wanted, busy = [], {}
     known, _ = lock_names(module.repo, meta)
     for name in known:
+        if module.repo.resource_modes.get(name) == 'sequence':
+            if lock_conflicts(ws, module.repo, name, wp):
+                problems.append(f'old numbering lock {name} still held; stop/reconcile its writer first')
+            runtime_commands.check_sequence(ws, module.repo, name)
+            continue
         if module.repo.on_demand(name):
             continue  # taken by a LOCK message while the package runs, not at dispatch
         conflicts = lock_conflicts(ws, module.repo, name, wp)
@@ -1811,7 +1888,7 @@ def dispatch_problems(ws, wp):
     wp_path = ws.wp_path(r['wp'])
     if wp_path and wp_path.is_file():
         header_meta = streams.wp_meta(wp_path, module)
-        for error in streams.model_errors(f'{wp} header', header_meta.get('model'), header_meta.get('effort')):
+        for error in streams.model_errors(f'{wp} header', header_meta.get('model'), header_meta.get('effort'), ws.config.get('client', 'claude')):
             problems.append(f'{error}; fix it with orch.py model {wp} <model> --reason "..."')
     if module.cloud and not module.cloud_environment:
         problems.append(f'module {module.id} runs cloud sessions but no cloud environment is set: ask the owner for '
@@ -1835,10 +1912,12 @@ def dispatch_problems(ws, wp):
 
 def cmd_dispatch(args):
     ws = Workspace(find_workspace(args.workspace))
+    state_version = runtime_commands.state_version(ws)
     ws.require_open('dispatch')
     wp = args.wp
     problems, wanted, busy, r, module = dispatch_problems(ws, wp)
-    settings = session_settings.settings_path(ws.root, module.id)
+    is_codex = ws.config.get('client') == 'codex'
+    settings = codex_adapter.settings_path(ws.root, module.id) if is_codex else session_settings.settings_path(ws.root, module.id)
     use_settings = not module.cloud and not args.live and not args.no_settings
     if use_settings and not settings.is_file():
         raise OrchError(f'{settings.relative_to(ws.root)} is missing: run orch.py settings {module.id} (the session '
@@ -1874,10 +1953,33 @@ def cmd_dispatch(args):
         if args.inline or not ws.in_repo:
             prompt = prompt + '\n\n---\n' + text.strip()
         handover = streams.cloud_block(ws.lang, wp, module, prompt, model, effort)
+    elif is_codex:
+        runtime_commands.check_capabilities(ws)
+        handover = codex_adapter.launch(ws, module, wp, meta)
+        if args.live:
+            print('Use session send to queue the task to a registered thread; dispatch does not claim delivery.')
     else:
         blocks = [b.strip() for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)]
         commands = [b for b in blocks if b.startswith('cd ') and ' claude ' in b]
         command = streams.apply_model_flags(commands[-1], model, effort) if commands else None
+        legacy_prompt = re.search(r'## 5\.[^\n]*\n+```text\n(.*?)\n```', text, re.S)
+        if command and legacy_prompt and 'Before implementing, read both' not in command:
+            brief = legacy_prompt.group(1)
+            command = command.replace(brief, brief + '\n\n' + project_instructions.GUIDANCE)
+        if not command:
+            slug = path.stem[len(wp) + 1:]
+            command = streams.wp_fields(ws.lang, module, wp, slug, str(path.resolve()), ws.tag,
+                                        ws.coordinator, models=streams.active_models(ws.config))['START_COMMAND']
+            command = streams.apply_model_flags(command, model, effort)
+        existing = [e for e in streams.worktrees(module.repo) if e.get('branch') == meta.get('branch')]
+        if existing and streams.is_linked_worktree(existing[0]['path']):
+            slug = path.stem[len(wp) + 1:]
+            prompt = streams.wp_fields(ws.lang, module, wp, slug, str(path.resolve()), ws.tag,
+                                       ws.coordinator, models=streams.active_models(ws.config))['START_PROMPT']
+            prompt += ('\nUse this existing worktree and branch; skip worktree creation and client-specific '
+                       'startup instructions retained in the package from a previous client.\n' + project_instructions.GUIDANCE)
+            command = f'cd {shlex_quote(existing[0]["path"])} && claude --name {module.session} {shlex_quote(prompt)}'
+            command = streams.apply_model_flags(command, model, effort)
         if command and use_settings:
             command = session_settings.apply_flags(command, settings.resolve(), ws.config.get('permission_mode'))
             expected, _ = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo)
@@ -1896,14 +1998,17 @@ def cmd_dispatch(args):
         print(f'dispatch {wp}: ok (dry run); locks to take: {", ".join(wanted) or "none"}; {model_note}')
         print(handover)
         return 0
-    for name in wanted:
-        if acquire(ws, module.repo, name, wp, 'dispatch'):
-            raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
-    wanted = [lock_key(module.repo, n) for n in wanted]
-    evidence = ('cloud session prompt handed to the owner' if module.cloud else
-                'TASK message to live session' if args.live else 'start command handed to the owner')
-    cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='DISPATCHING', quiet=True,
-                               evidence=evidence + f'; {model_note}' + (f'; locks {", ".join(wanted)}' if wanted else '')))
+    with state_io.transaction(ws.root):
+        if runtime_commands.state_version(ws) != state_version:
+            raise OrchError("program state changed during external checks; retry from current files")
+        for name in wanted:
+            if acquire(ws, module.repo, name, wp, 'dispatch'):
+                raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
+        wanted = [lock_key(module.repo, n) for n in wanted]
+        evidence = ('cloud session prompt handed to the owner' if module.cloud else
+                    'TASK message to live session' if args.live else 'start command handed to the owner')
+        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='DISPATCHING', quiet=True,
+                                   evidence=evidence + f'; {model_note}' + (f'; locks {", ".join(wanted)}' if wanted else '')))
     print(handover)
     return 0
 
@@ -1932,7 +2037,7 @@ def cmd_merge(args):
             raise OrchError(f'{args.wp} is already in the merge queue')
         same = [q for q in rows if q['repo'] == module.repo.id and q['status'] == 'queued']
         after = same[-1]['wp'] if same and module.repo.merge_policy == 'sequential' else '—'
-        number = max([int(q['n']) for q in rows if q['n'].isdigit()], default=0) + 1
+        number = runtime_commands.allocate(ws, 'MERGE', max([int(q['n']) for q in rows if q['n'].isdigit()], default=0) + 1)
         line = row([number, module.repo.id, args.wp, args.pr or '—', after, 'queued'])
         ws.rewrite_table(ws.status, 'merge', lambda body: body + [line])
         ws.journal(f'{args.wp} queued for merge ({module.repo.merge_policy})', wp=args.wp,
@@ -2050,6 +2155,7 @@ REPORT_TEXT = {
 def cmd_review_start(args):
     """Start a review round: automatic findings, report skeleton, clone command, status REVIEW."""
     ws = Workspace(find_workspace(args.workspace))
+    state_version = runtime_commands.state_version(ws)
     ws.require_open('review-start')
     wp = args.wp
     r, module, meta = wp_context(ws, wp)
@@ -2096,9 +2202,17 @@ def cmd_review_start(args):
     if (args.round or 1) >= 3:
         models = ws.config.get('models') if isinstance(ws.config.get('models'), dict) else {}
         target = str(models.get('escalate') or 'opus')
+        if ws.config.get('client') == 'codex':
+            models = streams.active_models(ws.config) or {}
+            target = models.get('escalate')
+            if not target:
+                warnings.append('round 3+: ask owner to select a Codex escalation model; no Claude model mapping')
         target_effort = models.get('escalate_effort')
         flags = f'--model {target}' + (f' --effort {target_effort}' if target_effort else '')
-        if module.cloud:
+        if ws.config.get('client') == 'codex':
+            how = ('owner restarts the registered Codex session with --model ' + str(target) +
+                   ' after stopping its writer') if target else 'owner selects the Codex model'
+        elif module.cloud:
             how = (f'in the same cloud session choose {target} in the model list (or send `/model {target}`'
                    + (f' and `/effort {target_effort}`' if target_effort else '') + ')')
         else:
@@ -2113,22 +2227,25 @@ def cmd_review_start(args):
     body = fill(template, {'WP': wp, 'PR': args.pr or r['pr'], 'SHA': sha[:10], 'BASE': base_label, 'DATE': today(),
                            'ROUND': str(args.round or 1), 'FILES': str(len(files)), 'STAT': stat or '—',
                            'AUTO': auto, 'REVISION': revision or '—'})
-    safe_edit.create(path, body)
-    if args.pr:
-        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='pr', text=args.pr, quiet=True,
-                                   evidence=None))
-    already = any(item['text'].startswith(f'{wp}: round ') and 'restart the module session' in item['text']
-                  for item in open_owner_items(ws))
-    if escalation and not already:
-        cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where=f'reports/{name}',
-                                     quiet=True, text=f'{wp}: {escalation} ; expected: the session continues on the stronger '
-                                          'model with its context'))
-    if r['status'] in ('DISPATCHING', 'IN_PROGRESS', 'REVISE'):
-        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='REVIEW', quiet=True,
-                                   evidence=f'{sha[:10]}; report reports/{name}'))
-    else:
-        ws.journal(f'{wp}: review round {args.round or 1} started at {sha[:10]}', wp=wp,
-                   evidence=f'reports/{name}')
+    with state_io.transaction(ws.root):
+        if runtime_commands.state_version(ws) != state_version:
+            raise OrchError("program state changed during external checks; retry from current files")
+        safe_edit.create(path, body)
+        if args.pr:
+            cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='pr', text=args.pr, quiet=True,
+                                       evidence=None))
+        already = any(item['text'].startswith(f'{wp}: round ') and 'restart the module session' in item['text']
+                      for item in open_owner_items(ws))
+        if escalation and not already:
+            cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where=f'reports/{name}',
+                                         quiet=True, text=f'{wp}: {escalation} ; expected: the session continues on the stronger '
+                                              'model with its context'))
+        if r['status'] in ('DISPATCHING', 'IN_PROGRESS', 'REVISE'):
+            cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='REVIEW', quiet=True,
+                                       evidence=f'{sha[:10]}; report reports/{name}'))
+        else:
+            ws.journal(f'{wp}: review round {args.round or 1} started at {sha[:10]}', wp=wp,
+                       evidence=f'reports/{name}')
     origin = streams.git(module.repo.local, 'config', '--get', 'remote.origin.url').stdout.strip()
     tests = module.tests if isinstance(module.tests, dict) else {'full': module.tests or []}
     commands = [c for c in streams.as_list(tests.get('scoped')) + streams.as_list(tests.get('full'))]
@@ -2190,7 +2307,7 @@ def repo_base(module):
 def next_bug(ws):
     numbers = [int(m.group(1)) for p in (ws.root / 'bugs').glob('BUG-*.md')
                if (m := re.match(r'BUG-(\d+)', p.name))]
-    return max(numbers, default=0) + 1
+    return runtime_commands.allocate(ws, 'BUG', max(numbers, default=0) + 1)
 
 
 def write_bug(ws, wp, module, env, sha, report_rel, failed):
@@ -2214,6 +2331,7 @@ def write_bug(ws, wp, module, env, sha, report_rel, failed):
 def cmd_verify(args):
     """Verify a package on test or prod by facts: deploy run for the SHA, served version, verify commands."""
     ws = Workspace(find_workspace(args.workspace))
+    state_version = runtime_commands.state_version(ws)
     if args.list:
         return verify_list(ws)
     if not args.wp or not args.env:
@@ -2267,8 +2385,12 @@ def cmd_verify(args):
             raise OrchError(f'{wp}: cannot read {pr}: {error}')
         if state != 'MERGED':
             raise OrchError(f'{wp} is ACCEPTED and {pr} is {state or "unknown"}, not merged: verify after the merge')
-        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='MERGED', quiet=True,
-                                   evidence=f'gh pr view {pr}: MERGED at {(oid or "?")[:10]}'))
+        with state_io.transaction(ws.root):
+            if runtime_commands.state_version(ws) != state_version:
+                raise OrchError('program state changed during PR verification; retry')
+            cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='MERGED', quiet=True,
+                                       evidence=f'gh pr view {pr}: MERGED at {(oid or "?")[:10]}'))
+            state_version = runtime_commands.state_version(ws)
         r = dict(r, status='MERGED')
     sha = args.sha
     if not sha:
@@ -2309,49 +2431,52 @@ def cmd_verify(args):
     failed = [x for x in rows if x['verdict'] != 'PASS']
     verdict = 'FAIL' if failed else 'PASS'
     date = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
-    reports = ws.root / 'reports'
-    stem = f'verify-{wp}-{env}-{date}'
-    path = reports / f'{stem}.md'
-    n = 2
-    while path.exists():
-        path = reports / f'{stem}-{n}.md'
-        n += 1
-    rel = str(path.relative_to(ws.root))
-    summary = (t['passed'].format(n=len(rows)) if not failed else t['failed'].format(
-        n=len(failed), total=len(rows), items=', '.join(f'{x["kind"]} `{x["target"]}`' for x in failed)))
-    note = '' if env == 'test' or r['status'] in ('VERIFIED_TEST', 'PROD', 'DONE') else \
-        t['no_vtest'].format(status=r['status'])
-    template = (TEMPLATES / ws.lang / 'verify-report.md').read_text(encoding='utf-8')
-    safe_edit.create(path, fill(template, {
-        'WP': wp, 'ENV': env, 'SHA': sha[:12], 'DATE': today(), 'VERDICT': verdict, 'SUMMARY': summary + note,
-        'BRANCH': branch, 'BASE_URL': url or '—', 'STATUS': r['status'], 'ROWS': verification.table(rows, ws.lang)}))
-    if not failed:
-        if r['status'] in verification.LATER[env]:
-            ws.journal(f'{wp}: verified on {env} at {sha[:10]} (status {r["status"]} kept)', wp=wp, evidence=rel)
-        else:
-            cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text=target, quiet=True,
-                                       evidence=f'verify --env {env} {sha[:10]}: {rel}'))
-        print(f'verify {wp} --env {env}: PASS at {sha[:10]} ({summary}); status '
-              f'{r["status"] if r["status"] in verification.LATER[env] else target}')
-        print(f'report: {path}')
-        print('next: the live scenario of the package (verify mode), recorded in the report\'s "Live scenario" section')
-        return 0
-    bug = write_bug(ws, wp, module, env, sha, rel, failed)
-    ws.journal(f'{wp}: verification on {env} failed at {sha[:10]}: {summary}', wp=wp, evidence=f'{rel}; {bug}')
-    owner = None
-    deploy_failed = [x for x in failed if x.get('deploy')]
-    if deploy_failed:
-        owner = (f'{wp}: no successful deploy run on {env} for {sha[:10]} ({deploy_failed[0]["output"][0]}); a deploy '
-                 f'or a re-run needs your rights ; expected: the run succeeds, then orch.py verify {wp} --env {env}')
-        if not any(item['text'].startswith(f'{wp}: no successful deploy run on {env}') for item in open_owner_items(ws)):
-            cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', text=owner, where=rel,
-                                         quiet=True))
-    print(f'verify {wp} --env {env}: FAIL at {sha[:10]} ({summary}); status stays {r["status"]}', file=sys.stderr)
-    print(f'report: {path}', file=sys.stderr)
-    print(f'defect: {ws.root / bug}', file=sys.stderr)
-    if owner:
-        print(f'owner item: {owner}', file=sys.stderr)
-    return 1
+    with state_io.transaction(ws.root):
+        if runtime_commands.state_version(ws) != state_version:
+            raise OrchError("program state changed during external checks; retry from current files")
+        reports = ws.root / 'reports'
+        stem = f'verify-{wp}-{env}-{date}'
+        path = reports / f'{stem}.md'
+        n = 2
+        while path.exists():
+            path = reports / f'{stem}-{n}.md'
+            n += 1
+        rel = str(path.relative_to(ws.root))
+        summary = (t['passed'].format(n=len(rows)) if not failed else t['failed'].format(
+            n=len(failed), total=len(rows), items=', '.join(f'{x["kind"]} `{x["target"]}`' for x in failed)))
+        note = '' if env == 'test' or r['status'] in ('VERIFIED_TEST', 'PROD', 'DONE') else \
+            t['no_vtest'].format(status=r['status'])
+        template = (TEMPLATES / ws.lang / 'verify-report.md').read_text(encoding='utf-8')
+        safe_edit.create(path, fill(template, {
+            'WP': wp, 'ENV': env, 'SHA': sha[:12], 'DATE': today(), 'VERDICT': verdict, 'SUMMARY': summary + note,
+            'BRANCH': branch, 'BASE_URL': url or '—', 'STATUS': r['status'], 'ROWS': verification.table(rows, ws.lang)}))
+        if not failed:
+            if r['status'] in verification.LATER[env]:
+                ws.journal(f'{wp}: verified on {env} at {sha[:10]} (status {r["status"]} kept)', wp=wp, evidence=rel)
+            else:
+                cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text=target, quiet=True,
+                                           evidence=f'verify --env {env} {sha[:10]}: {rel}'))
+            print(f'verify {wp} --env {env}: PASS at {sha[:10]} ({summary}); status '
+                  f'{r["status"] if r["status"] in verification.LATER[env] else target}')
+            print(f'report: {path}')
+            print('next: the live scenario of the package (verify mode), recorded in the report\'s "Live scenario" section')
+            return 0
+        bug = write_bug(ws, wp, module, env, sha, rel, failed)
+        ws.journal(f'{wp}: verification on {env} failed at {sha[:10]}: {summary}', wp=wp, evidence=f'{rel}; {bug}')
+        owner = None
+        deploy_failed = [x for x in failed if x.get('deploy')]
+        if deploy_failed:
+            owner = (f'{wp}: no successful deploy run on {env} for {sha[:10]} ({deploy_failed[0]["output"][0]}); a deploy '
+                     f'or a re-run needs your rights ; expected: the run succeeds, then orch.py verify {wp} --env {env}')
+            if not any(item['text'].startswith(f'{wp}: no successful deploy run on {env}') for item in open_owner_items(ws)):
+                cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', text=owner, where=rel,
+                                             quiet=True))
+        print(f'verify {wp} --env {env}: FAIL at {sha[:10]} ({summary}); status stays {r["status"]}', file=sys.stderr)
+        print(f'report: {path}', file=sys.stderr)
+        print(f'defect: {ws.root / bug}', file=sys.stderr)
+        if owner:
+            print(f'owner item: {owner}', file=sys.stderr)
+        return 1
 
 
 def verify_list(ws):
@@ -2459,23 +2584,24 @@ def report_check(ws, args, repos, modules, names, terms):
     expected_actual = clean(args.expected_actual or 'Expected: as the mode documentation says. Actual: the output above.')
     workaround = clean(args.workaround or 'none found yet')
     existing = plugin_bugs(ws)
-    number = max([int(i.split('-')[-1]) for i in existing], default=0) + 1
-    rid = f'PLUGIN-BUG-{number}'
-    issue_rel = f'bugs/{rid}.issue.md'
-    values = {'ID': rid, 'TITLE': title, 'DATE': today(), 'PLUGIN': facts['plugin'], 'VERSION': facts['version'],
-              'CLAUDE': clean(facts['claude']), 'OS': facts['os'], 'PYTHON': facts['python'], 'SHELL': facts['shell'],
-              'SHAPE': plugin_report.workspace_shape(ws.config, repos, modules), 'FINGERPRINT': fp,
-              'COMMAND': clean(args.command or '—'), 'OUTPUT': output, 'EXPECTED_ACTUAL': expected_actual,
-              'WORKAROUND': workaround, 'ISSUE_FILE': issue_rel}
-    record = fill((TEMPLATES / ws.lang / 'plugin-bug.md').read_text(encoding='utf-8'), values)
-    issue = fill((TEMPLATES / 'issue-body.md').read_text(encoding='utf-8'), values)
-    problems = plugin_report.leaks(record + '\n' + issue, names, terms, SECRET_PATTERNS)
-    if problems:
-        raise OrchError('the report still looks private after anonymization (' + ', '.join(sorted(set(problems)))
-                        + '); nothing was written: shorten --log or --command to the failing lines')
-    safe_edit.create(ws.root / f'bugs/{rid}.md', record)
-    safe_edit.create(ws.root / issue_rel, issue)
-    ws.journal(f'plugin defect {rid} recorded (anonymized): {title}', evidence=f'bugs/{rid}.md')
+    with state_io.transaction(ws.root):
+        number = runtime_commands.allocate(ws, 'PLUGIN-BUG', max([int(i.split('-')[-1]) for i in existing], default=0) + 1)
+        rid = f'PLUGIN-BUG-{number}'
+        issue_rel = f'bugs/{rid}.issue.md'
+        values = {'ID': rid, 'TITLE': title, 'DATE': today(), 'PLUGIN': facts['plugin'], 'VERSION': facts['version'],
+                  'CLAUDE': clean(facts['claude']), 'OS': facts['os'], 'PYTHON': facts['python'], 'SHELL': facts['shell'],
+                  'SHAPE': plugin_report.workspace_shape(ws.config, repos, modules), 'FINGERPRINT': fp,
+                  'COMMAND': clean(args.command or '—'), 'OUTPUT': output, 'EXPECTED_ACTUAL': expected_actual,
+                  'WORKAROUND': workaround, 'ISSUE_FILE': issue_rel}
+        record = fill((TEMPLATES / ws.lang / 'plugin-bug.md').read_text(encoding='utf-8'), values)
+        issue = fill((TEMPLATES / 'issue-body.md').read_text(encoding='utf-8'), values)
+        problems = plugin_report.leaks(record + '\n' + issue, names, terms, SECRET_PATTERNS)
+        if problems:
+            raise OrchError('the report still looks private after anonymization (' + ', '.join(sorted(set(problems)))
+                            + '); nothing was written: shorten --log or --command to the failing lines')
+        safe_edit.create(ws.root / f'bugs/{rid}.md', record)
+        safe_edit.create(ws.root / issue_rel, issue)
+        ws.journal(f'plugin defect {rid} recorded (anonymized): {title}', evidence=f'bugs/{rid}.md')
     print(f'{rid}: bugs/{rid}.md, Issue text {issue_rel}')
     print(f'title: [{facts["plugin"]} {facts["version"]}] {title}')
     print(f'fingerprint: {fp}')
@@ -2847,6 +2973,7 @@ def workspace_dirty(ws):
 
 def cmd_close(args):
     ws = Workspace(find_workspace(args.workspace))
+    state_version = runtime_commands.state_version(ws)
     in_git = streams.git_toplevel(ws.root) is not None
     if ws.closed:
         if args.apply and in_git and workspace_dirty(ws):
@@ -2879,42 +3006,45 @@ def cmd_close(args):
         if errors:
             raise OrchError('lint failed; nothing changed: ' + '; '.join(errors))
         commit_preconditions(ws)
-    rows = ws.wp_rows()
-    date = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
-    plan = (ws.root / 'PLAN.md').read_text(encoding='utf-8') if (ws.root / 'PLAN.md').is_file() else ''
-    risks = section(plan, ('Risks', 'Риски')) or '—'
-    packages = '\n'.join(row([wp, r['module'], r['title'], r['status'], r['pr'], '<release or merge commit>'])
-                         for wp, r in sorted(rows.items()))
-    decisions = '\n'.join(f'- {r["id"]} ({r["date"]}): {r["text"]}' for r in ws.table(ws.decisions, 'decisions')[2]
-                          if r['id'].startswith('D-')) or '—'
-    backlog_path = ws.root / 'backlog.md'
-    backlog = ('\n'.join(f'- {r["id"]}: {r["item"]} (from {r["origin"]}; {r["reason"]})'
-                         for r in ws.table(backlog_path, 'backlog')[2]) if backlog_path.is_file() else '') or '—'
-    checks = []
-    if verified:
-        checks.append(f'PRs without gh: {"; ".join(verified)} - evidence: {args.prs_verified}')
-    if not condition:
-        checks.append(f'completion condition not written in PLAN.md; goal confirmed by: {args.goal_confirmed}')
-    name = f'closeout-{date}.md'
-    report = ws.root / 'reports' / name
-    template = (TEMPLATES / ws.lang / 'closeout.md').read_text(encoding='utf-8')
-    safe_edit.create(report, fill(template, {
-        'PROGRAM_TITLE': ws.config.get('title') or ws.config.get('program'), 'PROGRAM': ws.config.get('program'),
-        'DATE': today(), 'GOAL': goal or '—', 'SUMMARY': args.summary or '<result against the completion condition>',
-        'PACKAGES': packages or '| — | — | — | — | — | — |', 'DECISIONS': decisions, 'BACKLOG': backlog,
-        'RISKS': risks, 'SESSIONS': ', '.join(sessions) or '—', 'CHECKS': '\n'.join(f'- {c}' for c in checks) or '—'}))
-    set_state(ws, 'closed')
-    status_text = ws.status.read_text(encoding='utf-8')
-    first = status_text.split('\n', 1)[0]
-    banner = {'en': f'> **Closed {today()}.** Closeout: [reports/{name}](reports/{name}). A new goal is a new program.',
-              'ru': f'> **Закрыта {today()}.** Итог: [reports/{name}](reports/{name}). Новая цель — новая программа.'}
-    safe_edit.replace_once(ws.status, first + '\n', first + '\n\n' + banner[ws.lang] + '\n')
-    if verified:
-        ws.journal('PRs verified without gh: ' + '; '.join(verified), evidence=args.prs_verified)
-    if not condition:
-        ws.journal('completion condition confirmed without PLAN.md text', evidence=args.goal_confirmed)
-    ws.journal('program closed', evidence=f'reports/{name}')
-    print(f'closeout: {report}')
+    with state_io.transaction(ws.root):
+        if runtime_commands.state_version(ws) != state_version:
+            raise OrchError("program state changed during external checks; retry from current files")
+        rows = ws.wp_rows()
+        date = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%d')
+        plan = (ws.root / 'PLAN.md').read_text(encoding='utf-8') if (ws.root / 'PLAN.md').is_file() else ''
+        risks = section(plan, ('Risks', 'Риски')) or '—'
+        packages = '\n'.join(row([wp, r['module'], r['title'], r['status'], r['pr'], '<release or merge commit>'])
+                             for wp, r in sorted(rows.items()))
+        decisions = '\n'.join(f'- {r["id"]} ({r["date"]}): {r["text"]}' for r in ws.table(ws.decisions, 'decisions')[2]
+                              if r['id'].startswith('D-')) or '—'
+        backlog_path = ws.root / 'backlog.md'
+        backlog = ('\n'.join(f'- {r["id"]}: {r["item"]} (from {r["origin"]}; {r["reason"]})'
+                             for r in ws.table(backlog_path, 'backlog')[2]) if backlog_path.is_file() else '') or '—'
+        checks = []
+        if verified:
+            checks.append(f'PRs without gh: {"; ".join(verified)} - evidence: {args.prs_verified}')
+        if not condition:
+            checks.append(f'completion condition not written in PLAN.md; goal confirmed by: {args.goal_confirmed}')
+        name = f'closeout-{date}.md'
+        report = ws.root / 'reports' / name
+        template = (TEMPLATES / ws.lang / 'closeout.md').read_text(encoding='utf-8')
+        safe_edit.create(report, fill(template, {
+            'PROGRAM_TITLE': ws.config.get('title') or ws.config.get('program'), 'PROGRAM': ws.config.get('program'),
+            'DATE': today(), 'GOAL': goal or '—', 'SUMMARY': args.summary or '<result against the completion condition>',
+            'PACKAGES': packages or '| — | — | — | — | — | — |', 'DECISIONS': decisions, 'BACKLOG': backlog,
+            'RISKS': risks, 'SESSIONS': ', '.join(sessions) or '—', 'CHECKS': '\n'.join(f'- {c}' for c in checks) or '—'}))
+        set_state(ws, 'closed')
+        status_text = ws.status.read_text(encoding='utf-8')
+        first = status_text.split('\n', 1)[0]
+        banner = {'en': f'> **Closed {today()}.** Closeout: [reports/{name}](reports/{name}). A new goal is a new program.',
+                  'ru': f'> **Закрыта {today()}.** Итог: [reports/{name}](reports/{name}). Новая цель — новая программа.'}
+        safe_edit.replace_once(ws.status, first + '\n', first + '\n\n' + banner[ws.lang] + '\n')
+        if verified:
+            ws.journal('PRs verified without gh: ' + '; '.join(verified), evidence=args.prs_verified)
+        if not condition:
+            ws.journal('completion condition confirmed without PLAN.md text', evidence=args.goal_confirmed)
+        ws.journal('program closed', evidence=f'reports/{name}')
+        print(f'closeout: {report}')
     if in_git and not args.no_commit:
         finish_close(ws, args)
     return 0
@@ -3035,6 +3165,7 @@ def build_parser():
     p.add_argument('--base', help='base branch of the --in-repo repository (default: origin HEAD)')
     p.add_argument('--sessions', choices=('local', 'cloud'),
                    help='required, the owner\'s explicit choice: module sessions run locally (recommended) or in the cloud')
+    p.add_argument('--client', choices=('claude', 'codex'), default='claude')
     p.add_argument('--cloud-environment', '--cloud-env', dest='cloud_environment', metavar='NAME',
                    help='name of the owner\'s cloud environment, required with --sessions cloud (no variable values)')
     p.add_argument('--shell', choices=session_settings.SHELLS,
@@ -3049,6 +3180,7 @@ def build_parser():
     p.add_argument('module')
     p.add_argument('slug')
     p.add_argument('--title')
+    p.add_argument('--request-id', help='stable allocator request key for retry')
     p.set_defaults(func=cmd_new_wp)
 
     p = sub.add_parser('set', parents=[common], help='edit one cell of a WP row')
@@ -3202,14 +3334,17 @@ def build_parser():
 
     p = sub.add_parser('upgrade', parents=[common], help='add 0.2.0 tables to a 0.1.0 status.md')
     p.set_defaults(func=cmd_upgrade)
+    runtime_commands.add_parsers(sub, common)
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
-        return args.func(args)
-    except (OrchError, safe_edit.EditError, streams.StreamError) as error:
+        return runtime_commands.invoke(args)
+    except (OrchError, safe_edit.EditError, streams.StreamError, state_io.StateError,
+            id_allocator.AllocationError, project_instructions.InstructionError,
+            codex_transport.TransportError) as error:
         print(f'orch: {error}', file=sys.stderr)
         return 1
 

@@ -34,12 +34,22 @@ import shutil
 import sys
 import tempfile
 import time
+from functools import wraps
+import state_io
 
 BACKUP_DIR_NAME = '.orch-backup'
 
 
 class EditError(Exception):
     """Raised when an edit would be ambiguous, destructive or unverifiable."""
+
+
+def _locked(func):
+    @wraps(func)
+    def run(path, *args, **kwargs):
+        with state_io.transaction(state_io.root_for(path)):
+            return func(path, *args, **kwargs)
+    return run
 
 
 def _backup_root(path: Path) -> Path:
@@ -109,20 +119,29 @@ def parse_stdin_block(text):
     return pairs[0]
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
+def _atomic_write(path: Path, data: bytes, create_only=False) -> None:
+    state_io.record(path, data)
     fd, tmp = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
     try:
         with os.fdopen(fd, 'wb') as handle:
             handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
         if path.exists():
             shutil.copymode(path, tmp)
-        os.replace(tmp, path)
+        if create_only:
+            os.link(tmp, path)  # atomic create: refuses even a non-cooperating writer's file
+            os.unlink(tmp)
+        else:
+            os.replace(tmp, path)
+        state_io.fsync_directory(path.parent)
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
 
 
+@_locked
 def replace_once(path, old: str, new: str) -> None:
     """Replace the single occurrence of old with new, or raise EditError."""
     path = Path(path)
@@ -148,6 +167,7 @@ def replace_once(path, old: str, new: str) -> None:
         raise EditError(f'{path}: size after write is {actual}, expected {expected}')
 
 
+@_locked
 def replace_many(path, pairs) -> None:
     """Apply several exactly-once replacements atomically: all of them or none."""
     path = Path(path)
@@ -173,6 +193,7 @@ def replace_many(path, pairs) -> None:
         raise EditError(f'{path}: size after write is {path.stat().st_size}, expected {len(updated)}')
 
 
+@_locked
 def create(path, content: str) -> None:
     """Create a new file; never overwrite an existing one."""
     path = Path(path)
@@ -182,7 +203,7 @@ def create(path, content: str) -> None:
     if not data.strip():
         raise EditError(f'refusing to create an empty or whitespace-only file: {path}')
     path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write(path, data)
+    _atomic_write(path, data, create_only=True)
     umask = os.umask(0)
     os.umask(umask)
     path.chmod(0o666 & ~umask)
@@ -219,7 +240,7 @@ def main(argv=None) -> int:
             if old is None:
                 parser.error('--old or --old-file is required')
             replace_once(args.file, old, new)
-    except EditError as error:
+    except (EditError, state_io.StateError) as error:
         print(f'safe_edit: {error}', file=sys.stderr)
         return 1
     print(f'safe_edit: ok {args.file}')

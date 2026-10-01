@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.8.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
+> **Preview (0.9.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
@@ -36,7 +36,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 | `/pepper-orchestrator:report [what]` | report a defect of the plugin: anonymized record, Issue after your yes |
 
-Version 0.8.0 is a preview (stages 2a-2e, 3a, 3b, 3e). Modules can be whole repositories or areas and
+Version 0.9.0 is a preview (stages 2a-2e, 3a, 3b, 3e). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
@@ -229,3 +229,13 @@ Clients without cross-session messaging work too: the owner relays the one-line 
 `resume` learns about pull requests from `gh pr list`.
 
 Self-test: `python3 skills/pepper-orchestrator/scripts/selftest.py`.
+
+## Codex CLI and shared local runtime
+
+Codex uses its own skill entrypoint, native roles, launch arguments and Git worktree
+preparation. Claude commands and agent methodology remain supported. Both clients
+share atomic local ID reservations and recoverable state writes. See the
+[Codex workflow](skills/pepper-orchestrator/references/codex.md) and
+[runtime and migration guide](skills/pepper-orchestrator/references/runtime.md).
+The same program switches clients sequentially; mixed writers and distributed
+numbering are outside this preview.
