@@ -34,12 +34,22 @@ import shutil
 import sys
 import tempfile
 import time
+from functools import wraps
+import state_io
 
 BACKUP_DIR_NAME = '.orch-backup'
 
 
 class EditError(Exception):
     """Raised when an edit would be ambiguous, destructive or unverifiable."""
+
+
+def _locked(func):
+    @wraps(func)
+    def run(path, *args, **kwargs):
+        with state_io.transaction(state_io.root_for(path)):
+            return func(path, *args, **kwargs)
+    return run
 
 
 def _backup_root(path: Path) -> Path:
@@ -109,20 +119,41 @@ def parse_stdin_block(text):
     return pairs[0]
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
+def _atomic_write(path: Path, data: bytes, create_only=False) -> None:
+    state_io.record(path, data)
     fd, tmp = tempfile.mkstemp(prefix=f'.{path.name}.', dir=path.parent)
     try:
         with os.fdopen(fd, 'wb') as handle:
             handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
         if path.exists():
             shutil.copymode(path, tmp)
-        os.replace(tmp, path)
+        if create_only:
+            os.link(tmp, path)  # atomic create: refuses even a non-cooperating writer's file
+            os.unlink(tmp)
+        else:
+            os.replace(tmp, path)
+        state_io.fsync_directory(path.parent)
     except BaseException:
         if os.path.exists(tmp):
             os.unlink(tmp)
         raise
 
 
+def _file_newlines(text, old, new):
+    """Match normalized caller fragments in a consistently CRLF file.
+
+    Do not normalize the file itself or guess a style for mixed-newline content.
+    The exactly-once check still applies to the byte-preserving replacement.
+    """
+    if '\r\n' in text and '\n' not in text.replace('\r\n', ''):
+        old = old.replace('\r\n', '\n').replace('\n', '\r\n')
+        new = new.replace('\r\n', '\n').replace('\n', '\r\n')
+    return old, new
+
+
+@_locked
 def replace_once(path, old: str, new: str) -> None:
     """Replace the single occurrence of old with new, or raise EditError."""
     path = Path(path)
@@ -131,6 +162,7 @@ def replace_once(path, old: str, new: str) -> None:
     if not old:
         raise EditError('old fragment must not be empty')
     original = path.read_bytes()
+    old, new = _file_newlines(original.decode('utf-8'), old, new)
     old_b, new_b = old.encode('utf-8'), new.encode('utf-8')
     count = original.count(old_b)
     if count != 1:
@@ -148,6 +180,7 @@ def replace_once(path, old: str, new: str) -> None:
         raise EditError(f'{path}: size after write is {actual}, expected {expected}')
 
 
+@_locked
 def replace_many(path, pairs) -> None:
     """Apply several exactly-once replacements atomically: all of them or none."""
     path = Path(path)
@@ -160,6 +193,7 @@ def replace_many(path, pairs) -> None:
             raise EditError(f'block {index}: old fragment must not be empty')
         if MARKER_LINE.search(new) or MARKER_LINE.search(old):
             raise EditError(f'block {index}: conflict-style marker line inside a fragment')
+        old, new = _file_newlines(text, old, new)
         count = text.count(old)
         if count != 1:
             raise EditError(f'{path}: block {index}: expected exactly one occurrence, found {count}')
@@ -173,6 +207,7 @@ def replace_many(path, pairs) -> None:
         raise EditError(f'{path}: size after write is {path.stat().st_size}, expected {len(updated)}')
 
 
+@_locked
 def create(path, content: str) -> None:
     """Create a new file; never overwrite an existing one."""
     path = Path(path)
@@ -182,7 +217,7 @@ def create(path, content: str) -> None:
     if not data.strip():
         raise EditError(f'refusing to create an empty or whitespace-only file: {path}')
     path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write(path, data)
+    _atomic_write(path, data, create_only=True)
     umask = os.umask(0)
     os.umask(umask)
     path.chmod(0o666 & ~umask)
@@ -224,7 +259,7 @@ def main(argv=None) -> int:
             if old is None:
                 parser.error('--old or --old-file is required')
             replace_once(args.file, old, new)
-    except EditError as error:
+    except (EditError, state_io.StateError) as error:
         print(f'safe_edit: {error}', file=sys.stderr)
         return 1
     print(f'safe_edit: ok {args.file}')

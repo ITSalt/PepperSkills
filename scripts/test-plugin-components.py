@@ -123,7 +123,37 @@ def test_orchestrator_modes():
     print(f'PASS pepper-orchestrator: modes, mode files and commands agree ({len(modes)}); agent models')
 
 
+def test_codex_orchestrator_bundle():
+    plugin = ROOT / 'plugins/pepper-orchestrator'
+    version = json.loads((plugin / 'plugin.json').read_text())['version']
+    archive = ROOT / 'dist/pepper-orchestrator' / version / 'pepper-orchestrator.plugin.zip'
+    canonical = plugin / 'skills/pepper-orchestrator'
+    with zipfile.ZipFile(archive) as zf:
+        names = zf.namelist()
+        assert names == sorted(set(names)), 'bundle must be sorted without duplicate entries'
+        manifest = json.loads(zf.read('pepper-orchestrator/.codex-plugin/plugin.json'))
+        assert manifest['skills'] == './codex/skills/'
+        base = 'pepper-orchestrator/codex/skills/pepper-orchestrator/'
+        adapter = zf.read(base + 'SKILL.md').decode()
+        assert '../../../' not in adapter and 'references/codex.md' in adapter
+        assert 'Codex CLI' in adapter and 'version: ' + version in adapter
+        for path in package.files_under(canonical):
+            rel = path.relative_to(canonical).as_posix()
+            if rel != 'SKILL.md':
+                assert zf.read(base + rel) == path.read_bytes(), f'core drift in bundle: {rel}'
+        with tempfile.TemporaryDirectory(prefix='pepper-codex-bundle-') as raw:
+            zf.extractall(raw)
+            scripts = Path(raw) / base / 'scripts'
+            import subprocess, sys
+            result = subprocess.run([sys.executable, str(scripts / 'orch.py'), 'session', 'capabilities'],
+                                    capture_output=True, text=True)
+            assert result.returncode == 0, result.stderr
+            json.loads(result.stdout)
+    print('PASS Codex manifest selects adapter; canonical resources bundled identically; extracted CLI runs')
+
+
 if __name__ == '__main__':
     test_fixture_packaging()
     test_real_plugins()
     test_orchestrator_modes()
+    test_codex_orchestrator_bundle()

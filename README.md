@@ -8,7 +8,7 @@ standalone skills can be linked from a repository clone.
 | Skill | Description | Folder |
 |-------|-------------|--------|
 | [`pepper-creative-mode`](./plugins/pepper-creative-mode/) | Distribution-faithful sampling and diverse generation via self-seeded randomness. | [`plugins/pepper-creative-mode/`](./plugins/pepper-creative-mode/) |
-| [`pepper-orchestrator`](./plugins/pepper-orchestrator/) | Single-orchestrator method for multi-repository programs: plan, work packages, owner queue and verified state in files. **Preview** 0.10.0: streams in one repository, dispatch, PR review, cloud sessions, program completion, implementer models, generated session settings, verification by facts, plugin defect reports, trusted delivery, production releases by a release sheet; not yet released. | [`plugins/pepper-orchestrator/`](./plugins/pepper-orchestrator/) |
+| [`pepper-orchestrator`](./plugins/pepper-orchestrator/) | Single-orchestrator method with Claude Code and Codex CLI adapters: work packages, prepared worktrees, atomic IDs, paired project instructions and verified file-based state. **Preview 0.11.0**. | [Release](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.11.0) |
 | [`pepper-prompt-engineer`](./plugins/pepper-prompt-engineer/) | CRAFT+ prompt engineer: turns task descriptions into production-ready, target-model-specific prompts. | [`plugins/pepper-prompt-engineer/`](./plugins/pepper-prompt-engineer/) |
 | [`pepper-ru-web-compliance`](./plugins/pepper-ru-web-compliance/) | Audits a website against Russian legal requirements: a note for the lawyer and a remediation plan for a developer agent. | [`plugins/pepper-ru-web-compliance/`](./plugins/pepper-ru-web-compliance/) |
 

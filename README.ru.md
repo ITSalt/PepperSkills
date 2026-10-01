@@ -8,7 +8,7 @@
 | Скилл | Описание | Папка |
 |-------|----------|-------|
 | [`pepper-creative-mode`](./plugins/pepper-creative-mode/) | Честное сэмплирование из распределения и разнообразная генерация через self-seeded randomness. | [`plugins/pepper-creative-mode/`](./plugins/pepper-creative-mode/) |
-| [`pepper-orchestrator`](./plugins/pepper-orchestrator/) | Концепция единого оркестратора для программ в нескольких репозиториях: план, пакеты работ, очередь владельца и проверенное состояние в файлах. **Preview** 0.10.0: потоки в одном репозитории, dispatch, сверка PR, облачные сессии, завершение программы, модели реализаторов, сгенерированные настройки сессий, проверка по фактам, сообщения о дефектах плагина, доверенная доставка, релизы в прод по листу выкатки; ещё не выпущена. | [`plugins/pepper-orchestrator/`](./plugins/pepper-orchestrator/) |
+| [`pepper-orchestrator`](./plugins/pepper-orchestrator/) | Единый оркестратор с адаптерами Claude Code и Codex CLI: пакеты работ, worktree, атомарные номера, общие инструкции проекта и проверенное состояние в файлах. **Preview 0.11.0**. | [Release](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.11.0) |
 | [`pepper-prompt-engineer`](./plugins/pepper-prompt-engineer/) | CRAFT+ промпт-инженер: превращает описания задач в production-ready промпты под целевую модель. | [`plugins/pepper-prompt-engineer/`](./plugins/pepper-prompt-engineer/) |
 | [`pepper-ru-web-compliance`](./plugins/pepper-ru-web-compliance/) | Проверка сайта на соответствие требованиям РФ: записка для юриста и план правок для разработчика. | [`plugins/pepper-ru-web-compliance/`](./plugins/pepper-ru-web-compliance/) |
 

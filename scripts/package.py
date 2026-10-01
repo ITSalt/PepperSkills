@@ -50,6 +50,8 @@ def add_tree(zf, source: Path, root_name: str):
     for path in files_under(source):
         rel = path.relative_to(source).as_posix()
         data = path.read_bytes()
+        if rel.startswith('codex/skills/') and rel.endswith('/SKILL.md'):
+            data = data.replace(f'../../../skills/{path.parent.name}/'.encode(), b'')
         zf.writestr(zip_info(f'{root_name}/{rel}', data), data)
 
 
@@ -74,8 +76,26 @@ def build_skill(plugin: Path, out: Path):
 def build_plugin(plugin: Path, out: Path):
     if not (plugin / 'plugin.json').is_file():
         raise ValueError(f'plugin manifest missing: {plugin}')
+    entries = {}
+    for path in files_under(plugin):
+        rel, data = path.relative_to(plugin).as_posix(), path.read_bytes()
+        if rel.startswith('codex/skills/') and rel.endswith('/SKILL.md'):
+            data = data.replace(f'../../../skills/{path.parent.name}/'.encode(), b'')
+        entries[f'{plugin.name}/{rel}'] = data
+    # Bundle canonical resources for client entrypoints; one editable core, sorted ZIP.
+    for adapter in sorted((plugin / 'codex/skills').glob('*')):
+        canonical = plugin / 'skills' / adapter.name
+        for path in files_under(canonical):
+            rel = path.relative_to(canonical).as_posix()
+            if rel != 'SKILL.md':
+                name = f'{plugin.name}/codex/skills/{adapter.name}/{rel}'
+                data = path.read_bytes()
+                if name in entries and entries[name] != data:
+                    raise ValueError(f'client resource duplicates editable core: {name}')
+                entries[name] = data
     with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as zf:
-        add_tree(zf, plugin, plugin.name)
+        for name, data in sorted(entries.items()):
+            zf.writestr(zip_info(name, data), data)
 
 
 def build_all(repo: Path, kind: str, names: list[str], output_root: Path):

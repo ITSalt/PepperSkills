@@ -53,7 +53,8 @@ def main():
         if manifest['name'] != plugin.name:
             sys.exit(f'name mismatch: {plugin}')
         core = {k: v for k, v in manifest.items() if k not in ('$schema', 'extensions')}
-        codex = {**core, 'skills': './skills/', **manifest.get('extensions', {}).get('com.openai', {})}
+        codex_skills = './codex/skills/' if (plugin / 'codex/skills').is_dir() else './skills/'
+        codex = {**core, 'skills': codex_skills, **manifest.get('extensions', {}).get('com.openai', {})}
         for rel, data in {'.codex-plugin/plugin.json': codex,
                           '.claude-plugin/plugin.json': core,
                           '.cursor-plugin/plugin.json': core}.items():

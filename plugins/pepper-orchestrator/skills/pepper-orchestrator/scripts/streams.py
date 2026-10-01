@@ -14,7 +14,7 @@ import subprocess
 
 KINDS = ('area', 'domain', 'repo')
 MERGE_POLICIES = ('sequential', 'free')
-RESOURCE_MODES = ('package', 'on-demand')
+RESOURCE_MODES = ('package', 'on-demand', 'sequence')
 # Statuses with a live, unmerged branch: they compete for paths and locks.
 ACTIVE = ('DISPATCHING', 'IN_PROGRESS', 'REVIEW', 'REVISE', 'ACCEPTED')
 # Statuses that satisfy a dependency.
@@ -213,7 +213,10 @@ def valid_effort(value):
     return value in EFFORTS
 
 
-def model_errors(where, model, effort):
+def model_errors(where, model, effort, client='claude'):
+    if client == 'codex':
+        import codex_adapter
+        return codex_adapter.model_errors(where, model, effort)
     errors = []
     if model is not None and not valid_model(str(model)):
         errors.append(f'{where}: model {model!r} is not one of {", ".join(MODEL_ALIASES)} or a claude-... id')
@@ -229,6 +232,9 @@ def choose_model(models, module):
         return module.model, module.effort, 'module'
     if models.get('implement'):
         return str(models['implement']), module.effort or models.get('implement_effort'), 'implement'
+    if getattr(module, 'client', 'claude') == 'codex':
+        effort = module.effort or models.get('implement_effort')
+        return None, effort, 'module' if module.effort else 'implement' if effort else 'none'
     return None, None, 'none'
 
 
@@ -398,7 +404,7 @@ class Repo:
         self.id = str(data.get('id'))
         self.path = str(data.get('path') or '')
         self.base = str(data.get('base') or 'main')
-        self.branch_prefix = str(data.get('branch_prefix') or f'{program}/')
+        self.branch_prefix = str(data.get('branch_prefix') or ('codex/' if defaults.get('client') == 'codex' else f'{program}/'))
         self.worktree_root = str(data.get('worktree_root') or '.claude/worktrees')
         self.worktree_setup = as_list(data.get('worktree_setup'))
         # Setup for review clones (run in the clone root, ORCH_MAIN_CHECKOUT = the main checkout);
@@ -408,7 +414,7 @@ class Repo:
         self.shared_paths = as_list(data.get('shared_paths'))
         # Resources: a name (mode package: held from dispatch to merge or verification) or
         # {name, mode: on-demand} (taken on a LOCK message, given back on UNLOCK or READY).
-        self.resources, self.resource_modes, self.resource_errors = [], {}, []
+        self.resources, self.resource_modes, self.resource_errors, self.sequences = [], {}, [], {}
         raw = data.get('resources')
         for item in raw if isinstance(raw, list) else as_list(raw):
             if isinstance(item, dict):
@@ -421,7 +427,11 @@ class Repo:
             else:
                 name, mode = item, 'package'
             if mode not in RESOURCE_MODES:
-                self.resource_errors.append(f'resource {name}: mode must be package or on-demand')
+                self.resource_errors.append(f'resource {name}: mode must be package, on-demand or sequence')
+            if mode == 'sequence':
+                if not item.get('namespace') or item.get('producers_migrated') is not True:
+                    self.resource_errors.append(f'resource {name}: sequence requires namespace and producers_migrated: true')
+                self.sequences[str(name)] = item
             self.resources.append(str(name))
             self.resource_modes[str(name)] = mode
         self.checks = as_list(data.get('checks'))
@@ -429,6 +439,7 @@ class Repo:
         self.base_deploys = str(data.get('base_deploys') or 'none')
         self.push_deploys = bool(data.get('push_deploys'))
         self.sessions = str(data.get('sessions') or defaults.get('sessions') or 'local')
+        self.client = defaults.get('client') or 'claude'
         self.cloud_environment = data.get('cloud_environment') or defaults.get('cloud_environment')
         self.implicit = implicit
         self.raw = data
@@ -457,8 +468,10 @@ class Module:
         self.ports = data.get('ports') if isinstance(data.get('ports'), dict) else {}
         self.tests = data.get('tests')
         self.sessions = str(data.get('sessions') or repo.sessions or 'local')
-        self.model = data.get('model')
-        self.effort = data.get('effort')
+        self.client = repo.client
+        active = (data.get('codex') or {}) if self.client == 'codex' else data
+        self.model = active.get('model')
+        self.effort = active.get('effort')
         self.cloud_environment = data.get('cloud_environment') or repo.cloud_environment
         methodology = data.get('methodology') if isinstance(data.get('methodology'), dict) else {}
         self.methodology = {'name': methodology.get('name'),
@@ -481,8 +494,17 @@ def resolve(config, base_dir=None):
     program = str(config.get('program') or 'program')
     # Program-level session kind and cloud environment, chosen by the owner at init; repositories
     # and modules inherit them unless they set their own.
-    defaults = {'sessions': config.get('sessions'), 'cloud_environment': config.get('cloud_environment')}
+    defaults = {'sessions': config.get('sessions'), 'cloud_environment': config.get('cloud_environment'),
+                'client': config.get('client', 'claude')}
     errors, warnings, repos, modules = [], [], {}, {}
+    if defaults['client'] not in ('claude', 'codex'):
+        errors.append('orch.yaml: client must be claude or codex')
+    codex = config.get('codex')
+    if codex is not None and not isinstance(codex, dict):
+        return repos, modules, ['orch.yaml: codex must be a mapping'], warnings
+    if codex and (not isinstance(codex.get('required_mcp', []), list) or any(
+            not isinstance(x, str) for x in codex.get('required_mcp', []))):
+        errors.append('orch.yaml: codex.required_mcp must be a list of server IDs')
     for data in config.get('repos') or []:
         if not isinstance(data, dict) or not data.get('id') or not data.get('path'):
             errors.append(f'orch.yaml: repo needs id and path: {data}')
@@ -513,6 +535,9 @@ def resolve(config, base_dir=None):
                 implicit[key] = Repo({'id': str(data['id']), 'path': ref, 'base': data.get('base')},
                                      implicit=True, program=program, base_dir=base_dir, defaults=defaults)
             repo = implicit[key]
+        if data.get('codex') is not None and not isinstance(data['codex'], dict):
+            errors.append(f'orch.yaml: module {data.get("id")}: codex must be a mapping')
+            continue
         module = Module(data, repo, program)
         if module.kind not in KINDS:
             errors.append(f'orch.yaml: module {module.id}: kind must be area, domain or repo')
@@ -526,7 +551,9 @@ def resolve(config, base_dir=None):
                 errors.append(f'orch.yaml: module {module.id}: {error}')
         if module.sessions not in ('local', 'cloud'):
             errors.append(f'orch.yaml: module {module.id}: sessions must be local or cloud')
-        errors.extend(model_errors(f'orch.yaml: module {module.id}', module.model, module.effort))
+        errors.extend(model_errors(f'orch.yaml: module {module.id}', module.model, module.effort, module.client))
+        if module.client == 'codex' and module.cloud:
+            errors.append('Codex v1 requires local module sessions')
         if module.cloud and not module.cloud_environment:
             warnings.append(f'orch.yaml: module {module.id} runs cloud sessions but has no cloud_environment '
                             '(name of the owner\'s cloud environment)')
@@ -561,16 +588,20 @@ def resolve(config, base_dir=None):
                                   f'{pa} ~ {pb}')
     if config.get('sessions') not in (None, 'local', 'cloud'):
         errors.append('orch.yaml: sessions must be local or cloud')
-    models = config.get('models')
+    models = active_models(config)
     if models is not None and not isinstance(models, dict):
         errors.append('orch.yaml: models must be a mapping (implement, implement_effort, escalate, escalate_effort)')
     elif models:
         unknown = set(models) - {'implement', 'implement_effort', 'escalate', 'escalate_effort'}
         if unknown:
             errors.append(f'orch.yaml: models has unknown keys: {", ".join(sorted(unknown))}')
-        errors.extend(model_errors('orch.yaml: models.implement', models.get('implement'), models.get('implement_effort')))
-        errors.extend(model_errors('orch.yaml: models.escalate', models.get('escalate'), models.get('escalate_effort')))
+        errors.extend(model_errors('orch.yaml: models.implement', models.get('implement'), models.get('implement_effort'), defaults['client']))
+        errors.extend(model_errors('orch.yaml: models.escalate', models.get('escalate'), models.get('escalate_effort'), defaults['client']))
     return repos, modules, errors, warnings
+
+
+def active_models(config):
+    return (config.get('codex') or {}).get('models') if config.get('client') == 'codex' else config.get('models')
 
 
 # ---------------------------------------------------------------- work package metadata

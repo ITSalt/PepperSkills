@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.0 — 2026-10-01, public preview
+
+- Dedicated Codex CLI skill, native scout/reviewer/verifier roles, prepared ordinary
+  Git worktrees and documented queue/App Server session transport. Keep Claude
+  methodology and per-client models; switch clients only after stopping writers.
+- Local SQLite ID reservations with idempotent retries, explicit legacy import,
+  short process locks and recoverable multi-file state changes.
+- Paired CLAUDE.md / AGENTS.md shared blocks preserve existing instructions and
+  check expected versions. Numbering locks narrow only after producer migration.
+- Windows UTF-8, interpreter selection, CRLF point edits and PowerShell quoting.
+  CI exercises concurrency/recovery on three platforms and installs the built
+  plugin with native Windows Codex. Interactive account permissions/MCP/PR lifecycle
+  remains a separate owner acceptance check. See [Windows guide](WINDOWS.md).
+
 ## 0.10.0 — preview, unreleased
 
 Stage 3d: production by the orchestrator, only when the owner handed `prod` over by a decision D-n
@@ -86,7 +100,7 @@ Hotfix for three field reports (Issues #20, #21, #24).
   `deploy_safe_dirs` offers no directory at all when a workflow could not be read, or contains bytes
   that are not UTF-8 (a replaced character never reaches a candidate name). The fix is guarded by the
   pipe tests (cp1252 output encoding, C locale); a separate selftest block only illustrates the
-  CPython thread behaviour and would pass on 0.9.0 too.
+  CPython thread behaviour and would pass on 0.11.0 too.
 - **#21, escalation.** `review-start --round 3+` prints and writes a conditional line ("if the same
   REVISE items are still open after this review, restart ..."); the owner item opens only when the
   package is set to `REVISE` again from round 3 (the round comes from the newest review report),
@@ -102,12 +116,12 @@ Hotfix for three field reports (Issues #20, #21, #24).
   cells too.
 - The self-test reads child output as UTF-8 itself, so it runs under a non-UTF-8 locale too.
 
-## 0.9.0 — preview, unreleased
+## 0.11.0 — preview, unreleased
 
 Preview of stage 3c: trusted delivery of merges and the stand, only by an explicit owner decision.
 
 - `delivery` block in `orch.yaml`: `merge`, `stand`, `prod`, `prod_migrations` (owner | orchestrator,
-  default owner; workspaces before 0.9.0 = all owner), `enabled_by`, `hold`. `orch.py delivery show`
+  default owner; workspaces before 0.11.0 = all owner), `enabled_by`, `hold`. `orch.py delivery show`
   and `delivery set <level> owner|orchestrator --decision D-n` (orchestrator only with a recorded
   decision). `lint`: orchestrator without `enabled_by` or with an unrecorded one, `prod: orchestrator`
   without `merge: orchestrator`, `merge_method` and `run_timeout` values. Repository keys:
