@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Coordinate owner-launched Codex CLI module sessions, work packages, independent review and verification, and the owner queue across repositories or Git worktrees. Keep state in files; preserve Claude programs and project instructions.
 metadata:
-  version: 0.9.0
+  version: 0.11.0
 ---
 
 # Pepper Orchestrator for Codex CLI

@@ -83,10 +83,16 @@ class RuntimeTests(unittest.TestCase):
     def test_reservations_processes_replay_loss_and_corruption(self):
         scope = id_allocator.new_scope()
         id_allocator.register(scope, {'FR': 41})
-        code = '''import id_allocator,json,sys
+        code = '''import id_allocator,json,sys,time
 s=sys.argv[1]; i=sys.argv[2]
-a=[id_allocator.reserve(s,'FR',i+':'+str(n))['first'] for n in range(100)]
-assert [id_allocator.reserve(s,'FR',i+':'+str(n))['first'] for n in range(100)]==a
+def reserve(n):
+ for retry in range(8):
+  try:return id_allocator.reserve(s,'FR',i+':'+str(n))['first']
+  except id_allocator.AllocationError as e:
+   if 'locked' not in str(e) or retry==7:raise
+   time.sleep(.05*(retry+1))
+a=[reserve(n) for n in range(100)]
+assert [reserve(n) for n in range(100)]==a
 print(json.dumps(a))'''
         procs = [self.child(code, scope, n) for n in range(16)]
         values = []

@@ -40,6 +40,10 @@ mutations; cleanup.
 
 ## Always ask
 
+- If the package has a Specification or Graph row: did the implementer update the graph (the PR
+  report carries the output of the methodology's status command)? Write `graph: checked` in the
+  review report, or a finding; a mismatch between the graph and the package is a REVISE item.
+  `orch.py deliver` refuses a merge without `graph: checked` (gate G9).
 - What did the base allow or show that the change removes? Name each removed branch, state,
   transition, permission, UI action or API field, and whether the package asked for its removal.
 - Does every acceptance criterion have a test or a live check, and does the test fail when the key
@@ -67,6 +71,9 @@ Pick the lists that match the diff; turn each item into a question with concrete
   an old branch drops values added since)?
 - Backfill and defaults for existing rows; locks and runtime on large tables; reversibility.
 - Functions and views: the live definition after the migration, not only the file.
+- Verdict line for the release: `migrations: safe, reversible` only when both hold (write what does
+  not hold otherwise); with `prod_migrations: orchestrator` `orch.py release` ships migrations only
+  with this line in the report (gate P4).
 
 ### Registries and shared types
 

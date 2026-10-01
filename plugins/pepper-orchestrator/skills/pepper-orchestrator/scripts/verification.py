@@ -104,7 +104,7 @@ def first_lines(text, redact):
 
 
 def gh_json(args):
-    result = subprocess.run(['gh', *args], text=True, capture_output=True)
+    result = subprocess.run(['gh', *args], encoding='utf-8', errors='replace', capture_output=True)
     if result.returncode:
         raise RuntimeError((result.stderr or result.stdout).strip().split('\n')[0] or f'gh exited {result.returncode}')
     try:
@@ -168,8 +168,8 @@ def served_version(url, pattern, sha, expect_version=None):
 def run_command(command, cwd, env, limit, redact):
     """(verdict, exit, output lines) of one read-only verify command."""
     try:
-        result = subprocess.run(command, shell=True, cwd=cwd, env=env, text=True, capture_output=True,
-                                timeout=limit)
+        result = subprocess.run(command, shell=True, cwd=cwd, env=env, encoding='utf-8', errors='replace',
+                                capture_output=True, timeout=limit)
     except subprocess.TimeoutExpired as error:
         out = error.stdout.decode(errors='replace') if isinstance(error.stdout, bytes) else (error.stdout or '')
         return 'FAIL', 'timeout', [f'timed out after {limit} s'] + first_lines(out, redact)

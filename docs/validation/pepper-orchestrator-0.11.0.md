@@ -1,4 +1,4 @@
-# Pepper Orchestrator 0.9.0: validation
+# Pepper Orchestrator 0.11.0: validation
 
 Date: 2026-10-01. Local environment: macOS arm64, Python 3.14, Codex CLI 0.154.0.
 
@@ -58,6 +58,9 @@ were not performed. Existing user programs were not automatically migrated.
 
 This is a local preview build. No public release was made.
 
-Final plugin ZIP SHA-256: `5af10294812293f272ff94318e79abc07ab184a24d54945b3c32b2ede4d76179`.
-Final standalone skill ZIP SHA-256: `bdc2a321fd062b681b390af83d394b390ba1a22341ed0f95a9de400b77a0f7fe`.
-Both native concurrent sessions were repeated against this final plugin ZIP and passed.
+The unreleased 0.9.0 adaptation was integrated with main's 0.10.0 Claude deliver/release
+features. The first public build is 0.11.0; no existing main feature is rolled back.
+Windows-specific fixes include consistent UTF-8, native interpreter selection,
+PowerShell quoting, and CRLF-preserving exactly-once replacements. Contention can
+return the documented retryable error after ten seconds; the process stress test
+retries the same request ID and verifies all 1,600 unique reservations and replays.

@@ -39,7 +39,7 @@ class Server:
             self.responses.put(None)
         threading.Thread(target=read, daemon=True).start()
         try:
-            self.call('initialize', {'clientInfo': {'name': 'pepper_orchestrator', 'version': '0.9.0'}})
+            self.call('initialize', {'clientInfo': {'name': 'pepper_orchestrator', 'version': '0.11.0'}})
             self.send({'method': 'initialized'})
         except BaseException:
             self.close()

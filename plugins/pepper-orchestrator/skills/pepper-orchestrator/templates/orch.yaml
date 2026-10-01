@@ -56,6 +56,15 @@ repos: []
 #    deploy_workflows: [deploy.yml]   # or {test: [...], prod: [...]}: resume (who holds the stand) and verify (run for the SHA)
 #    integration_branch: main         # branch the stand deploys from (verify --env test; default: base)
 #    prod_branch: main                # branch production deploys from (verify --env prod; default: base)
+#    merge_method: merge              # merge | squash | rebase: the repository's own method (deliver; never --admin)
+#    delete_branch: true              # deliver deletes the merged PR branch
+#    deploy_test: ./scripts/deploy.sh --target test   # non-interactive; only when a merge does not deploy the stand
+#    rollback_test: "./scripts/deploy.sh --target test --ref {previous_sha}"   # optional; run on a stand failure
+#    run_timeout: 1800                # seconds to wait for a deploy run or promote checks (deliver, release)
+#    promote: pr                      # pr | ff: a PR integration -> prod merged with --merge, or a fast-forward push
+#    release_clone: ~/projects/example-monorepo-release   # a clean clone of origin; required for promote: ff
+#    backup_prod: ./scripts/backup.sh --target prod      # run by release before prod migrations; output in the ledger
+#    rollback_prod: ""                # e.g. "./scripts/deploy.sh --target prod --ref {previous_sha}"; empty = the owner
 #    verify_test: ["curl -fsS https://test.example.com/health"]   # read-only; env ORCH_ENV, ORCH_SHA, ORCH_WP, ORCH_BASE_URL
 #    verify_prod: ["curl -fsS https://example.com/health"]        # secrets only as $VARIABLE references
 #    version_url: "{base_url}/version.json"   # served version ({base_url} from web_urls, {env}); or {test: ..., prod: ...}
@@ -88,7 +97,7 @@ modules: []
 #    session: {{PROGRAM}}-db
 #    tests: ["./scripts/test.sh"]
 #    deploy_test: owner-confirmed in module window
-#    deploy_prod: ./scripts/deploy.sh --target prod
+#    deploy_prod: ./scripts/deploy.sh --target prod   # the owner's; denied to every session, release never runs it
 #    release_clone: ~/projects/example-database-release
 #    web_urls: {test: https://test.example.com, prod: https://example.com}
 # Example module that is an area of a shared repository:
@@ -105,6 +114,18 @@ modules: []
 #    effort: high
 
 # verify_timeout: 300              # seconds per verify command (orch.py verify)
+# Trusted delivery (orch.py deliver): by default the owner merges and deploys. Each level is handed to
+# the orchestrator only by an owner decision: orch.py delivery set <level> orchestrator --decision D-n.
+# delivery:
+#   merge: owner                    # owner | orchestrator: merging accepted PRs into the integration branch
+#   stand: owner                    # owner | orchestrator: stand deploy (run or deploy_test) and verification
+#   prod: owner                     # owner | orchestrator: production by a release sheet (orch.py release)
+#   prod_migrations: owner          # owner | orchestrator: database migrations on prod (needs prod: orchestrator)
+#   release_policy: batch           # batch | per_package: one sheet per batch, or one per package after VERIFIED_TEST
+#   release_window: "Mon-Fri 10:00-18:00 Europe/Berlin"   # days, hours, zone (IANA, UTC or +03:00); empty = none
+#   max_prod_releases_per_day: 2
+#   enabled_by: D-n                 # written by delivery set; lint refuses orchestrator without it
+#   hold: "<reason>"                # orch.py hold / unhold: stops every delivery
 environments: {}
 guards: {}
 # Optional source of facts: none | nacl. Tasks and statuses always stay in files.

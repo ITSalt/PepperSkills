@@ -53,7 +53,7 @@ def save(path, text):
 
 def invoke(args):
     short = {'cmd_new_wp', 'cmd_set', 'cmd_model', 'cmd_cloud_env', 'cmd_journal', 'cmd_owner',
-             'cmd_decide', 'cmd_settings', 'cmd_lock', 'cmd_merge', 'cmd_upgrade', 'cmd_reopen'}
+             'cmd_decide', 'cmd_delivery', 'cmd_settings', 'cmd_lock', 'cmd_merge', 'cmd_upgrade', 'cmd_reopen'}
     if args.func.__name__ in short:
         with state_io.transaction(workspace(args).root):
             return args.func(args)

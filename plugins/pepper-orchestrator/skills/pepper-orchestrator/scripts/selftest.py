@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -29,7 +30,7 @@ GIT_ENV = {
 def run(cwd, *args, ok=True, extra_env=None):
     env = {**os.environ, **GIT_ENV, 'PYTHONDONTWRITEBYTECODE': '1', **(extra_env or {})}
     env.pop('ORCH_WORKSPACE', None)
-    result = subprocess.run([*ORCH, *args], cwd=cwd, env=env, text=True, capture_output=True)
+    result = subprocess.run([*ORCH, *args], cwd=cwd, env=env, encoding='utf-8', errors='replace', capture_output=True)
     if ok and result.returncode:
         raise AssertionError(f'orch {args} failed: {result.stderr}')
     if not ok and not result.returncode:
@@ -39,7 +40,7 @@ def run(cwd, *args, ok=True, extra_env=None):
 
 def git(cwd, *args):
     env = {**os.environ, **GIT_ENV}
-    return subprocess.run(['git', *args], cwd=cwd, env=env, text=True, capture_output=True,
+    return subprocess.run(['git', *args], cwd=cwd, env=env, encoding='utf-8', errors='replace', capture_output=True,
                           check=True).stdout
 
 
@@ -90,10 +91,10 @@ def test_safe_edit(tmp):
     safe_edit.create(tmp / 'sub/new.md', 'Юникод\n')
     assert (tmp / 'sub/new.md').read_text(encoding='utf-8') == 'Юникод\n'
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target),
-                          '--old', 'gamma', '--new', 'delta'], capture_output=True, text=True)
+                          '--old', 'gamma', '--new', 'delta'], capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 0 and target.read_text(encoding='utf-8').startswith('delta')
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target),
-                          '--old', 'beta', '--new', 'x'], capture_output=True, text=True)
+                          '--old', 'beta', '--new', 'x'], capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 1 and 'found 2' in cli.stderr
     print('PASS safe_edit: single match, backup, refusal, create-only, CLI')
 
@@ -184,7 +185,9 @@ def test_workflow(tmp, lang):
     run(repo, 'set', 'WP-DB-01', 'status', 'READY', '--evidence', 'reviewed')
     run(repo, 'set', 'WP-DB-01', 'status', 'BLOCKED', ok=False)
     run(repo, 'set', 'WP-DB-02', 'status', 'CANCELLED (hypothesis refuted by measurement)')
-    run(repo, 'set', 'WP-WEB-01', 'pr', 'https://example.com/pull/7 | draft')
+    run(repo, 'set', 'WP-WEB-01', 'title', 'Orders page | draft')
+    run(repo, 'set', 'WP-WEB-01', 'pr', 'https://example.com/pull/7')
+    run(repo, 'set', 'WP-WEB-01', 'pr', 'draft PR', ok=False)  # 0.9.1: only a URL or a number
     run(repo, 'set', 'WP-WEB-01', 'module', 'db', ok=False)
     run(repo, 'set', 'WP-NONE-01', 'status', 'READY', ok=False)
     run(repo, 'owner', 'add', 'P', 'Export needed? (a) yes (b) no; recommend (b)')
@@ -201,7 +204,7 @@ def test_workflow(tmp, lang):
     run(repo, 'decide', 'A', 'Staging mirrors production schema')
     assert 'empty' in run(repo, 'queue').stdout
     status = (ws / 'status.md').read_text(encoding='utf-8')
-    assert 'https://example.com/pull/7 \\| draft' in status
+    assert 'Orders page \\| draft' in status and '| https://example.com/pull/7 |' in status
     assert '| ~~P-1~~ |' in status and 'answered by D-1' in status
     assert 'dropped: superseded by D-1' in status
     decisions = (ws / 'decisions.md').read_text(encoding='utf-8')
@@ -299,39 +302,39 @@ def test_safe_edit_stdin(tmp):
     target.write_text('alpha\nbeta\n', encoding='utf-8')
     block = '<<<<<<< OLD\nbeta\n=======\ngamma\ndelta\n>>>>>>> NEW\n'
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                         input=block, capture_output=True, text=True)
+                         input=block, capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 0, cli.stderr
     assert target.read_text(encoding='utf-8') == 'alpha\ngamma\ndelta\n'
     two = ('<<<<<<< OLD\nalpha\n=======\nALPHA\n>>>>>>> NEW\n'
            '<<<<<<< OLD\ndelta\n=======\nDELTA\n>>>>>>> NEW\n')
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                         input=two, capture_output=True, text=True)
+                         input=two, capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 0, cli.stderr
     assert target.read_text(encoding='utf-8') == 'ALPHA\ngamma\nDELTA\n'
     atomic = ('<<<<<<< OLD\nALPHA\n=======\nx\n>>>>>>> NEW\n'
               '<<<<<<< OLD\nmissing\n=======\ny\n>>>>>>> NEW\n')
     cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                         input=atomic, capture_output=True, text=True)
+                         input=atomic, capture_output=True, encoding='utf-8', errors='replace')
     assert cli.returncode == 1 and 'block 2' in cli.stderr
     assert target.read_text(encoding='utf-8') == 'ALPHA\ngamma\nDELTA\n', 'partial multi-block edit'
     for broken in ('<<<<<<< OLD\nALPHA\n=======\n<<<<<<< OLD\n>>>>>>> NEW\n',
                    '<<<<<<< OLD\nALPHA\n=======\nx\n', 'stray\n<<<<<<< OLD\nALPHA\n=======\nx\n>>>>>>> NEW\n'):
         cli = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                             input=broken, capture_output=True, text=True)
+                             input=broken, capture_output=True, encoding='utf-8', errors='replace')
         assert cli.returncode == 1, broken
     assert target.read_text(encoding='utf-8') == 'ALPHA\ngamma\nDELTA\n'
     target.write_text('alpha\ngamma\ndelta\n', encoding='utf-8')
     bad = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target), '--stdin'],
-                         input='no markers', capture_output=True, text=True)
+                         input='no markers', capture_output=True, encoding='utf-8', errors='replace')
     assert bad.returncode == 1 and 'OLD' in bad.stderr
     created = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(tmp / 'c.md'),
-                              '--create', '--stdin'], input='new file\n', capture_output=True, text=True)
+                              '--create', '--stdin'], input='new file\n', capture_output=True, encoding='utf-8', errors='replace')
     assert created.returncode == 0 and (tmp / 'c.md').read_text(encoding='utf-8') == 'new file\n'
     blocker = tmp / 'not-a-dir'
     blocker.write_text('x\n', encoding='utf-8')
     env = {**os.environ, 'ORCH_BACKUP_DIR': str(blocker / 'sub')}
     fallback = subprocess.run([sys.executable, str(HERE / 'safe_edit.py'), str(target),
-                               '--old', 'alpha', '--new', 'omega'], env=env, capture_output=True, text=True)
+                               '--old', 'alpha', '--new', 'omega'], env=env, capture_output=True, encoding='utf-8', errors='replace')
     assert fallback.returncode == 0, fallback.stderr
     print('PASS safe_edit: stdin block, create from stdin, backup fallback')
 
@@ -866,7 +869,7 @@ def test_cloud_deploy_scan(tmp):
     assert 'not a non-hidden directory that every push workflow ignores' in refused, refused
     assert run(clone2, 'init', 'y', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app', '--dir', 'notes/orchestration/y').returncode == 0
     tracking = subprocess.run(['git', 'config', '--get', 'branch.orch/y.merge'], cwd=clone2,
-                              capture_output=True, text=True)
+                              capture_output=True, encoding='utf-8', errors='replace')
     assert tracking.returncode != 0, 'orch/ must not track the base'
     # M5: repository names from GitHub URLs and the cloud git proxy.
     assert streams.normalize_url('https://github.com/Owner/Repo.git') == 'github.com/owner/repo'
@@ -978,7 +981,7 @@ def test_review(tmp):
     # The review command runs the clone exactly as printed (review_setup with ORCH_MAIN_CHECKOUT).
     printed = subprocess.run(['bash', '-c', result['clone_command'].replace("'test -f apps/app/src/page.tsx'",
                                                                             "'test -f copied.yaml'", 1)],
-                             capture_output=True, text=True)
+                             capture_output=True, encoding='utf-8', errors='replace')
     assert 'setup: cp' in printed.stdout and 'test: test -f copied.yaml -> exit 0' in printed.stdout, printed.stdout
     # M2: an unpushed local commit on the branch is not reviewed; the default is origin/<branch>.
     (wt / 'apps/app/src/local.tsx').write_text('local only\n', encoding='utf-8')
@@ -1009,39 +1012,46 @@ def test_review(tmp):
                            '--json').stdout)
     esc = [w for w in third['warnings'] if w.startswith('round 3:')]
     assert esc and f'cd {mono} && claude --resume rv-app --model opus' in esc[0], third['warnings']
-    assert 'restart the module session on opus' in (home / 'features/rv/status.md').read_text(encoding='utf-8')
+    assert 'if the same REVISE items are still open' in esc[0], esc  # 0.9.1 (#21): conditional before reading
+
+    def escalations():
+        return [q for q in json.loads(run(home, 'queue', '--json').stdout) if 'restart the module session' in q['text']]
+    assert escalations() == [], 'no owner item before the round is reviewed'
+    assert 'if the same REVISE items are still open' in Path(third['report']).read_text(encoding='utf-8')
+    run(home, 'set', 'WP-APP-01', 'status', 'REVISE', '--evidence', 'round 3: items 2 and 3 again')
+    assert len(escalations()) == 1 and 'round 3: the same REVISE items are still open' in escalations()[0]['text']
     again = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', third['sha'], '--round', '4', '--json').stdout)
     assert any(w.startswith('round 4:') for w in again['warnings']), 'the hint is printed every round'
-    open_escalations = [q for q in json.loads(run(home, 'queue', '--json').stdout) if 'restart the module session' in q['text']]
-    assert len(open_escalations) == 1, open_escalations
+    run(home, 'set', 'WP-APP-01', 'status', 'REVISE')
+    assert len(escalations()) == 1, escalations()
     command = third['revision_diff']
     assert f'range-diff origin/main..{second["sha"]} origin/main..{third["sha"]}' in command, command
-    rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, text=True)
+    rd = subprocess.run(command.split()[:1] + command.split()[1:], capture_output=True, encoding='utf-8', errors='replace')
     assert rd.returncode == 0 and 'resubmission 1' in rd.stdout, rd.stdout
     assert 'base moves on' not in rd.stdout, 'base commits must not show up in the revision diff'
-    sym = subprocess.run(command.replace('..', '...').split(), capture_output=True, text=True)
+    sym = subprocess.run(command.replace('..', '...').split(), capture_output=True, encoding='utf-8', errors='replace')
     assert 'base moves on' in sym.stdout, 'control: the symmetric form would show the base commit'
     # The disposable clone: tests pass at the new head, fail at the old one, cleanup is guarded.
     clone = [sys.executable, '-c', 'import sys, subprocess; sys.exit(subprocess.call(sys.argv[1:]))',
              'bash', str(HERE / 'review_clone.sh'), '--repo', str(tmp / 'review/mono.git')]
     ok = subprocess.run(clone + ['--sha', second['sha'], '--test', 'test -f apps/app/src/page.tsx',
-                                 '--test', 'grep -q fixed apps/app/src/page.tsx'], capture_output=True, text=True)
+                                 '--test', 'grep -q fixed apps/app/src/page.tsx'], capture_output=True, encoding='utf-8', errors='replace')
     assert ok.returncode == 0 and 'test: grep -q fixed apps/app/src/page.tsx -> exit 0' in ok.stdout, ok.stdout
     bad = subprocess.run(clone + ['--sha', old_sha, '--test', 'grep -q fixed apps/app/src/page.tsx'],
-                         capture_output=True, text=True)
+                         capture_output=True, encoding='utf-8', errors='replace')
     assert bad.returncode == 1 and '-> exit 1' in bad.stdout, bad.stdout
-    kept = subprocess.run(clone + ['--sha', old_sha, '--keep'], capture_output=True, text=True)
+    kept = subprocess.run(clone + ['--sha', old_sha, '--keep'], capture_output=True, encoding='utf-8', errors='replace')
     kept_dir = kept.stdout.split('--cleanup ')[1].split('\n')[0].strip()
     assert Path(kept_dir, 'repo/apps/app/src/page.tsx').is_file()
     refused = subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--cleanup', str(tmp)], capture_output=True,
-                             text=True)
+                             encoding='utf-8', errors='replace')
     assert refused.returncode == 2 and Path(tmp).is_dir(), 'cleanup only removes marked clone directories'
     subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--cleanup', kept_dir], check=True, capture_output=True)
     assert not Path(kept_dir).exists()
-    missing = subprocess.run(clone + ['--sha', 'deadbeef'], capture_output=True, text=True)
+    missing = subprocess.run(clone + ['--sha', 'deadbeef'], capture_output=True, encoding='utf-8', errors='replace')
     assert missing.returncode == 2
     dangling = subprocess.run(['bash', str(HERE / 'review_clone.sh'), '--repo', 'x', '--sha'], capture_output=True,
-                              text=True, timeout=10)
+                              encoding='utf-8', errors='replace', timeout=10)
     assert dangling.returncode == 2 and 'needs a value' in dangling.stderr
     print('PASS review: automatic findings (outside paths, unlocked/undeclared shared, stale merge-base), '
           'report, rounds, disposable clone')
@@ -1126,11 +1136,11 @@ def test_close(tmp):
     status_file = archived / 'status.md'
     original = status_file.read_text(encoding='utf-8')
     status_file.write_text(original.replace('| DONE |', '| MERGED |', 1), encoding='utf-8')
-    closed_lint = subprocess.run([*ORCH, '--workspace', str(archived), 'lint'], capture_output=True, text=True)
+    closed_lint = subprocess.run([*ORCH, '--workspace', str(archived), 'lint'], capture_output=True, encoding='utf-8', errors='replace')
     assert 'program is closed but WP-CORE-01 is MERGED' in closed_lint.stderr, closed_lint.stderr
     status_file.write_text(original, encoding='utf-8')
     run(home, 'init', 'next', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'core={mono}')
-    found = subprocess.run([*ORCH, 'queue'], cwd=home, capture_output=True, text=True, env={**os.environ, **GIT_ENV})
+    found = subprocess.run([*ORCH, 'queue'], cwd=home, capture_output=True, encoding='utf-8', errors='replace', env={**os.environ, **GIT_ENV})
     assert found.returncode == 0, 'only the active workspace is picked automatically'
     reopened = run(home, *wsarg, 'reopen', 'import is needed after all').stdout
     assert 'reopened' in reopened and 'git mv' in reopened
@@ -1180,7 +1190,7 @@ def test_close_in_repo(tmp):
     git(tmp, 'clone', '-q', str(remote), str(owner_clone))
     start = status.index('git push origin ' + closeout_sha)
     command = status[start:status.index(' ; expected', start)]
-    ran = subprocess.run(command, shell=True, cwd=owner_clone, capture_output=True, text=True,
+    ran = subprocess.run(command, shell=True, cwd=owner_clone, capture_output=True, encoding='utf-8', errors='replace',
                          env={**os.environ, **GIT_ENV})
     assert ran.returncode == 0, (command, ran.stdout, ran.stderr)
     assert git(remote, 'tag', '-l').strip().startswith('orch-demo-closed-')
@@ -2013,6 +2023,832 @@ def test_report(tmp):
           'auto by decision, no-gh instructions, update line')
 
 
+DELIVER_GH_STUB = """#!/usr/bin/env python3
+import json, os, sys
+root = os.environ['GH_STUB_DIR']
+args = sys.argv[1:]
+with open(os.path.join(root, 'calls.log'), 'a') as log:
+    log.write(json.dumps(args) + '\\n')
+def load(name):
+    return open(os.path.join(root, name)).read()
+if args[:2] == ['pr', 'view']:
+    print(load('pr.json'))
+elif args[:2] == ['pr', 'checks']:
+    print(load('checks.json'))
+elif args[:2] == ['pr', 'merge']:
+    if os.path.exists(os.path.join(root, 'no_merge_commit')):
+        print('Merged pull request')
+        sys.exit(0)
+    if os.path.exists(os.path.join(root, 'fail_merge')):
+        sys.stderr.write('GraphQL: At least 1 approving review is required\\n')
+        sys.exit(1)
+    pr = json.loads(load('pr.json'))
+    pr['state'] = 'MERGED'
+    pr['mergeCommit'] = {'oid': load('merge_sha.txt').strip()}
+    open(os.path.join(root, 'pr.json'), 'w').write(json.dumps(pr))
+    print('Merged pull request #%s' % pr['number'])
+elif args[:2] == ['run', 'list']:
+    print(load('runs.json'))
+elif args[:2] == ['run', 'watch']:
+    sys.exit(int(load('watch_rc.txt').strip() or 0))
+else:
+    sys.exit(3)
+"""
+
+
+def test_deliver(tmp):
+    """3c: trusted delivery with a stub gh (view, checks, merge, run) and stub commands."""
+    mono = make_monorepo(tmp / 'deliver')
+    stub = tmp / 'deliver/stub'
+    (stub / 'bin').mkdir(parents=True)
+    (stub / 'bin/gh').write_text(DELIVER_GH_STUB, encoding='utf-8')
+    (stub / 'bin/gh').chmod(0o755)
+    head = git(mono, 'rev-parse', 'HEAD').strip()
+    merge_sha = 'ab' * 20
+
+    def pr(wp, number):
+        (stub / 'pr.json').write_text(json.dumps({
+            'number': number, 'url': f'https://github.com/example/mono/pull/{number}', 'state': 'OPEN',
+            'headRefOid': head, 'mergeable': 'MERGEABLE', 'baseRefName': 'main',
+            'title': f'[SHOP] {wp}: work', 'mergeCommit': None}), encoding='utf-8')
+    pr('WP-APP-01', 5)
+    (stub / 'checks.json').write_text(json.dumps([{'name': 'ubuntu', 'bucket': 'pass'}]), encoding='utf-8')
+    (stub / 'merge_sha.txt').write_text(merge_sha, encoding='utf-8')
+    (stub / 'runs.json').write_text(json.dumps([{'databaseId': 9, 'status': 'completed', 'conclusion': 'success',
+                                                 'headBranch': 'main', 'url': 'https://example.invalid/runs/9'}]),
+                                    encoding='utf-8')
+    (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
+    env = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(stub), 'ORCH_POLL_INTERVAL': '0',
+           'PATH': f'{stub / "bin"}{os.pathsep}{os.environ["PATH"]}'}
+    home = tmp / 'deliver/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'shop', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto',
+        '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
+    ws = home / 'features/shop'
+    config = ws / 'orch.yaml'
+    safe_edit.replace_once(config, '    checks: []\n', '    checks: []\n    merge_method: squash\n'
+                           '    deploy_workflows: [deploy.yml]\n    verify_test: ["echo stand ok"]\n'
+                           '    rollback_test: "echo rollback {previous_sha}"\n')
+    git(mono, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
+    # The hosted URL resolves to the local bare remote: no fetch ever reaches the network.
+    git(mono, 'config', f'url.{tmp / "deliver/mono.git"}.insteadOf', 'https://github.com/example/mono.git')
+    for slug in ('orders', 'cart', 'fees', 'tax', 'ship'):
+        run(home, 'new-wp', 'app', slug)
+    for n, wp in enumerate(('WP-APP-01', 'WP-APP-02', 'WP-APP-03', 'WP-APP-04', 'WP-APP-05'), 5):
+        run(home, 'set', wp, 'pr', f'https://github.com/example/mono/pull/{n}')
+        run(home, 'set', wp, 'status', 'REVIEW')
+    # Default (and every workspace before 0.9.0): the owner delivers.
+    owner = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stderr
+    assert 'delivery is done by the owner' in owner and \
+        'gh pr merge https://github.com/example/mono/pull/5 --squash --delete-branch' in owner, owner
+    assert 'decision' in run(home, 'delivery', 'set', 'merge', 'orchestrator', ok=False).stderr
+    run(home, 'decide', 'D', 'The orchestrator merges accepted packages and runs the stand')
+    run(home, 'delivery', 'set', 'merge', 'orchestrator', '--decision', 'D-1')
+    run(home, 'delivery', 'set', 'stand', 'orchestrator', '--decision', 'D-1')
+    parsed = orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']
+    assert parsed == {'enabled_by': 'D-1', 'merge': 'orchestrator', 'stand': 'orchestrator'}, parsed
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '  enabled_by: D-1\n', '')
+    assert 'orchestrator needs enabled_by: D-n' in lint_errors(home)
+    invalid = run(home, 'deliver', '--apply', 'WP-APP-01', extra_env=env, ok=False).stderr
+    assert 'delivery configuration is invalid' in invalid, invalid  # M1: never delivers on a lint error
+    config.write_text(original, encoding='utf-8')
+    safe_edit.replace_once(config, '    merge_method: squash\n', '    merge_method: admin\n')
+    admin = run(home, 'deliver', '--apply', 'WP-APP-01', extra_env=env, ok=False).stderr
+    assert 'merge_method must be merge, squash or rebase' in admin, admin
+    config.write_text(original, encoding='utf-8')
+    assert run(home, 'lint').returncode == 0, lint_errors(home)
+    # G1: not accepted; G2: accepted at another SHA; then every gate green.
+    g1 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
+    assert '| G1 | RED |' in g1, g1
+    review = ws / 'reports/wp-app-01-review.md'
+    review.parent.mkdir(exist_ok=True)
+    review.write_text('# Review\n\n**Decision: ACCEPTED**\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-01', 'c' * 40, '--report', 'reports/wp-app-01-review.md')
+    g2 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
+    assert '| G2 | RED |' in g2 and 'new commits need a new review' in g2, g2
+    run(home, 'accept', 'WP-APP-01', head, '--report', 'reports/wp-app-01-review.md')
+    assert f'pull/5 (accepted {head[:10]})' in (ws / 'status.md').read_text(encoding='utf-8')
+    status_text = (ws / 'status.md').read_text(encoding='utf-8')  # L1: sequential without the queue table
+    (ws / 'status.md').write_text(status_text.replace('<!-- orch:merge -->', '<!-- no merge table -->'), encoding='utf-8')
+    assert 'run orch.py upgrade' in run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
+    (ws / 'status.md').write_text(status_text, encoding='utf-8')
+    g5 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
+    assert '| G5 | RED |' in g5 and 'merge queue' in g5, g5  # sequential policy: the queue first
+    run(home, 'merge', 'add', 'WP-APP-01', '--pr', 'https://github.com/example/mono/pull/5')
+    green = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env).stdout
+    assert 'RED' not in green and '| G10 | green |' in green, green
+    applied = run(home, 'deliver', '--apply', 'WP-APP-01', extra_env=env).stdout
+    assert f'merged (squash) at {merge_sha[:10]}' in applied and 'VERIFIED_TEST' in applied, applied
+    calls = [json.loads(line) for line in (stub / 'calls.log').read_text(encoding='utf-8').splitlines()]
+    assert ['pr', 'merge', '5', '--repo', 'example/mono', '--squash', '--delete-branch'] in calls, calls
+    assert any(c[:2] == ['run', 'watch'] for c in calls) and not any('--admin' in c for c in calls)
+    assert all(tuple(c[:2]) in {('pr', 'view'), ('pr', 'checks'), ('pr', 'merge'), ('run', 'list'), ('run', 'watch')}
+               for c in calls), 'no command outside the delivery commands'
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'WP-APP-01: MERGED -> VERIFIED_TEST' in status, status
+    ledger = (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    assert f'| WP-APP-01 | https://github.com/example/mono/pull/5 | {merge_sha[:12]} |' in ledger and '| PASS |' in ledger
+    # A failed stand run: hold, defect, rollback, the queue stops.
+    pr('WP-APP-02', 6)
+    review2 = ws / 'reports/wp-app-02-review.md'
+    review2.write_text('# Review\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-02', head, '--report', 'reports/wp-app-02-review.md')
+    run(home, 'merge', 'add', 'WP-APP-02')
+    (stub / 'watch_rc.txt').write_text('1', encoding='utf-8')
+    failed = run(home, 'deliver', '--apply', 'WP-APP-02', extra_env=env, ok=False).stderr
+    assert 'delivery is on hold' in failed and 'REVISE text for the module session' in failed, failed
+    assert 'WP-APP-02' in orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']['hold']
+    assert list((ws / 'bugs').glob('BUG-*-verify-wp-app-02-test.md')), 'defect written'
+    assert '| rollback_test needs the previous SHA of ababababab, not found: the owner rolls back | hold |' in \
+        (ws / 'release/deliveries.md').read_text(encoding='utf-8'), 'the rollback in its own ledger column (B1)'
+    pr('WP-APP-03', 7)
+    review3 = ws / 'reports/wp-app-03-review.md'
+    review3.write_text('# Review\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-03', head, '--report', 'reports/wp-app-03-review.md')
+    run(home, 'merge', 'add', 'WP-APP-03')
+    stopped = run(home, 'deliver', '--apply', 'WP-APP-03', extra_env=env, ok=False)
+    assert '| G10 | RED |' in stopped.stdout and 'hold' in stopped.stdout, stopped.stdout
+    assert '| G5 | RED |' in stopped.stdout and 'not VERIFIED_TEST' in stopped.stdout
+    assert 'WP-APP-03: delivery refused' in (ws / 'status.md').read_text(encoding='utf-8')
+    run(home, 'unhold', 'analysed: flaky runner, rerun is green')
+    assert 'hold' not in orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']
+    # GitHub refuses the merge: an owner item, never a bypass.
+    (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
+    (stub / 'fail_merge').write_text('x', encoding='utf-8')
+    bad = run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'yes', extra_env=env, ok=False).stderr
+    assert '--after-failure takes the owner decision' in bad, bad  # M2
+    refused = run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env, ok=False).stderr
+    assert 'GitHub refused the merge' in refused and 'owner item opened' in refused, refused
+    assert 'R-1' in run(home, 'queue').stdout
+    (stub / 'fail_merge').unlink()
+    # G9: a package with a specification reference needs "graph: checked" in its review report.
+    fill_header(ws / 'work-packages/WP-APP-03-fees.md', 'Specification', 'UC-12, FR-4')
+    g9 = run(home, 'deliver', '--check', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env, ok=False).stdout
+    assert '| G9 | RED |' in g9 and 'graph: checked' in g9, g9
+    review3.write_text('# Review\n\ngraph: checked (status command output in the PR report)\n', encoding='utf-8')
+    assert '| G9 | green |' in run(home, 'deliver', '--check', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env).stdout
+    # M3: a deploy run still in progress at verification: exit 2, MERGED, no hold, no rollback.
+    run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env)  # green again
+    assert 'R-1' not in run(home, 'queue').stdout, 'B3: the refusal item closes after the successful delivery'
+    assert 'merged by orch.py deliver at' in (ws / 'status.md').read_text(encoding='utf-8')
+    pr('WP-APP-04', 8)
+    (ws / 'reports/wp-app-04-review.md').write_text('# Review\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-04', head, '--report', 'reports/wp-app-04-review.md')
+    run(home, 'merge', 'add', 'WP-APP-04')
+    (stub / 'runs.json').write_text(json.dumps([{'databaseId': 10, 'status': 'in_progress', 'conclusion': None,
+                                                 'headBranch': 'main', 'url': 'u10'}]), encoding='utf-8')
+    waiting = run(home, 'deliver', '--apply', 'WP-APP-04', '--after-failure', 'D-1', extra_env=env, ok=False)
+    assert waiting.returncode == 2 and 'waits for the deploy run' in waiting.stderr, waiting.stderr
+    assert 'hold' not in orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']
+    assert '| MERGED |' in next(l for l in (ws / 'status.md').read_text(encoding='utf-8').split('\n')
+                                if l.startswith('| [WP-APP-04]'))
+    assert 'after failure by D-1' in (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    (stub / 'runs.json').write_text(json.dumps([{'databaseId': 9, 'status': 'completed', 'conclusion': 'success',
+                                                 'headBranch': 'main', 'url': 'u9'}]), encoding='utf-8')
+    # L4: GitHub has not reported the merge commit: stop before the stand, one ledger row.
+    pr('WP-APP-05', 9)
+    (ws / 'reports/wp-app-05-review.md').write_text('# Review\n', encoding='utf-8')
+    run(home, 'accept', 'WP-APP-05', head, '--report', 'reports/wp-app-05-review.md')
+    run(home, 'merge', 'add', 'WP-APP-05')
+    (stub / 'no_merge_commit').write_text('x', encoding='utf-8')
+    unknown = run(home, 'deliver', '--apply', 'WP-APP-05', '--after-failure', 'D-1', extra_env={**env, 'ORCH_MERGE_POLLS': '2'},
+                  ok=False).stderr
+    assert 'merge commit is unknown yet' in unknown, unknown
+    assert 'merge SHA unknown: stand not started' in (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    (stub / 'no_merge_commit').unlink()
+    # lint: prod by the orchestrator needs merge by the orchestrator; a hold is the first warning.
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '  merge: orchestrator\n', '  merge: owner\n  prod: orchestrator\n')
+    assert 'delivery.prod: orchestrator needs delivery.merge: orchestrator' in lint_errors(home)
+    config.write_text(original, encoding='utf-8')
+    run(home, 'hold', 'owner stop')
+    assert 'delivery is on hold: owner stop' in run(home, 'lint').stderr
+    run(home, 'unhold', 'owner resumed')
+    # The orchestrator's settings follow the delivery levels.
+    run(home, 'settings', 'orchestrator')
+    rules = json.loads((ws / 'orchestration/settings/orchestrator.json').read_text(encoding='utf-8'))['permissions']
+    assert 'Bash(gh pr merge *)' in rules['deny'] and not any('pr merge' in r for r in rules['allow']), rules
+    assert 'Bash(echo rollback *)' in rules['allow'] and 'Bash(echo stand ok)' in rules['allow'], rules['allow']
+    print('PASS deliver: owner default, delivery set by D-n, lint, gates G1/G2/G5/G10, merge with the configured '
+          'method, ledger, run watch, verify, hold on failure, unhold, GitHub refusal -> owner item, settings')
+
+
+RELEASE_GH_STUB = """#!/usr/bin/env python3
+import json, os, subprocess, sys
+root = os.environ['GH_STUB_DIR']
+args = sys.argv[1:]
+with open(os.path.join(root, 'calls.log'), 'a') as log:
+    log.write(json.dumps(args) + '\\n')
+def path(name):
+    return os.path.join(root, name)
+def load(name):
+    return open(path(name), encoding='utf-8').read()
+def git(*a):
+    return subprocess.run(['git', '-C', load('clone.txt').strip(), *a], capture_output=True, encoding='utf-8',
+                          check=True).stdout.strip()
+def arg(flag):
+    return args[args.index(flag) + 1]
+if args[:2] == ['pr', 'list']:
+    print('[]')
+elif args[:2] == ['pr', 'create']:
+    git('fetch', '-q', 'origin')
+    pr = {'number': 40, 'url': 'https://github.com/example/mono/pull/40', 'state': 'OPEN',
+          'headRefOid': (load('head_override').strip() if os.path.exists(path('head_override')) else
+                         git('rev-parse', 'origin/' + arg('--head'))), 'baseRefName': arg('--base'),
+          'headRefName': arg('--head'), 'title': arg('--title'), 'mergeCommit': None}
+    open(path('pr.json'), 'w', encoding='utf-8').write(json.dumps(pr))
+    print(pr['url'])
+elif args[:2] == ['pr', 'view']:
+    print(load('pr.json'))
+elif args[:2] == ['pr', 'checks']:
+    if os.path.exists(path('race')):  # someone pushes to prod while the release waits for the checks
+        os.remove(path('race'))
+        git('fetch', '-q', 'origin')
+        git('checkout', '-q', '-B', 'main', 'origin/main')
+        open(os.path.join(load('clone.txt').strip(), 'urgent.txt'), 'w').write('hotfix\\n')
+        git('add', '-A')
+        git('commit', '-qm', 'urgent hotfix on prod')
+        git('push', '-q', 'origin', 'main')
+    seq = json.loads(load('checks_seq.json'))
+    current = seq.pop(0) if len(seq) > 1 else seq[0]
+    open(path('checks_seq.json'), 'w', encoding='utf-8').write(json.dumps(seq))
+    print(json.dumps(current))
+elif args[:2] == ['pr', 'merge']:
+    pr = json.loads(load('pr.json'))
+    git('fetch', '-q', 'origin')
+    git('checkout', '-q', '-B', pr['baseRefName'], 'origin/' + pr['baseRefName'])
+    git('merge', '-q', '--no-ff', '-m', 'Merge release', 'origin/' + pr['headRefName'])
+    if os.path.exists(path('dirty_merge')):  # a conflict resolved by hand in the merge commit
+        open(os.path.join(load('clone.txt').strip(), 'resolved.txt'), 'w').write('orders = 999\\n')
+        git('add', '-A')
+        git('commit', '-q', '--amend', '--no-edit')
+    git('push', '-q', 'origin', pr['baseRefName'])
+    pr['state'], pr['mergeCommit'] = 'MERGED', {'oid': git('rev-parse', 'HEAD')}
+    open(path('pr.json'), 'w', encoding='utf-8').write(json.dumps(pr))
+    print('Merged')
+elif args[:2] == ['run', 'list']:
+    print(load('runs.json'))
+elif args[:2] == ['run', 'watch']:
+    sys.exit(int(load('watch_rc.txt').strip() or 0))
+else:
+    sys.exit(3)
+"""
+
+
+def release_fixture(tmp, name, lang='en'):
+    """A monorepo with an integration branch `stage` and prod `main`, a workspace, a stub gh."""
+    mono = make_monorepo(tmp / name)
+    stub = tmp / name / 'stub'
+    (stub / 'bin').mkdir(parents=True)
+    (stub / 'bin/gh').write_text(RELEASE_GH_STUB, encoding='utf-8')
+    (stub / 'bin/gh').chmod(0o755)
+    helper = tmp / name / 'gh-clone'
+    git(tmp, 'clone', '-q', str(tmp / name / 'mono.git'), str(helper))
+    (stub / 'clone.txt').write_text(str(helper), encoding='utf-8')
+    (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
+    (stub / 'checks_seq.json').write_text(json.dumps([[{'name': 'ci', 'bucket': 'pending'}],
+                                                      [{'name': 'ci', 'bucket': 'pass'}]]), encoding='utf-8')
+    (stub / 'runs.json').write_text(json.dumps([
+        {'databaseId': 11, 'status': 'completed', 'conclusion': 'success', 'headBranch': 'main', 'url': 'u11'},
+        {'databaseId': 12, 'status': 'completed', 'conclusion': 'success', 'headBranch': 'stage', 'url': 'u12'}]),
+        encoding='utf-8')
+    git(mono, 'checkout', '-q', '-b', 'stage')
+    git(mono, 'push', '-q', 'origin', 'stage')
+    git(mono, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
+    git(mono, 'config', f'url.{tmp / name / "mono.git"}.insteadOf', 'https://github.com/example/mono.git')
+    home = tmp / name / 'home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'shop', '--lang', lang, '--sessions', 'local', '--permission-mode', 'auto',
+        '--repo', f'mono={mono}', '--area', 'app=mono:apps/app/**')
+    ws = home / 'features/shop'
+    safe_edit.replace_once(ws / 'orch.yaml', '    checks: []\n', '    checks: []\n    integration_branch: stage\n'
+                           '    prod_branch: main\n    merge_method: squash\n    deploy_workflows: [deploy.yml]\n'
+                           '    verify_test: ["echo stand ok"]\n    verify_prod: ["echo prod ok"]\n'
+                           '    backup_prod: "echo backup done"\n')
+    env = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(stub), 'ORCH_POLL_INTERVAL': '0', 'ORCH_NOW': '2026-09-28 12:00Z',
+           'PATH': f'{stub / "bin"}{os.pathsep}{os.environ["PATH"]}'}
+    return mono, stub, home, ws, env
+
+
+def stand_package(mono, home, ws, slug, number):
+    """A package merged into stage (a commit pushed there), accepted and VERIFIED_TEST at that SHA."""
+    run(home, 'new-wp', 'app', slug)
+    wp = f'WP-APP-{number:02d}'
+    (mono / f'apps/app/src/{slug}.tsx').write_text(f'export const {slug} = 1;\n', encoding='utf-8')
+    git(mono, 'add', '-A')
+    git(mono, 'commit', '-qm', f'{wp}: {slug}')
+    git(mono, 'push', '-q', 'origin', 'stage')
+    sha = git(mono, 'rev-parse', 'HEAD').strip()
+    run(home, 'set', wp, 'pr', f'https://github.com/example/mono/pull/{number}')
+    run(home, 'set', wp, 'status', 'REVIEW')
+    (ws / 'reports').mkdir(exist_ok=True)
+    (ws / f'reports/{wp.lower()}-review.md').write_text('# Review\n\n**Decision: ACCEPTED**\n', encoding='utf-8')
+    run(home, 'accept', wp, sha, '--report', f'reports/{wp.lower()}-review.md')
+    run(home, 'set', wp, 'status', 'VERIFIED_TEST', '--evidence', f'verify --env test {sha[:10]}: reports/v.md')
+    return wp, sha
+
+
+def gates(result):
+    return {line.split('|')[1].strip(): line.split('|')[2].strip() for line in result.stdout.split('\n')
+            if line.startswith('| P')}
+
+
+def test_release(tmp):
+    """3d: release sheet, gates P1-P7, promote PR, prod run, verify prod, failure and rollback, per_package."""
+    mono, stub, home, ws, env = release_fixture(tmp, 'release')
+    config = ws / 'orch.yaml'
+    today = orch.today()
+    wp1, sha1 = stand_package(mono, home, ws, 'orders', 1)
+    wp2, sha2 = stand_package(mono, home, ws, 'cart', 2)
+    # The sheet works for the owner too; the release itself stays the owner's by default.
+    run(home, 'release', '--plan', extra_env=env)
+    sheet = ws / f'release/release-sheet-{today}.md'
+    text = sheet.read_text(encoding='utf-8')
+    assert '<!-- orch:release -->' in text and f'| {wp1} | mono | app | {sha1} | — |' in text, text
+    assert f'| mono | stage | main | {sha2} | pr |' in text and 'echo backup done' not in text, text
+    owner = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'the release is done by the owner' in owner and sheet.name in owner, owner
+    assert gates(run(home, 'release', '--check', extra_env=env, ok=False))['P6'] == 'RED'
+    run(home, 'decide', 'D', 'The orchestrator merges, runs the stand and releases batches to prod')
+    for level in ('merge', 'stand', 'prod'):
+        run(home, 'delivery', 'set', level, 'orchestrator', '--decision', 'D-1')
+    green = run(home, 'release', '--check', extra_env=env)
+    assert 'RED' not in green.stdout and gates(green)['P7'] == 'after', green.stdout
+    assert 'merge_method squash is not used for a promote' in green.stdout, green.stdout  # L1
+    # M1: nothing to verify on prod is a red gate before the promote, not an error after it.
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '    deploy_workflows: [deploy.yml]\n', '    deploy_workflows: {test: [deploy.yml], '
+                           'prod: []}\n')
+    safe_edit.replace_once(config, '    verify_prod: ["echo prod ok"]\n', '')
+    blind = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(blind)['P7'] == 'RED' and 'nothing to verify on prod for WP-APP-01' in blind.stdout, blind.stdout
+    config.write_text(original, encoding='utf-8')
+    # P1: a stand SHA that is not in the promote SHA (the sheet edited by hand).
+    sheet_text = sheet.read_text(encoding='utf-8')
+    sheet.write_text(sheet_text.replace(f'| {wp1} | mono | app | {sha1} |', f'| {wp1} | mono | app | {"0" * 40} |'),
+                     encoding='utf-8')
+    outside = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(outside)['P1'] == 'RED' and f'stand SHA of {wp1} unknown or not in' in outside.stdout, outside.stdout
+    sheet.write_text(sheet_text, encoding='utf-8')
+    # P2: a package of the batch is no longer VERIFIED_TEST.
+    run(home, 'set', wp2, 'status', 'VERIFYING')
+    assert gates(run(home, 'release', '--check', extra_env=env, ok=False))['P2'] == 'RED'
+    run(home, 'set', wp2, 'status', 'VERIFIED_TEST', '--evidence', f'verify --env test {sha2[:10]}: reports/v.md')
+    # P4: migrations with prod_migrations: owner -> an owner item (once); handed over -> the review line.
+    fill_header(ws / 'work-packages/WP-APP-02-cart.md', 'Migrations', 'yes, backend/migrations/0002_cart.sql')
+    p4 = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(p4)['P4'] == 'RED' and 'owner item R-1' in p4.stdout, p4.stdout
+    run(home, 'release', '--check', extra_env=env, ok=False)
+    assert run(home, 'queue').stdout.count('migrations in WP-APP-02') == 1, 'one owner item, not one per check'
+    run(home, 'delivery', 'set', 'prod_migrations', 'orchestrator', '--decision', 'D-1')
+    p4 = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(p4)['P4'] == 'RED' and 'migrations: safe, reversible' in p4.stdout, p4.stdout
+    review2 = ws / 'reports/wp-app-02-review.md'
+    review2.write_text(review2.read_text(encoding='utf-8') + '\nmigrations: safe, reversible (0002 adds a column)\n',
+                       encoding='utf-8')
+    assert gates(run(home, 'release', '--check', extra_env=env))['P4'] == 'green'
+    safe_edit.replace_once(config, '    backup_prod: "echo backup done"\n', '')
+    nobackup = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(nobackup)['P4'] == 'RED' and 'repo mono has no backup_prod' in nobackup.stdout, nobackup.stdout
+    safe_edit.replace_once(config, '    verify_prod: ["echo prod ok"]\n', '    verify_prod: ["echo prod ok"]\n'
+                           '    backup_prod: "echo backup done"\n')
+    run(home, 'owner', 'close', 'R-1', 'prod migrations handed over by D-1')
+    run(home, 'delivery', 'set', 'prod_migrations', 'owner')  # L2: an item the owner closed is not opened again
+    assert 'owner item R-1' in run(home, 'release', '--check', extra_env=env, ok=False).stdout
+    assert 'migrations in WP-APP-02' not in run(home, 'queue').stdout, 'no second migrations item'
+    run(home, 'delivery', 'set', 'prod_migrations', 'orchestrator', '--decision', 'D-1')
+    # P5: the window and the daily limit (by the ledger).
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '  enabled_by: D-1\n', '  enabled_by: D-1\n  release_window: "Mon-Fri 10:00-18:00 '
+                           'UTC"\n  max_prod_releases_per_day: 1\n')
+    saturday = run(home, 'release', '--check', extra_env={**env, 'ORCH_NOW': '2026-10-03 12:00Z'}, ok=False)
+    assert gates(saturday)['P5'] == 'RED' and 'outside the window' in saturday.stdout, saturday.stdout
+    assert gates(run(home, 'release', '--check', extra_env=env))['P5'] == 'green'
+    orch.release_row(orch.Workspace(ws), 'release-sheet-earlier.md', 'mono', promote='https://example.invalid/pull/1')
+    ledger_path = ws / 'release/deliveries.md'
+    ledger_text = ledger_path.read_text(encoding='utf-8')
+    stamp = re.search(r'\| (\d{4}-\d\d-\d\d \d\d:\d\dZ) \| release-sheet-earlier', ledger_text).group(1)
+    ledger_path.write_text(ledger_text.replace(stamp, '2026-09-28 09:00Z'), encoding='utf-8')
+    limit = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(limit)['P5'] == 'RED' and '1 of 1 releases today' in limit.stdout, limit.stdout
+    safe_edit.replace_once(config, '  max_prod_releases_per_day: 1\n', '  max_prod_releases_per_day: 2\n')
+    safe_edit.replace_once(config, '"Mon-Fri 10:00-18:00 UTC"', '"Mon-Fri 10-18 UTC"')
+    assert 'release_window hours' in lint_errors(home)
+    safe_edit.replace_once(config, '"Mon-Fri 10-18 UTC"', '"Пн-Пт 10:00-18:00 +00:00"')
+    assert gates(run(home, 'release', '--check', extra_env=env))['P5'] == 'green'
+    # P6: hold; P3: an open high defect; P1: a commit on stage the stand has not passed.
+    run(home, 'hold', 'owner stop')
+    assert gates(run(home, 'release', '--check', extra_env=env, ok=False))['P6'] == 'RED'
+    refused = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'release refused: P6' in refused and f'release {sheet.name} refused' in \
+        (ws / 'status.md').read_text(encoding='utf-8'), refused
+    assert not (stub / 'calls.log').exists() or '"pr", "create"' not in (stub / 'calls.log').read_text(encoding='utf-8')
+    run(home, 'unhold', 'owner resumed')
+    bug = ws / 'bugs/BUG-9-checkout.md'
+    bug.write_text('# BUG-9 — checkout\n\n| Field | Value |\n|-------|-------|\n| Environment | TEST |\n'
+                   '| Severity | high |\n| Status | open |\n', encoding='utf-8')
+    p3 = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(p3)['P3'] == 'RED' and 'BUG-9-checkout.md (high, TEST, open)' in p3.stdout, p3.stdout
+    bug.write_text(bug.read_text(encoding='utf-8').replace('| open |', '| fixed in WP-APP-02 |'), encoding='utf-8')
+    (mono / 'apps/app/src/late.tsx').write_text('export const late = 1;\n', encoding='utf-8')
+    git(mono, 'add', '-A')
+    git(mono, 'commit', '-qm', 'late merge, not on the stand yet')
+    git(mono, 'push', '-q', 'origin', 'stage')
+    p1 = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(p1)['P1'] == 'RED' and 'commits the stand has not passed' in p1.stdout, p1.stdout
+    safe_edit.replace_once(config, '    prod_branch: main\n', '    prod_branch: live\n')
+    moved = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(moved)['P1'] == 'RED' and 'orch.yaml now says stage -> live (pr): plan again' in moved.stdout
+    safe_edit.replace_once(config, '    prod_branch: live\n', '    prod_branch: main\n')
+    git(mono, 'reset', '-q', '--hard', sha2)
+    git(mono, 'push', '-q', '--force', 'origin', 'stage')  # fixture only: the late commit never happened
+    helper = tmp / 'release/gh-clone'
+    git(helper, 'fetch', '-q', 'origin')
+    git(helper, 'checkout', '-q', '-B', 'main', 'origin/main')
+    prod_before = git(helper, 'rev-parse', 'HEAD').strip()
+    (helper / 'hotfix.txt').write_text('hotfix\n', encoding='utf-8')
+    git(helper, 'add', '-A')
+    git(helper, 'commit', '-qm', 'hotfix straight on prod')
+    git(helper, 'push', '-q', 'origin', 'main')
+    hotfix = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(hotfix)['P1'] == 'RED' and '1 commit(s) the stand never saw' in hotfix.stdout and \
+        'to recover, revert the same change on stage' in hotfix.stdout, hotfix.stdout
+    git(helper, 'push', '-q', '--force', 'origin', f'{prod_before}:main')  # fixture only
+    # 3581: a promote PR whose head is not the sheet SHA is never merged.
+    (stub / 'head_override').write_text('e' * 40, encoding='utf-8')
+    wrong = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'the sheet promotes' in wrong and 'nothing merged' in wrong, wrong
+    (stub / 'head_override').unlink()
+    assert '"pr", "merge"' not in (stub / 'calls.log').read_text(encoding='utf-8')
+    # H1 race: a commit lands on prod while the release waits for the checks: no merge.
+    (stub / 'race').write_text('x', encoding='utf-8')
+    raced = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'origin/main moved from' in raced and 'nothing merged' in raced, raced
+    assert '"pr", "merge"' not in (stub / 'calls.log').read_text(encoding='utf-8')
+    git(helper, 'push', '-q', '--force', 'origin', f'{prod_before}:main')  # fixture only
+    (stub / 'checks_seq.json').write_text(json.dumps([[{'name': 'ci', 'bucket': 'pending'}],
+                                                      [{'name': 'ci', 'bucket': 'pass'}]]), encoding='utf-8')
+    (stub / 'calls.log').unlink()
+    # Apply: backup, promote PR, checks waited for, merge (a merge commit), prod run, verify prod, PROD.
+    applied = run(home, 'release', '--apply', extra_env=env)
+    assert 'PROD' in applied.stdout, applied.stdout
+    calls = [json.loads(line) for line in (stub / 'calls.log').read_text(encoding='utf-8').splitlines()]
+    create = next(c for c in calls if c[:2] == ['pr', 'create'])
+    assert create[create.index('--base') + 1] == 'main' and create[create.index('--head') + 1] == 'stage' and \
+        create[create.index('--title') + 1] == f'[SHOP] release {today}', create
+    assert sum(c[:2] == ['pr', 'checks'] for c in calls) >= 2, 'pending checks are waited for'
+    assert ['pr', 'merge', '40', '--repo', 'example/mono', '--merge'] in calls, calls
+    assert not any('--admin' in c or '--delete-branch' in c for c in calls), 'never --admin, stage is never deleted'
+    assert all(tuple(c[:2]) in {('pr', 'list'), ('pr', 'create'), ('pr', 'view'), ('pr', 'checks'), ('pr', 'merge'),
+                                ('run', 'list'), ('run', 'watch')} for c in calls), 'no command outside the release'
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    assert f'{wp1}: VERIFIED_TEST -> PROD' in status and f'{wp2}: VERIFIED_TEST -> PROD' in status, status
+    assert 'FYI, no action needed: release release-sheet-' in run(home, 'queue').stdout
+    ledger_text = ledger_path.read_text(encoding='utf-8')
+    assert '| Prod run | Prod verification | Rollback | Note |' in ledger_text, ledger_text
+    assert f'| {sheet.name} | mono | `echo backup done` exited 0: backup done | https://github.com/example/mono/pull/40 |' \
+        in ledger_text and '| PASS |' in ledger_text, ledger_text
+    prod_sha = json.loads((stub / 'pr.json').read_text(encoding='utf-8'))['mergeCommit']['oid']
+    git(mono, 'fetch', '-q', 'origin')
+    assert git(mono, 'merge-base', '--is-ancestor', sha2, prod_sha) == '' and \
+        git(tmp / 'release/mono.git', 'rev-parse', 'main').strip() == prod_sha
+    again = run(home, 'release', '--check', f'release/{sheet.name}', extra_env=env, ok=False)
+    assert gates(again)['P1'] == 'RED' and 'already contains' in again.stdout and 'nothing to promote' in again.stdout
+    # H1 without a race: the last promote merge was resolved by hand (other code than the stand).
+    git(helper, 'fetch', '-q', 'origin')
+    git(helper, 'checkout', '-q', '-B', 'main', 'origin/main')
+    (helper / 'apps/app/src/orders.tsx').write_text('export const orders = 999;\n', encoding='utf-8')
+    git(helper, 'commit', '-qa', '--amend', '--no-edit')
+    git(helper, 'push', '-q', '--force', 'origin', 'main')
+    # A second batch: the prod deploy run fails, no rollback_prod: hold, defect, owner item with a command.
+    wp3, sha3 = stand_package(mono, home, ws, 'fees', 3)
+    run(home, 'release', '--plan', extra_env=env)
+    resolved = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(resolved)['P1'] == 'RED' and 'is not the code of' in resolved.stdout and \
+        'no other' not in resolved.stdout, resolved.stdout
+    git(helper, 'push', '-q', '--force', 'origin', f'{prod_sha}:main')  # fixture only: back to the real promote
+    assert run(home, 'release', '--check', extra_env=env).returncode == 0, 'the earlier promote merge is no new code'
+    # 3419: a fast-forward is impossible over a promote merge commit.
+    ff_config = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '    prod_branch: main\n', f'    prod_branch: main\n    promote: ff\n'
+                           f'    release_clone: {helper}\n')
+    run(home, 'release', '--plan', extra_env=env)
+    ff = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(ff)['P1'] == 'RED' and 'a fast-forward is impossible' in ff.stdout, ff.stdout
+    config.write_text(ff_config, encoding='utf-8')
+    run(home, 'release', '--plan', extra_env=env)
+    # H1 after the merge: the promote merge carries other code (resolved by hand): hold, no PROD.
+    (stub / 'dirty_merge').write_text('x', encoding='utf-8')
+    dirty = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'is not the code of the stand SHA' in dirty and 'no package got PROD' in dirty, dirty
+    (stub / 'dirty_merge').unlink()
+    assert 'stopped after the promote of mono' in run(home, 'queue').stdout
+    assert '| VERIFIED_TEST |' in next(l for l in (ws / 'status.md').read_text(encoding='utf-8').split('\n')
+                                       if l.startswith(f'| [{wp3}]'))
+    git(helper, 'push', '-q', '--force', 'origin', f'{prod_sha}:main')  # fixture only
+    run(home, 'unhold', 'analysed: the hand-resolved merge is reverted')
+    for bug_file in (ws / 'bugs').glob('BUG-*-verify-wp-app-03-prod.md'):
+        bug_file.write_text(bug_file.read_text(encoding='utf-8').replace('| open (WP-APP-03) |', '| fixed |'),
+                            encoding='utf-8')
+    run(home, 'release', '--plan', extra_env=env)
+    (stub / 'watch_rc.txt').write_text('1', encoding='utf-8')
+    failed = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'every delivery is on hold' in failed and 'no rollback_prod configured' in failed, failed
+    assert 'release release-sheet-' in orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']['hold']
+    queue = run(home, 'queue').stdout
+    assert 'production failed' in queue and 'git revert --no-edit -m 1' in queue, queue
+    assert list((ws / 'bugs').glob('BUG-*-verify-wp-app-03-prod.md')), 'prod defect written'
+    assert '| VERIFIED_TEST |' in next(l for l in (ws / 'status.md').read_text(encoding='utf-8').split('\n')
+                                       if l.startswith(f'| [{wp3}]'))
+    assert 'not run: no rollback_prod configured' in ledger_path.read_text(encoding='utf-8')
+    blocked = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(blocked)['P6'] == 'RED', 'the hold stops every release'
+    # M4: the owner ran the revert: the sheet is on prod by history, not by code: never verified there.
+    failed_prod = git(tmp / 'release/mono.git', 'rev-parse', 'main').strip()
+    git(helper, 'fetch', '-q', 'origin')
+    git(helper, 'checkout', '-q', '-B', 'main', 'origin/main')
+    git(helper, 'revert', '--no-edit', '-m', '1', 'HEAD')
+    git(helper, 'push', '-q', 'origin', 'main')
+    reverted = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert 'contains ' in reverted.stdout and 'but not its code' in reverted.stdout and \
+        'never verify this sheet on prod' in reverted.stdout and 'to recover' in reverted.stdout, reverted.stdout
+    git(helper, 'push', '-q', '--force', 'origin', f'{failed_prod}:main')  # fixture only
+    # With rollback_prod and no migrations in the batch: the rollback runs, the hold stays (an incident).
+    run(home, 'unhold', 'analysed: runner outage')
+    assert gates(run(home, 'release', '--check', extra_env=env, ok=False))['P3'] == 'RED', 'the prod defect blocks'
+    for prod_bug in (ws / 'bugs').glob('BUG-*-verify-wp-app-03-prod.md'):
+        prod_bug.write_text(prod_bug.read_text(encoding='utf-8').replace('| open (WP-APP-03) |', '| fixed (runner) |'),
+                            encoding='utf-8')
+    (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
+    run(home, 'verify', wp3, '--env', 'prod', '--sha', git(tmp / 'release/mono.git', 'rev-parse', 'main').strip(),
+        extra_env=env)
+    safe_edit.replace_once(config, '    backup_prod: "echo backup done"\n', '    backup_prod: "echo backup done"\n'
+                           '    rollback_prod: "echo rollback to {previous_sha}"\n')
+    wp4, _ = stand_package(mono, home, ws, 'tax', 4)
+    run(home, 'release', '--plan', extra_env=env)
+    safe_edit.replace_once(config, '    verify_prod: ["echo prod ok"]\n', '    verify_prod: ["false"]\n')
+    before = git(tmp / 'release/mono.git', 'rev-parse', 'main').strip()
+    rolled = run(home, 'release', '--apply', extra_env=env, ok=False).stderr
+    assert 'WP-APP-04: prod verification failed' in rolled and \
+        f'rollback_prod: `echo rollback to {before}` exited 0' in rolled, rolled
+    safe_edit.replace_once(config, '    verify_prod: ["false"]\n', '    verify_prod: ["echo prod ok"]\n')
+    assert orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery'].get('hold'), 'an incident holds'
+    run(home, 'unhold', 'analysed: rolled back')
+    (stub / 'watch_rc.txt').write_text('0', encoding='utf-8')
+    # per_package: the sheet of one package right after its VERIFIED_TEST.
+    safe_edit.replace_once(config, '  enabled_by: D-1\n', '  enabled_by: D-1\n  release_policy: per_package\n')
+    run(home, 'new-wp', 'app', 'ship')
+    (mono / 'apps/app/src/ship.tsx').write_text('export const ship = 1;\n', encoding='utf-8')
+    git(mono, 'add', '-A')
+    git(mono, 'commit', '-qm', 'WP-APP-05: ship')
+    git(mono, 'push', '-q', 'origin', 'stage')
+    sha5 = git(mono, 'rev-parse', 'HEAD').strip()
+    run(home, 'set', 'WP-APP-05', 'status', 'MERGED')
+    verified = run(home, 'verify', 'WP-APP-05', '--env', 'test', '--sha', sha5, extra_env=env).stdout
+    single = ws / f'release/release-sheet-{today}-wp-app-05.md'
+    assert 'release sheet: ' in verified and single.name in verified and single.is_file(), verified
+    listed = [r['wp'] for r in orch.Workspace(ws).table(single, 'release')[2]]
+    assert listed == ['WP-APP-05'], (listed, wp4)
+    run(home, 'new-wp', 'app', 'gift')
+    (mono / 'apps/app/src/gift.tsx').write_text('export const gift = 1;\n', encoding='utf-8')
+    git(mono, 'add', '-A')
+    git(mono, 'commit', '-qm', 'WP-APP-06: gift')
+    git(mono, 'push', '-q', 'origin', 'stage')
+    run(home, 'set', 'WP-APP-06', 'status', 'MERGED')
+    run(home, 'verify', 'WP-APP-06', '--env', 'test', '--sha', git(mono, 'rev-parse', 'HEAD').strip(), extra_env=env)
+    later = run(home, 'release', '--check', f'release/release-sheet-{today}-wp-app-06.md', extra_env=env, ok=False)
+    assert gates(later)['P1'] == 'RED' and 'also ships WP-APP-05 (VERIFIED_TEST)' in later.stdout, later.stdout
+    assert 'already has its release sheet' in run(home, 'release', '--plan', extra_env=env, ok=False).stderr
+    # A failed batch with migrations: rollback_prod is never run (no database rollback), an owner item instead.
+    w = orch.Workspace(ws)
+    _, module, _ = orch.wp_context(w, 'WP-APP-05')
+    info = {'module': module, 'repo': module.repo, 'tip_prod': 'c' * 40, 'prod': 'main', 'method': 'pr',
+            'name': 'example/mono'}
+    entry = {'wp': 'WP-APP-05', 'pr': '—', 'repo': 'mono'}
+    assert orch.release_failure(w, 'release-sheet-x.md', info, [entry], 'd' * 40, 'WP-APP-05: prod verification '
+                                'failed', True, deploy=False) == 1
+    queue = run(home, 'queue').stdout
+    assert 'the orchestrator never rolls back a database' in queue and f'echo rollback to {"c" * 40}' in queue, queue
+    assert 'rollback_prod: `echo rollback' not in ledger_path.read_text(encoding='utf-8').split('release-sheet-x.md')[-1]
+    run(home, 'unhold', 'fixture')
+    # lint of the release settings; the orchestrator's settings follow the prod level.
+    original = config.read_text(encoding='utf-8')
+    safe_edit.replace_once(config, '  release_policy: per_package\n', '  release_policy: weekly\n')
+    assert 'release_policy must be batch or per_package' in lint_errors(home)
+    config.write_text(original, encoding='utf-8')
+    safe_edit.replace_once(config, '    prod_branch: main\n', '    prod_branch: main\n    promote: ff\n')
+    assert 'promote: ff needs release_clone' in lint_errors(home)
+    config.write_text(original, encoding='utf-8')
+    run(home, 'settings', 'orchestrator')
+    rules = json.loads((ws / 'orchestration/settings/orchestrator.json').read_text(encoding='utf-8'))['permissions']
+    assert 'Bash(echo prod ok)' in rules['allow'] and 'Bash(echo backup done)' in rules['allow'], rules['allow']
+    assert 'Bash(echo rollback to *)' in rules['allow'] + rules['ask'] and 'Bash(gh pr merge *)' in rules['deny']
+    assert not any('pr create' in r or 'pr merge' in r for r in rules['allow']), rules['allow']
+    assert 'Bash(git push origin stage)' in rules['deny'] and 'Bash(git push *:stage)' in rules['deny'], rules['deny']
+    run(home, 'settings', 'app')
+    module_rules = json.loads((ws / 'orchestration/settings/app.json').read_text(encoding='utf-8'))['permissions']
+    assert 'Bash(git push origin stage)' in module_rules['deny'], module_rules['deny']  # M3
+    print('PASS release: sheet, P1-P7 by facts, promote PR with checks, merge commit, prod run, verify prod, PROD, '
+          'ledger, FYI; failure -> hold, defect, owner item; rollback_prod; per_package; lint; settings')
+
+
+def test_release_ff_and_ledger(tmp):
+    """3d: promote by a fast-forward push from a clean clone; the ledger in Russian; a 0.9 ledger upgraded."""
+    mono, stub, home, ws, env = release_fixture(tmp, 'release-ff', lang='ru')
+    config = ws / 'orch.yaml'
+    clone = tmp / 'release-ff/release-clone'
+    git(tmp, 'clone', '-q', str(tmp / 'release-ff/mono.git'), str(clone))
+    git(clone, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
+    git(clone, 'config', f'url.{tmp / "release-ff/mono.git"}.insteadOf', 'https://github.com/example/mono.git')
+    safe_edit.replace_once(config, '    prod_branch: main\n', f'    prod_branch: main\n    promote: ff\n'
+                           f'    release_clone: {clone}\n')
+    # A ledger written by 0.9.x (seven columns, English) is upgraded in place on the first write.
+    (ws / 'release').mkdir(exist_ok=True)
+    (ws / 'release/deliveries.md').write_text(
+        '# Deliveries\n\n<!-- orch:deliveries -->\n| Date | WP | PR | Merge SHA | Stand run | Stand verification | Note |\n'
+        '|------|----|----|-----------|-----------|--------------------|------|\n'
+        '| 2026-09-20 10:00Z | WP-APP-09 | https://github.com/example/mono/pull/9 | abcdef123456 | u9 | PASS | merged '
+        '--merge |\n', encoding='utf-8')
+    wp, sha = stand_package(mono, home, ws, 'orders', 1)
+    run(home, 'decide', 'D', 'Оркестратор доставляет и выкатывает партии')
+    for level in ('merge', 'stand', 'prod'):
+        run(home, 'delivery', 'set', level, 'orchestrator', '--decision', 'D-1')
+    run(home, 'release', '--plan', extra_env=env)
+    sheet = next((ws / 'release').glob('release-sheet-*.md')).read_text(encoding='utf-8')
+    assert '# Лист выкатки' in sheet and f'git push origin {sha}:refs/heads/main' in sheet, sheet
+    (clone / 'dirty.txt').write_text('x\n', encoding='utf-8')
+    dirty = run(home, 'release', '--check', extra_env=env, ok=False)
+    assert gates(dirty)['P1'] == 'RED' and 'is not clean' in dirty.stdout, dirty.stdout
+    (clone / 'dirty.txt').unlink()
+    applied = run(home, 'release', '--apply', extra_env=env)
+    assert 'PROD' in applied.stdout, applied.stdout
+    assert git(tmp / 'release-ff/mono.git', 'rev-parse', 'main').strip() == sha, 'prod is exactly the stand SHA'
+    calls = (stub / 'calls.log').read_text(encoding='utf-8')
+    assert '"pr", "create"' not in calls and '"pr", "merge"' not in calls, calls
+    ledger = (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    assert '| Дата | Пакет | PR | SHA слияния | Run стенда | Проверка стенда | Run прода | Проверка прода | Откат | ' \
+           'Примечание |' in ledger and '## Релизы' in ledger, ledger
+    assert '| 2026-09-20 10:00Z | WP-APP-09 | https://github.com/example/mono/pull/9 | abcdef123456 | u9 | PASS | — | — ' \
+           '| — | merged --merge |' in ledger, 'the old row keeps its values'
+    assert f'git push origin {sha[:12]}:main' in ledger and 'релиз release-sheet-' in ledger, ledger
+    assert 'добавлены колонки прода и отката' in (ws / 'status.md').read_text(encoding='utf-8')
+    # The window parser: ranges over the week end, past midnight, offsets; errors name the field.
+    import release
+    spec = release.parse_window('Fri-Mon 22:00-02:00 UTC+3')
+    assert release.in_window(spec, orch.dt.datetime(2026, 10, 3, 20, 30, tzinfo=orch.dt.timezone.utc))[0]  # Sat 23:30
+    assert not release.in_window(spec, orch.dt.datetime(2026, 9, 30, 20, 30, tzinfo=orch.dt.timezone.utc))[0]  # Wed
+    for bad in ('Mon-Fri 10:00-18:00', 'Xyz 10:00-18:00 UTC', 'Mon 10:00-10:00 UTC', 'Mon 10:00-18:00 Mars/Base'):
+        try:
+            release.parse_window(bad)
+        except release.WindowError:
+            continue
+        raise AssertionError(f'{bad!r} must be refused')
+    print('PASS release ff and ledger: fast-forward from a clean clone, Russian sheet and ledger, 0.9 ledger upgraded, '
+          'window parser')
+
+
+def test_encoding_and_pr_cell(tmp):
+    """0.9.1: UTF-8 output through a pipe under a non-UTF-8 locale, unreadable workflows refused, PR cells."""
+    import io
+    import threading
+    import streams
+    # Illustration of CPython behaviour, not a guard of the fix (the fix is guarded by the pipe checks
+    # below): on Windows subprocess reads pipes in a reader thread; a decoding error kills only that
+    # thread and communicate() returns None (#20).
+    raw = io.TextIOWrapper(io.BytesIO('Проверка деплоя'.encode('utf-8')), encoding='cp1252')
+    buffer = []
+    thread = threading.Thread(target=lambda: buffer.append(raw.read()))
+    hook, threading.excepthook = threading.excepthook, lambda args: None
+    thread.start()
+    thread.join()
+    threading.excepthook = hook
+    assert buffer == [], 'the reader thread dies; communicate() would return stdout=None'
+    try:
+        streams.parse_push_trigger(None, 'ci.yml')
+    except streams.DeployFormError as error:
+        assert 'could not be read' in str(error)
+    else:
+        raise AssertionError('None must be a refusal')
+    real = streams.workflow_texts
+    streams.workflow_texts = lambda root, ref: {'ci.yml': None, 'other.yml': 'on: [pull_request]\n'}
+    try:
+        candidates, _, refusals, any_dir = streams.deploy_safe_dirs(tmp, 'orch/x', 'x', 'HEAD')
+    finally:
+        streams.workflow_texts = real
+    assert refusals and candidates == [] and not any_dir, (candidates, refusals)
+    # A repository with Russian text in a workflow and in a commit message, a Russian workspace.
+    mono = make_monorepo(tmp / 'enc')
+    with_workflow(mono, "# Выкладка стенда\non:\n  push:\n    paths-ignore: ['docs/**']\njobs: {}\n")
+    (mono / 'apps/app/src/page.tsx').write_text('// страница\n', encoding='utf-8')
+    git(mono, 'commit', '-qam', 'Правка страницы: кириллица в сообщении')
+    git(mono, 'push', '-q', 'origin', 'main')
+    clone = tmp / 'enc/clone'
+    git(tmp, 'clone', '-q', str(tmp / 'enc/mono.git'), str(clone))
+    git(clone, 'config', f'url.{tmp / "enc/mono.git"}.insteadOf', 'https://github.com/example/mono.git')
+    git(clone, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
+    run(clone, 'init', 'enc', '--lang', 'ru', '--sessions', 'local', '--permission-mode', 'auto', '--in-repo', 'app',
+        '--area', 'shop=app:apps/app/**')
+    run(clone, 'owner', 'add', 'P', 'Нужен ли экспорт заказов? (а) да (б) нет; рекомендую (б)')
+    run(clone, 'new-wp', 'shop', 'orders', '--title', 'Заказы')
+    wt = branch_with(clone, 'feature/wp-shop-01-orders', ['apps/app/src/page.tsx'])
+    git(wt, 'commit', '-q', '--allow-empty', '-m', 'Пакет: заказы — готово')
+    git(wt, 'push', '-q', 'origin', 'feature/wp-shop-01-orders')
+    env = {**os.environ, **GIT_ENV, 'PYTHONIOENCODING': 'cp1252', 'LC_ALL': 'C', 'LANG': 'C', 'PYTHONUTF8': '0'}
+    env.pop('ORCH_WORKSPACE', None)
+    for args in (['queue'], ['lint'], ['ready'], ['overlap', '--planned'], ['review-start', 'WP-SHOP-01', '--no-fetch']):
+        result = subprocess.run([*ORCH, *args], cwd=clone, env=env, capture_output=True)
+        assert result.returncode == 0, (args, result.stderr.decode('utf-8', 'replace'))
+        out = (result.stdout + result.stderr).decode('utf-8')  # strict: valid UTF-8
+        if args == ['queue']:
+            assert 'Нужен ли экспорт заказов' in out, out
+    # PR cells (#24): a URL or a number expanded by origin; anything else refused.
+    ws = clone / 'docs/orchestration/enc'
+    run(clone, 'set', 'WP-SHOP-01', 'pr', '#87')
+    assert '| https://github.com/example/mono/pull/87 |' in (ws / 'status.md').read_text(encoding='utf-8')
+    assert 'takes a pull request URL or number' in run(clone, 'set', 'WP-SHOP-01', 'pr', 'мусор', ok=False).stderr
+    run(clone, 'new-wp', 'shop', 'cart')
+    run(clone, 'merge', 'add', 'WP-SHOP-02', '--pr', 'https://github.com/example/mono/pull/88')
+    assert '| https://github.com/example/mono/pull/88 |' in (ws / 'status.md').read_text(encoding='utf-8')
+    # A cell written before 0.9.1 ("#87") still resolves for verify.
+    status = (ws / 'status.md').read_text(encoding='utf-8')
+    (ws / 'status.md').write_text(status.replace('| https://github.com/example/mono/pull/87 |', '| #87 |'),
+                                  encoding='utf-8')
+    orch_ws = orch.Workspace(ws)
+    _, module, _ = orch.wp_context(orch_ws, 'WP-SHOP-01')
+    assert orch.pr_url('#87', module.repo) == 'https://github.com/example/mono/pull/87'
+    assert orch.pr_url('#87 (accepted abcdef1)', module.repo) == 'https://github.com/example/mono/pull/87'
+    assert orch.pr_url('3 commits behind', module.repo) is None, 'a number must be the whole cell (L1)'
+    # M1/I3: a URL with a tail is normalized before anything is written; a bad value writes nothing.
+    reports_before = sorted(p.name for p in (ws / 'reports').iterdir())
+    bad = run(clone, 'review-start', 'WP-SHOP-01', '--no-fetch', '--round', '2', '--pr', 'see the PR', ok=False)
+    assert 'takes a pull request URL or number' in bad.stderr and \
+        sorted(p.name for p in (ws / 'reports').iterdir()) == reports_before, 'no partial state'
+    run(clone, 'review-start', 'WP-SHOP-01', '--no-fetch', '--round', '2',
+        '--pr', 'https://github.com/example/mono/pull/87/files?w=1')
+    status_now = (ws / 'status.md').read_text(encoding='utf-8')
+    assert '| https://github.com/example/mono/pull/87 |' in status_now and '/files' not in status_now
+    report2 = next((ws / 'reports').glob('wp-shop-01-review-*-r2.md')).read_text(encoding='utf-8')
+    assert 'https://github.com/example/mono/pull/87' in report2 and '/files' not in report2
+    # L2: merge add validates first.
+    run(clone, 'new-wp', 'shop', 'tax')
+    rows_before = (ws / 'status.md').read_text(encoding='utf-8').count('| queued |')
+    assert 'takes a pull request URL' in run(clone, 'merge', 'add', 'WP-SHOP-03', '--pr', 'draft', ok=False).stderr
+    assert (ws / 'status.md').read_text(encoding='utf-8').count('| queued |') == rows_before
+    # M2: accept never refuses because of an older free-text cell; the journal line is written.
+    head = git(clone, 'rev-parse', 'origin/main').strip()
+    text = (ws / 'status.md').read_text(encoding='utf-8')
+    row = next(l for l in text.split('\n') if l.startswith('| [WP-SHOP-03]'))
+    cells = row.split(' | ')
+    cells[5] = 'PR https://github.com/example/mono/pull/90 \\| draft'
+    (ws / 'status.md').write_text(text.replace(row, ' | '.join(cells)), encoding='utf-8')
+    run(clone, 'set', 'WP-SHOP-03', 'status', 'REVIEW')
+    (ws / 'reports/wp-shop-03-review.md').write_text('# Review\n', encoding='utf-8')
+    run(clone, 'accept', 'WP-SHOP-03', head, '--report', 'reports/wp-shop-03-review.md')
+    after = (ws / 'status.md').read_text(encoding='utf-8')
+    assert f'WP-SHOP-03: accepted at {head}' in after, 'journal line written'
+    assert f'| https://github.com/example/mono/pull/90 (accepted {head[:10]}) |' in after
+    assert orch.accepted_revision(orch.Workspace(ws), 'WP-SHOP-03')[0] == head
+    stub = tmp / 'enc/stub'
+    (stub / 'bin').mkdir(parents=True)
+    (stub / 'bin/gh').write_text(GH_STUB, encoding='utf-8')
+    (stub / 'bin/gh').chmod(0o755)
+    head = git(clone, 'rev-parse', 'origin/main').strip()
+    (stub / 'pr.json').write_text(json.dumps({'state': 'MERGED', 'mergeCommit': {'oid': head}}), encoding='utf-8')
+    (stub / 'runs.json').write_text('[]', encoding='utf-8')
+    safe_edit.replace_once(ws / 'orch.yaml', '    checks: []\n', '    checks: []\n    verify_test: ["true"]\n')
+    run(clone, 'set', 'WP-SHOP-01', 'status', 'MERGED')
+    gh_env = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(stub), 'PATH': f'{stub / "bin"}{os.pathsep}{os.environ["PATH"]}'}
+    assert 'PASS' in run(clone, 'verify', 'WP-SHOP-01', '--env', 'test', extra_env=gh_env).stdout
+    assert 'pr view https://github.com/example/mono/pull/87' in (stub / 'calls.log').read_text(encoding='utf-8')
+    local = make_monorepo(tmp / 'enc-local')
+    home = tmp / 'enc-local/home'
+    home.mkdir()
+    git(home, 'init', '-q')
+    run(home, 'init', 'loc', '--lang', 'en', '--sessions', 'local', '--permission-mode', 'auto', '--module', f'db={local}')
+    run(home, 'new-wp', 'db', 'schema')
+    assert 'cannot be expanded' in run(home, 'set', 'WP-DB-01', 'pr', '#5', ok=False).stderr
+    # M3: the loopback git proxy of a cloud session is not a forge: no plausible wrong URL.
+    git(local, 'remote', 'set-url', 'origin', 'http://proxy@127.0.0.1:43123/git/example/mono')
+    assert orch.pr_from_number(orch.streams.Repo({'id': 'r', 'path': str(local)}), 5) is None
+    assert 'cannot be expanded' in run(home, 'set', 'WP-DB-01', 'pr', '#5', ok=False).stderr
+    assert not orch.forge_host('10.0.0.5') and orch.forge_host('github.com') and orch.forge_host('git.example.org')
+    # L4: a workflow that is not UTF-8 is unreadable: refused, no candidate with a replaced character.
+    bad_repo = make_monorepo(tmp / 'enc-latin')
+    wf = bad_repo / '.github/workflows/deploy.yml'
+    wf.parent.mkdir(parents=True)
+    wf.write_bytes("# d\xe9ploiement\non:\n  push:\n    paths-ignore: ['caf\xe9/**']\njobs: {}\n".encode('latin-1'))
+    git(bad_repo, 'add', '-A')
+    git(bad_repo, 'commit', '-qm', 'latin-1 workflow')
+    candidates, _, refusals, _ = streams.deploy_safe_dirs(bad_repo, 'orch/x', 'x', 'HEAD')
+    assert refusals and 'not valid UTF-8' in refusals[0] and candidates == [], (candidates, refusals)
+    # L3: the self-test reads child output as UTF-8 itself (it runs the install checks on Windows too).
+    assert ('text' + '=True') not in Path(__file__).read_text(encoding='utf-8')
+    print('PASS encoding and PR cell: UTF-8 through a pipe under cp1252/C, unreadable workflow refused, #87 expanded')
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
@@ -2042,6 +2878,10 @@ def main():
         test_verify(tmp)
         test_windows_paths(tmp)
         test_report(tmp)
+        test_deliver(tmp)
+        test_encoding_and_pr_cell(tmp)
+        test_release(tmp)
+        test_release_ff_and_ledger(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 

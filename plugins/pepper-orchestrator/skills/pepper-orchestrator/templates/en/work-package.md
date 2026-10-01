@@ -26,6 +26,7 @@
 | Depends on | <WP ids, or none> |
 | Size | <S / M / L> |
 | Specification | <optional: requirement, use case or task IDs from any source; none> |
+| Graph | <specification graph nodes or methodology commands the implementer updates; none> |
 | Decisions | <D-n this package relies on, or none> |
 
 {{REPO_HINTS}}

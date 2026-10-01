@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 — 2026-10-01, public preview
+## 0.11.0 — 2026-10-01, public preview
 
 - Dedicated Codex CLI skill, native scout/reviewer/verifier roles, prepared ordinary
   Git worktrees and documented queue/App Server session transport. Keep Claude
@@ -13,6 +13,144 @@
   CI exercises concurrency/recovery on three platforms and installs the built
   plugin with native Windows Codex. Interactive account permissions/MCP/PR lifecycle
   remains a separate owner acceptance check. See [Windows guide](WINDOWS.md).
+
+## 0.10.0 — preview, unreleased
+
+Stage 3d: production by the orchestrator, only when the owner handed `prod` over by a decision D-n
+(`DELIVERY.md` sections 5-7).
+
+- **`orch.py release --plan`** writes `release/release-sheet-<date>.md` (EN/RU): the `VERIFIED_TEST`
+  packages by repository with the SHA each passed the stand at (the evidence of its `verify --env
+  test`, else the ledger), migrations from the package's Migrations row, the promote SHA per
+  repository (the stand SHA that contains the others), open defects and self-contained steps with
+  expectations (the owner can release by the sheet too). `release_policy: per_package` writes a sheet
+  of one package right after its `VERIFIED_TEST` (never a second sheet for the same package).
+- **`orch.py release --check [<sheet>]`**: gates P1-P7 by facts, not status fields. P1: the promote SHA
+  is the tip of `origin/<integration_branch>` (for `ff`: on it), contains every stand SHA, and prod
+  has no commit the stand never saw (`git rev-list --no-merges`; merge commits of earlier promotes
+  aside; `ff` needs prod to be an ancestor and a clean `release_clone` of the same origin); it also
+  refuses a sheet planned for other branches or another promote method than `orch.yaml` has now, and a
+  promote SHA that would ship another unreleased package not in the sheet. P2: every
+  package `VERIFIED_TEST`. P3: no open defect of severity blocker, critical or high in `bugs/`. P4:
+  migrations (the sheet or the package file now): with `prod_migrations: owner` an owner item `R-n`
+  (once) and stop; with `orchestrator` the review report says `migrations: safe, reversible` and
+  `backup_prod` is set. P5: `release_window` ("Mon-Fri 10:00-18:00 Europe/Berlin"; IANA zone, `UTC` or
+  an offset; `Пн-Пт` too; past midnight allowed) and `max_prod_releases_per_day` counted from the
+  ledger. P6: `prod: orchestrator`, no hold, configuration valid after re-reading `orch.yaml`. P7:
+  after the release.
+- **`orch.py release --apply [<sheet>]`**: every gate first, nothing written before; then per
+  repository `backup_prod` when the batch has migrations (output in the ledger; a failure stops
+  before the promote), the promote (a PR `integration_branch` -> `prod_branch` titled `[TAG] release
+  <date>` with the sheet as body, pending checks waited for, merged with `--merge` and never
+  `--delete-branch`, so prod contains the stand SHA; or `git push origin <sha>:refs/heads/<prod>` from
+  the clean clone, never forced), the prod deploy run, `verify --env prod --sha <prod SHA>` per package
+  -> `PROD`, ledger rows and an FYI item in the owner queue. GitHub refusing the promote or red
+  promote checks become an owner item, closed by a later successful promote of the sheet.
+- **Failure on prod**: defect, `delivery.hold` for every delivery, `rollback_prod` (with
+  `{previous_sha}` = the prod tip before the release) only for a batch without migrations; otherwise,
+  or when the rollback fails, an owner item with the ready command (a revert PR of the promote when no
+  `rollback_prod` is set). The orchestrator never rolls back a database.
+- **Ledger (backlog B1 of the 3c review)**: `release/deliveries.md` is written in `owner_language`
+  (headings and fixed notes), package rows gain Prod run, Prod verification and Rollback columns (the
+  stand rollback moved there from the note), and a Releases table records backup, promote, prod SHA,
+  run, verification and rollback. A ledger written by 0.9.x is upgraded in place on the first write
+  (its rows keep their values; a journal line records it).
+- **Backlog B3 of the 3c review**: an owner item opened because GitHub refused a merge is closed when
+  a later `deliver` of the same package merges.
+- **Code, not only history (review rev.2).** P1 compares trees: the prod tip must carry the code of the
+  stand SHA of the last promote (a hand-resolved promote merge, a revert or a hotfix on prod is red,
+  with the recovery step; a reverted sheet is never offered for `verify --env prod`). `--apply` reads
+  the prod tip again right before the merge and refuses when it moved since the gates, and after the
+  promote compares the promoted commit's tree with the stand SHA's tree before any `PROD`. Any error
+  after the promote (other code, an unknown merge commit, a failing command) ends in a hold, a defect
+  and an owner item. P7 is red before the release when a package has nothing to verify on prod. The
+  P1 fact names the promote merge method (`merge_method` other than merge is not used for a promote).
+  The P4 migrations item is closed after the release of its batch and not opened again once the owner
+  closed it. Pushes to `integration_branch` and `prod_branch` are denied like pushes to the base in
+  the module and orchestrator settings when `orch.yaml` has a `delivery` block.
+- `lint`: `release_policy`, `release_window`, `max_prod_releases_per_day`, `promote` (and `ff` needs
+  `release_clone`), `prod_migrations: orchestrator` needs `prod: orchestrator`.
+- `orch.py settings orchestrator` with `prod: orchestrator` allows `verify_prod` and `backup_prod`
+  verbatim and `rollback_prod` (`ask` when `rollback` is in `checkpoints`); the promote PR, its merge
+  and the promote push happen only inside `release --apply`, so no allow rule for `gh pr create`,
+  `gh pr merge` or a push to prod (`gh pr merge` and pushes to the base stay denied).
+- `close`: the closeout has a Deliveries section from the ledger and the package Version column
+  from the ledger when the orchestrator delivered the package.
+- Documentation: `release` mode, `/pepper-orchestrator:release`, concept section 15 (EN/RU), README
+  scenario "Trusted release", the review brief's migrations verdict line.
+
+## 0.9.1 — preview, unreleased
+
+Hotfix for three field reports (Issues #20, #21, #24).
+
+- **#20, output through a pipe.** `orch.py` and `safe_edit.py` reconfigure stdout and stderr to UTF-8
+  (`errors='replace'`) at start: an agent session reads them through a pipe, where Windows uses the
+  ANSI code page (cp1252) and `queue` failed with `UnicodeEncodeError` on Russian text. `PYTHONUTF8` is
+  no longer needed.
+- **#20, process output.** All 16 `subprocess.run(..., text=True)` calls read with
+  `encoding='utf-8', errors='replace'` (git, gh, `claude --version`, check, verify and delivery
+  commands).
+- **#20, the `None` in `parse_push_trigger` - cause established.** On Windows `subprocess`
+  `communicate()` reads pipes in reader threads (`Popen._readerthread`: `buffer.append(fh.read())`). A
+  `UnicodeDecodeError` there (UTF-8 Cyrillic in a workflow decoded as cp1252, whose bytes 0x81, 0x8D,
+  0x8F, 0x90, 0x9D are undefined) kills only that thread; `communicate()` then returns
+  `stdout = stdout[0] if stdout else None`. On POSIX the same decoding happens in the main thread and
+  raises instead, which is why it did not reproduce there. Fixed by the UTF-8 reading above; besides,
+  `parse_push_trigger` refuses a non-string text (`DeployFormError`: "could not be read") and
+  `deploy_safe_dirs` offers no directory at all when a workflow could not be read, or contains bytes
+  that are not UTF-8 (a replaced character never reaches a candidate name). The fix is guarded by the
+  pipe tests (cp1252 output encoding, C locale); a separate selftest block only illustrates the
+  CPython thread behaviour and would pass on 0.11.0 too.
+- **#21, escalation.** `review-start --round 3+` prints and writes a conditional line ("if the same
+  REVISE items are still open after this review, restart ..."); the owner item opens only when the
+  package is set to `REVISE` again from round 3 (the round comes from the newest review report),
+  once per open item.
+- **#24, PR cell.** `set <WP> pr` takes a pull request URL (a tail such as `/files`, `?w=1` or
+  `#issuecomment-…` is cut) or a number (`#87`, `87`), expanded to `https://<host>/<owner>/<repo>/pull/<n>`
+  from `origin_name()` of the module repository, only when the host is a forge (never loopback or a
+  private address such as the cloud git proxy); anything else is refused with an example. `pr_url()`
+  expands a cell that is exactly such a number, so cells written before 0.9.1 work as they are.
+  `review-start --pr`, `merge add --pr` and `accept` validate and normalize the value before anything
+  is written (no partial state); `accept` extracts the URL from an older cell by search and never
+  refuses because of it; `merge add --pr` also fills an empty PR cell; `close --check` reads numbered
+  cells too.
+- The self-test reads child output as UTF-8 itself, so it runs under a non-UTF-8 locale too.
+
+## 0.11.0 — preview, unreleased
+
+Preview of stage 3c: trusted delivery of merges and the stand, only by an explicit owner decision.
+
+- `delivery` block in `orch.yaml`: `merge`, `stand`, `prod`, `prod_migrations` (owner | orchestrator,
+  default owner; workspaces before 0.11.0 = all owner), `enabled_by`, `hold`. `orch.py delivery show`
+  and `delivery set <level> owner|orchestrator --decision D-n` (orchestrator only with a recorded
+  decision). `lint`: orchestrator without `enabled_by` or with an unrecorded one, `prod: orchestrator`
+  without `merge: orchestrator`, `merge_method` and `run_timeout` values. Repository keys:
+  `merge_method` (merge | squash | rebase), `delete_branch`, `deploy_test`, `rollback_test`
+  (`{previous_sha}`), `run_timeout`, `integration_branch`.
+- `orch.py accept <WP> <sha> --report <path>`: `ACCEPTED` at the reviewed revision, journaled.
+- `orch.py deliver --check <WP>`: gates G1-G10 with facts (accepted revision and report, PR head =
+  accepted SHA, `gh pr checks`, open/mergeable/base/title, merge queue head and previous merge
+  `VERIFIED_TEST` or `--after-failure D-n`, locks, repository checks, owner items marked "blocks
+  delivery" and referenced decisions, "graph: checked" when the package has a Specification, and the
+  delivery level re-read from `orch.yaml` with no hold). `--apply`: `gh pr merge <n> --repo <origin>
+  --<merge_method> [--delete-branch]` (never `--admin`; a GitHub refusal becomes an owner item),
+  `MERGED`, merge queue, ledger `release/deliveries.md`, journal; with `stand: orchestrator` the deploy
+  run of the merge SHA (`gh run list` + `gh run watch`, `run_timeout`) or `deploy_test` (stdin closed:
+  no TTY confirmations), then `verify --env test` and `VERIFIED_TEST`. A failure: `delivery.hold`,
+  defect, `rollback_test` when configured, REVISE text; `orch.py hold` / `unhold`; the first `lint`
+  warning and `resume` name the hold. Without `delivery.merge: orchestrator`, `deliver` refuses with
+  "delivery is done by the owner" and the owner's command.
+- `settings orchestrator` follows the levels: `gh run watch/list`, `gh pr view/checks`, `deploy_test`,
+  `verify_test` and `rollback_test` verbatim (`rollback` checkpoint = ask). `gh pr merge` stays denied
+  in every session: the merge happens only inside `orch.py deliver --apply`.
+- `deliver` refuses on an invalid delivery configuration (and G10 re-checks it); `merge_method` other
+  than merge, squash or rebase never reaches `gh`; `--after-failure` takes a recorded D-n, journaled
+  and in the ledger; a deploy run still in progress at verification exits 2 (MERGED, no hold); a merge
+  commit GitHub has not reported yet stops before the stand; `accept` notes the revision in the
+  package's PR cell; the review and owner modes hand merges to `deliver` when `merge: orchestrator`.
+- Work package row "Graph"; the review brief checks the graph and writes "graph: checked".
+- `deliver` mode and command; hard rules 1 and 13 name the only exception; README (EN/RU) "Trusted
+  delivery"; concept 1.8, sections 1, 2 and 12.
 
 ## 0.8.0 — preview, unreleased
 

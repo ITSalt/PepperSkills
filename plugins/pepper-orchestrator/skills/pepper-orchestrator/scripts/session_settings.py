@@ -18,7 +18,7 @@ import streams
 
 TEMPLATES = Path(__file__).resolve().parent.parent / 'templates' / 'settings'
 PERMISSION_MODES = ('auto', 'acceptEdits', 'default', 'dontAsk', 'bypassPermissions')
-CHECKPOINTS = ('push', 'pr', 'deploy_test')
+CHECKPOINTS = ('push', 'pr', 'deploy_test', 'rollback')
 DEFAULT_CHECKPOINTS = ('deploy_test',)
 SETTINGS_DIR = 'orchestration/settings'
 ORCHESTRATOR = 'orchestrator'
@@ -287,6 +287,21 @@ def _base_push_rules(base):
             f'Bash(git push * refs/heads/{base} *)']
 
 
+def delivery_branches(config, raws, base):
+    """The integration and prod branches of a repository other than its base, when orch.yaml has a
+    delivery block: pushes to them are denied like pushes to the base (release promotes happen only
+    inside orch.py release --apply)."""
+    if not isinstance(config.get('delivery'), dict):
+        return []
+    found = []
+    for raw in raws:
+        for key in ('integration_branch', 'prod_branch'):
+            value = str(raw.get(key) or '').strip()
+            if value and value != base and value not in found:
+                found.append(value)
+    return found
+
+
 def checkpoints(config, module=None):
     raw = (module.raw.get('checkpoints') if module is not None else None)
     if raw is None:
@@ -321,6 +336,8 @@ def module_settings(config, workspace_root, module, in_repo=False):
             ask.append('Bash(git push *)')
         (ask if 'pr' in points else allow).append('Bash(gh pr create *)')
         deny.extend(_base_push_rules(repo.base))
+        for branch in delivery_branches(config, [repo.raw, module.raw], repo.base):
+            deny.extend(_base_push_rules(branch))
     setup = repo.worktree_setup
     copies = secret_copies(setup)
     for command in copies:
@@ -364,11 +381,15 @@ def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, wor
         perms['allow'].append(path_rule('Read', real_path(repo.local)))
         if streams.has_remote(repo):
             perms['deny'].extend(_base_push_rules(repo.base))
+            raws = [repo.raw] + [m.raw for m in modules.values() if m.repo.key == repo.key]
+            for branch in delivery_branches(config, raws, repo.base):
+                perms['deny'].extend(_base_push_rules(branch))
     for module in modules.values():
         if is_command(module.raw.get('deploy_prod')):
             perms['deny'].extend(prefix_rules(module.raw['deploy_prod']))
     if workspace_branch:
         perms['allow'].append(f'Bash(git push origin {workspace_branch})')
+    delivery_rules(config, modules, perms)
     perms['deny'].extend(_prod_servers(config))
     for kind in ('allow', 'ask', 'deny'):
         perms[kind] = _unique(perms[kind])
@@ -376,6 +397,39 @@ def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, wor
     data['autoMode'] = {'environment': environment(all_repos)}
     data['crossSessionInbound'] = 'accept'
     return data
+
+
+def delivery_rules(config, modules, perms):
+    """Trusted delivery (orch.yaml delivery levels set to orchestrator by a decision D-n): the commands
+    the orchestrator may run itself (runs, PR facts, the stand and prod commands). The merge, the promote
+    PR and the promote push happen only inside `orch.py deliver --apply` / `orch.py release --apply` (a
+    subprocess, not a Bash call), so `gh pr merge`, `gh pr create` by hand and pushes to a prod branch
+    stay without allow rules (`gh pr merge` and pushes to the base stay denied)."""
+    block = config.get('delivery') if isinstance(config.get('delivery'), dict) else {}
+    if not block.get('enabled_by'):
+        return
+    merge_level = block.get('merge') == 'orchestrator'
+    stand_level = block.get('stand') == 'orchestrator'
+    prod_level = block.get('prod') == 'orchestrator'
+    if not (merge_level or stand_level or prod_level):
+        return
+    ask_rollback = 'rollback' in checkpoints(config)
+    for module in modules.values():
+        perms['allow'] += ['Bash(gh run watch *)', 'Bash(gh run list *)', 'Bash(gh pr view *)', 'Bash(gh pr checks *)']
+        raw = {**module.repo.raw, **module.raw}
+        if stand_level:
+            if is_command(raw.get('deploy_test')):
+                perms['allow'].append(f'Bash({raw["deploy_test"]})')
+            perms['allow'] += bash_rules(streams.as_list(raw.get('verify_test')))
+            if raw.get('rollback_test'):
+                rule = f'Bash({str(raw["rollback_test"]).replace("{previous_sha}", "*")})'  # the SHA varies
+                (perms['ask'] if ask_rollback else perms['allow']).append(rule)
+        if prod_level:
+            perms['allow'] += bash_rules(streams.as_list(raw.get('verify_prod')))
+            perms['allow'] += bash_rules(streams.as_list(raw.get('backup_prod')))
+            if raw.get('rollback_prod'):
+                rule = f'Bash({str(raw["rollback_prod"]).replace("{previous_sha}", "*")})'
+                (perms['ask'] if ask_rollback else perms['allow']).append(rule)
 
 
 def apply_flags(command, settings, mode):

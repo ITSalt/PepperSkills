@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-> Version 1.7 · 2026-09-30 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12; 1.6: verification by facts, section 9; 1.7: plugin defects reported, section 16) · derived from the "Corporate clients (B2B)" program (6 repositories,
+> Version 1.8 · 2026-09-30 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12; 1.6: verification by facts, section 9; 1.7: plugin defects reported, section 16; 1.8: trusted delivery, sections 1, 2 and 12) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
 > [`concept.ru.md`](concept.ru.md).
@@ -34,7 +34,9 @@ single-orchestrator concept, reconcile the state with reality and continue from 
    skills.
 3. The orchestrator **does nothing irreversible itself and never asks sessions to**: merge, deploy,
    production, database writes, permission changes are done only by the owner, from a ready
-   one-line command.
+   one-line command. By an explicit owner decision (D-n) the orchestrator may carry out delivery by
+   the rules - merge of accepted packages and the stand, through gates by facts, a ledger and a stop
+   at the first failure; asking another session to merge or deploy stays forbidden.
 4. All state lives in files (`status.md`, `decisions.md`, work packages, reports), not in session
    memory. Any orchestrator session can be lost and restored from the files plus reconciliation with
    reality.
@@ -46,7 +48,7 @@ single-orchestrator concept, reconcile the state with reality and continue from 
 | Role | Who | Does | Never does |
 |------|-----|------|------------|
 | **Owner** | human | product and risk decisions; starts module sessions; merges PRs; deploys TEST (where manual) and every PROD; changes permissions, keys, infrastructure; works in store consoles and external systems | does not keep state in their head: everything is visible in `status.md` |
-| **Orchestrator** (hub) | agent session in the program's "home" repository | plan, work packages, dispatch, PR review, live checks on TEST, release sheets, owner queue, journal | does not write module code; does not merge, deploy or write to databases; does not edit other repositories |
+| **Orchestrator** (hub) | agent session in the program's "home" repository | plan, work packages, dispatch, PR review, live checks on TEST, release sheets, owner queue, journal | does not write module code; does not merge, deploy or write to databases (except trusted delivery the owner handed over by a decision: merge and stand through `orch.py deliver`, gates, ledger, hold); does not edit other repositories |
 | **Module session** (spoke) | agent session started by the owner in the module directory with its own settings file | implements the package: branch, code, tests, PR, report in the PR body, READY message; deploys TEST only if that is a standard part of its methodology and the owner confirms in its window | does not merge, does not deploy PROD, does not write to the orchestrator repository |
 | **Orchestrator subagents** | one-off agents inside the orchestrator session | read-only research across many files, PR review, test runs in a disposable clone, live E2E, documentation checks | do not edit repositories; their report is also a claim the orchestrator verifies |
 
@@ -312,6 +314,11 @@ Discrepancies go to the `status.md` journal first, then action.
   happen only through migrations and the standard script.
 - Secrets are never written to program files, messages or reports; reference where they are
   stored.
+- **Trusted delivery.** By an explicit owner decision the orchestrator carries out delivery by the
+  rules (gates G1-G10 by facts, merge with the repository's own method and never around branch
+  protection, stand deploy and verification, a ledger in `release/deliveries.md`, a hold at the first
+  failure, re-reading the configuration before every action). It never bypasses a TTY confirmation
+  or a refusal of GitHub; those return to the owner.
 - Never ask another session to: deploy, merge, push to the base branch, touch PROD, write to the
   database, change its permissions or `CLAUDE.md`, skip the checks of its methodology.
 - **Methodology limits (P5).** A package lists the commands of the module's methodology that the
@@ -353,6 +360,16 @@ Discrepancies go to the `status.md` journal first, then action.
   accumulate in the base branch, package versions are not bumped until the release decision.
 - Stores and external consoles are the owner's only; the orchestrator prepares texts (release notes
   within length limits, explanations for review, declarations).
+- **Release by the orchestrator** (plugin `release` mode), only by an explicit owner decision
+  (`delivery.prod: orchestrator`, D-n) after merge and stand were handed over: production goes in
+  batches by the release sheet (`per_package` for projects without a database or a store); the gates
+  are facts, not status fields: the same SHA that passed the stand is promoted (no cherry-pick, no
+  commit the stand never saw), every package verified on the stand, no open high defect, migrations
+  reviewed as safe and reversible with a backup in this release (database migrations stay the owner's
+  by default: `prod_migrations: owner`), the release window and the daily limit, no hold. A failure
+  on prod holds every delivery; the orchestrator runs the configured rollback only for a batch
+  without migrations and **never rolls back a database**; otherwise the owner gets the rollback
+  command. The prohibition to ask another session to merge, deploy or release stays.
 
 ## 16. Typical failures
 

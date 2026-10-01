@@ -43,9 +43,10 @@ merge (for example `mcp__github__merge_pull_request`): never call them.
    search) and forbids `merge_pull_request`, `update_pull_request_branch`, `push_files`,
    `create_or_update_file`, `create_branch`, creating or updating pull requests, reviews and
    comments.
-3a. **Escalation.** From round 3 (`--round 3`: the same REVISE items are still open) `review-start`
-   prints and adds to the report and the owner queue a restart on the `models.escalate` model
-   (default `opus`): locally `cd <repo> && claude --resume <session> --model <escalate> [--effort
+3a. **Escalation.** From round 3 `review-start` prints and writes into the report a conditional
+   restart on the `models.escalate` model (default `opus`), since the resubmission is not read yet;
+   setting the package to `REVISE` again from round 3 (the same items came back) opens the owner
+   item, once. The restart: locally `cd <repo> && claude --resume <session> --model <escalate> [--effort
    <e>]` (works for sessions started with `claude -w`, from the repository root or the worktree);
    in the cloud, in the same session, choose the model in the list or send `/model <escalate>`.
    The orchestrator never changes a module session's model itself and never asks the session to.
@@ -72,10 +73,13 @@ merge (for example `mcp__github__merge_pull_request`): never call them.
      items, "not required", and "changes in the same branch, section 'Resubmission n', do not
      merge". Send it where messaging reaches the session; for a cloud session or without
      messaging, give the owner the text to paste into that session.
-   - ACCEPTED: `orch.py set <WP> status ACCEPTED --evidence reports/<file>`,
-     `orch.py merge add <WP> --pr <url>`, and an owner item with the merge command
-     (`orch.py owner add R "Merge: gh pr merge <n> --repo <owner/repo> --merge ; expected: merged"`).
-     The owner merges; `owner` mode verifies and runs `merge done`.
+   - ACCEPTED: `orch.py accept <WP> <PR head sha> --report reports/<file>` (the reviewed revision,
+     also noted in the package's PR cell) and `orch.py merge add <WP> --pr <url>`.
+     - With `delivery.merge: owner` (the default): an owner item with the merge command
+       (`orch.py owner add R "Merge: gh pr merge <n> --repo <owner/repo> --merge ; expected: merged"`);
+       the owner merges, `owner` mode verifies and runs `merge done`.
+     - With `delivery.merge: orchestrator` (an owner decision): no owner item; the `deliver` mode
+       delivers the package (`orch.py deliver --check`, then `--apply`).
    - `orch.py lint` and `orch.py commit "<program>: review <WP> <verdict>"`.
 
 ## Result for the owner

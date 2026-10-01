@@ -1,8 +1,8 @@
 ---
 name: pepper-orchestrator
-description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, resume, owner, decide, close, reopen, report. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
+description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, deliver, release, resume, owner, decide, close, reopen, report. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.9.0
+  version: 0.11.0
 ---
 
 # Pepper Orchestrator
@@ -25,7 +25,12 @@ action in a session; read other sections when a mode points to them.
 
 1. **Nothing irreversible.** Never merge, deploy, touch production, write to a database, change
    permissions, keys or infrastructure, and never ask a module session to. Such steps become owner
-   items `R-n` with an exact one-line command and the expected output.
+   items `R-n` with an exact one-line command and the expected output. The one exception is trusted
+   delivery: when the owner handed `merge`/`stand` to the orchestrator by a decision D-n
+   (`orch.py delivery set`), you merge and run the stand only through `orch.py deliver --apply`, after
+   every gate is green, and stop at the first failure (`deliver` mode); when the owner handed `prod`
+   over, you release only through `orch.py release --apply` by a release sheet (`release` mode). A
+   database is never rolled back by you.
 2. **No module code.** You do not edit module repositories, not even "a small fix". You write only
    inside the program workspace.
 3. **State in files.** `status.md` is the only source of state. After every state change update it
@@ -59,9 +64,11 @@ action in a session; read other sections when a mode points to them.
     branch of a module checkout, linked worktree or clone (`init` and `commit` refuse it, comparing
     the git common directory and the origin URL): a commit there may deploy the stand. An in-repo
     workspace (`workspace_mode: in-repo`) commits only to its `workspace_branch`, never to the base.
-13. **No merge tools, anywhere.** Never call a merge operation: `gh pr merge`, the GitHub MCP or
-    built-in GitHub tools' merge (for example `mcp__github__merge_pull_request`), auto-merge,
+13. **No merge tools, anywhere.** Never call a merge operation yourself: `gh pr merge`, the GitHub
+    MCP or built-in GitHub tools' merge (for example `mcp__github__merge_pull_request`), auto-merge,
     or a push to a base branch. Cloud sessions have such tools; the rule is the same as locally.
+    Trusted delivery merges only inside `orch.py deliver --apply` and `orch.py release --apply`, never
+    by a direct call.
 
 ## Modes
 
@@ -77,6 +84,8 @@ the skill as `/pepper-orchestrator <mode> <arguments>` or by a phrase.
 | `dispatch <WP>` | checks, locks, start command or TASK line, `DISPATCHING` | [references/modes/dispatch.md](references/modes/dispatch.md) |
 | `review <WP> [PR]` | automatic findings, reviewer agent or revision diff, verdict, report | [references/modes/review.md](references/modes/review.md) |
 | `verify <WP> --env test\|prod` | deploy run, served version, verify commands, live scenario; `VERIFIED_TEST` / `PROD` | [references/modes/verify.md](references/modes/verify.md) |
+| `deliver <WP>` | trusted delivery by an owner decision: gates G1-G10, merge, stand, verify; hold on failure | [references/modes/deliver.md](references/modes/deliver.md) |
+| `release --plan\|--check\|--apply` | production by an owner decision: release sheet, gates P1-P7, promote, prod run, verify; hold on failure | [references/modes/release.md](references/modes/release.md) |
 | `resume` | restore from files, reconcile with reality, next step | [references/modes/resume.md](references/modes/resume.md) |
 | `owner [id]` | owner queue as commands; on "done" verify and close | [references/modes/owner.md](references/modes/owner.md) |
 | `decide <text>` | record D-n / A-n / Q-n or open P-n | [references/modes/decide.md](references/modes/decide.md) |
@@ -90,7 +99,7 @@ Without a clear mode: if a workspace exists, run `resume`; otherwise propose `in
 (recommended) or in the cloud (with a named cloud environment); a cloud orchestrator works only
 with cloud sessions. Every package carries a recommended implementer model and effort (default
 `sonnet`; `opus` + `high` for risky packages; `review` suggests a restart on the escalation model
-from round 3). Locally never suggest `/model <name>` with an argument: it becomes the owner's
+from round 3, and `set <WP> status REVISE` from round 3 opens the owner item). Locally never suggest `/model <name>` with an argument: it becomes the owner's
 default for all new sessions.
 
 **One program, one goal.** `PLAN.md` states the goal and its completion condition. When the
@@ -99,8 +108,8 @@ packages in a finished one. A closed program refuses `plan`, `dispatch`, `new-wp
 `decide`, `owner add`, `review-start`, `lock` and `merge` changes; `reopen` is only for its own
 unfinished goal. `ORCH_NO_GH=1` makes the scripts ignore `gh` (offline checks).
 
-Planned modes, not automated in this version: `release`, `retro`. When the program needs them,
-follow the concept directly: release per section 15. Verification after a merge or deploy is the
+Planned mode, not automated in this version: `retro`. A release by the owner follows concept section
+15 and the release sheet (`orch.py release --plan`). Verification after a merge or deploy is the
 `verify` mode (`orch.py verify`, concept section 9), whoever merged or deployed. Record every result through `scripts/orch.py` as usual.
 
 **Session settings.** `orch.py settings <module|all|orchestrator>` generates

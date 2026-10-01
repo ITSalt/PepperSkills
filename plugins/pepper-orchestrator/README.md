@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.9.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
+> **Preview (0.11.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
@@ -20,7 +20,7 @@ Installation and update models: [English guide](../../docs/installation-and-upda
 
 ## Codex CLI on Windows
 
-[Download 0.9.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.9.0).
+[Download 0.11.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.11.0).
 Use Python 3.12+, Git, GitHub CLI (`gh`) and Codex CLI (tested: 0.154.0).
 In PowerShell, install the native plugin:
 
@@ -38,7 +38,7 @@ Claude permission settings described below belong to Claude Code.
 
 To update an existing installation, run `codex plugin marketplace upgrade pepperskills`
 and `codex plugin add pepper-orchestrator@pepperskills`, then restart Codex and check
-version 0.9.0. Preserve customized files. A manual ZIP installation and a Windows
+version 0.11.0. Preserve customized files. A manual ZIP installation and a Windows
 acceptance checklist are in the [Windows guide](WINDOWS.md).
 
 ## Use
@@ -51,6 +51,8 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:plan <task>` | facts -> plan -> work packages -> owner questions |
 | `/pepper-orchestrator:dispatch <WP>` | checks overlaps and locks, prints the start command |
 | `/pepper-orchestrator:review <WP> [PR]` | automatic findings, reviewer agent, verdict, report |
+| `/pepper-orchestrator:deliver <WP>` | trusted delivery (by your decision): gates, merge, stand, verification |
+| `/pepper-orchestrator:release --plan\|--check\|--apply` | production by a release sheet (by your decision): gates P1-P7, promote, prod verification |
 | `/pepper-orchestrator:verify <WP> --env test\|prod` | deploy run, served version, verify commands, live scenario |
 | `/pepper-orchestrator:resume` | read state, reconcile with reality, next step |
 | `/pepper-orchestrator:owner` | owner queue as commands; on "done" verify and close |
@@ -59,13 +61,13 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 | `/pepper-orchestrator:report [what]` | report a defect of the plugin: anonymized record, Issue after your yes |
 
-Version 0.9.0 is a preview (stages 2a-2e, 3a, 3b, 3e). Modules can be whole repositories or areas and
+Version 0.11.0 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c, 3d). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
-on resubmissions. `verify` checks the stand and production by facts. Release and retro modes and
-PreToolUse guards come in later versions; until then the skill follows the concept for those steps
-by instructions.
+on resubmissions. `verify` checks the stand and production by facts. The retro mode and PreToolUse
+guards come in later versions; until then the skill follows the concept for those steps by
+instructions.
 
 ## Typical workflows
 
@@ -116,7 +118,30 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
     `orch.py settings <module>`, then the session is restarted with the same command (or you answer
     the prompt in its window); an action only the owner does (merge, deploy, production) becomes an
     owner item. "Classifier unavailable" is not a verdict: the session retries later.
-13. **The plugin broke - report it.** When the plugin itself is wrong (a script error, a wrong
+13. **Trusted delivery.** By default you merge and deploy. If you decide so (`decide`, then
+    `orch.py delivery set merge orchestrator --decision D-n`, and `stand`), the orchestrator delivers each
+    accepted package: `orch.py accept <WP> <sha> --report <review>` pins the reviewed revision,
+    `deliver --check` shows gates G1-G10 by facts (accepted revision, PR head, checks, mergeable, merge
+    queue and locks, repository checks, blocking owner items, graph check, still enabled and no hold),
+    `deliver --apply` merges with the repository's own method (never `--admin`), waits for the stand
+    deploy run, verifies it and sets `VERIFIED_TEST`. A failure puts delivery on hold with a defect and
+    the REVISE text; `orch.py hold "<reason>"` or `delivery.<level>: owner` stops it at any time.
+    Every delivery is a row in `release/deliveries.md` (in your language, with prod and rollback
+    columns).
+14. **Trusted release.** Production stays yours until you decide otherwise, best after two clean
+    batches on the stand (`decide`, then `orch.py delivery set prod orchestrator --decision D-n`;
+    migrations stay yours unless you also hand over `prod_migrations`). `orch.py release --plan`
+    writes `release/release-sheet-<date>.md` (the `VERIFIED_TEST` packages, the SHA each passed the
+    stand at, migrations, open defects, steps you could also run yourself); `release --check` shows
+    gates P1-P7 by facts (the same SHA as the stand and nothing the stand never saw, all packages
+    `VERIFIED_TEST`, no open high defect, migrations reviewed and backed up or your item, release
+    window and daily limit, still enabled and no hold); `release --apply` promotes by a PR
+    integration -> prod (or a fast-forward push from a clean clone), waits for the prod deploy run,
+    verifies every package and sets `PROD`, with an FYI line in your queue. A failure holds every
+    delivery; `rollback_prod` runs only for a batch without migrations, otherwise you get the
+    rollback command. The orchestrator never rolls back a database. With `release_policy:
+    per_package` every package gets its own sheet right after `VERIFIED_TEST`.
+15. **The plugin broke - report it.** When the plugin itself is wrong (a script error, a wrong
     generated rule), the orchestrator keeps the program going with a workaround and runs `report`:
     `orch.py report --check` writes an anonymized `bugs/PLUGIN-BUG-<n>.md` (names of your program,
     modules, sessions and repositories, paths, addresses, e-mails, tokens and the terms of your
@@ -177,6 +202,8 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
   `shell: powershell` for PowerShell; `init` and `dispatch` then print `cd "<dir>"; claude ...`.
 - **Worktrees.** On Windows a worktree does not read `.claude/settings.local.json` of the main
   checkout; the plugin passes every session's rules with `--settings`, so nothing is to be copied.
+- Output and process text are UTF-8 whatever the code page (since 0.9.1): `PYTHONUTF8` and
+  `PYTHONIOENCODING` are no longer needed.
 - Native Windows CI covers the shared runtime, Codex plugin installation and PowerShell launches.
   PowerShell-specific forms of Claude Bash permission rules remain outside this release.
 
