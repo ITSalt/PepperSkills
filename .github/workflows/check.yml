@@ -23,6 +23,13 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/runtime_selftest.py
+      - name: Install native Windows Codex CLI for transport acceptance
+        if: runner.os == 'Windows'
+        run: npm install --global @openai/codex@0.154.0
+      - name: Distributed archive, PowerShell launch and native App Server
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-orchestrator-windows.ps1
 
   ubuntu-py310:
     runs-on: ubuntu-latest

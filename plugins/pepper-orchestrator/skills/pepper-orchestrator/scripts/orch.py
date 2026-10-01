@@ -939,7 +939,7 @@ def cmd_new_wp(args):
                                      ws.coordinator, workspace, streams.active_models(ws.config)))
     if ws.config.get('client') == 'codex':
         mapping.update(codex_adapter.fields(ws.lang, sm, wp, args.slug, str(path.resolve()), ws.tag,
-                                            ws.coordinator, streams.active_models(ws.config)))
+                                            ws.coordinator, streams.active_models(ws.config), ws.config.get('shell')))
     else:
         prompt = mapping['START_PROMPT']
         mapping['START_PROMPT'] += '\n\n' + project_instructions.GUIDANCE
@@ -1496,7 +1496,7 @@ def cmd_lint(args):
 
 
 def git(root, *args, check=True):
-    return subprocess.run(['git', '-C', str(root), *args], check=check, text=True,
+    return subprocess.run(['git', '-C', str(root), *args], check=check, text=True, encoding='utf-8',
                           capture_output=True)
 
 
@@ -2108,7 +2108,7 @@ def run_checks(repo, branches):
     env = {**os.environ, 'ORCH_BASE_REF': streams.base_ref(repo), 'ORCH_BRANCHES': ' '.join(branches)}
     for check in repo.checks:
         try:
-            result = subprocess.run(check, shell=True, cwd=repo.local, env=env, text=True,
+            result = subprocess.run(check, shell=True, cwd=repo.local, env=env, text=True, encoding='utf-8',
                                     capture_output=True, timeout=300)
         except subprocess.TimeoutExpired:
             found.append(f'{repo.id}: `{check}` timed out')
@@ -2838,7 +2838,7 @@ def cmd_ready(args):
                 if name and shutil_which('gh'):
                     prs = subprocess.run(['gh', 'pr', 'list', '--repo', name, '--head', meta['branch'],
                                           '--state', 'open', '--json', 'url,body'],
-                                         text=True, capture_output=True)
+                                         text=True, encoding='utf-8', capture_output=True)
                     try:
                         found = json.loads(prs.stdout or '[]')
                     except ValueError:
@@ -2921,7 +2921,7 @@ def close_blockers(ws, prs_verified=None):
         branch = meta['branch']
         url = r['pr'] if re.match(r'https?://', r['pr'] or '') else None
         if url and gh:
-            state = subprocess.run(['gh', 'pr', 'view', url, '--json', 'state', '-q', '.state'], text=True,
+            state = subprocess.run(['gh', 'pr', 'view', url, '--json', 'state', '-q', '.state'], text=True, encoding='utf-8',
                                    capture_output=True)
             if state.returncode:
                 unverified.append(f'{wp}: cannot read {url} with gh')
@@ -2937,7 +2937,7 @@ def close_blockers(ws, prs_verified=None):
         name = streams.origin_name(module.repo)
         if name and gh:
             prs = subprocess.run(['gh', 'pr', 'list', '--repo', name, '--head', branch, '--state', 'open',
-                                  '--json', 'url', '-q', '.[].url'], text=True, capture_output=True)
+                                  '--json', 'url', '-q', '.[].url'], text=True, encoding='utf-8', capture_output=True)
             if prs.returncode:
                 unverified.append(f'{wp}: cannot list PRs of {branch} with gh')
             elif prs.stdout.strip():
@@ -3339,6 +3339,10 @@ def build_parser():
 
 
 def main(argv=None):
+    if os.name == 'nt':
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, 'reconfigure'):
+                stream.reconfigure(encoding='utf-8')
     args = build_parser().parse_args(argv)
     try:
         return runtime_commands.invoke(args)

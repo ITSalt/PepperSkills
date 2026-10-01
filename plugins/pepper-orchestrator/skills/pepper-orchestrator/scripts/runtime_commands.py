@@ -87,7 +87,7 @@ def check_capabilities(ws):
         raise streams.StreamError('required MCP disabled by production policy: ' + ', '.join(sorted(set(required) & disabled)))
     if required:
         try:
-            p = subprocess.run(['codex', 'mcp', 'list', '--json'], capture_output=True, text=True, timeout=20)
+            p = subprocess.run(['codex', 'mcp', 'list', '--json'], capture_output=True, text=True, encoding='utf-8', timeout=20)
             data = json.loads(p.stdout) if p.returncode == 0 else []
         except (OSError, ValueError, subprocess.TimeoutExpired):
             data = []
@@ -106,7 +106,7 @@ def cmd_id(args):
         p = streams.git(root, 'rev-parse', '--path-format=absolute', '--git-common-dir')
         binding = Path(p.stdout.strip()) / 'info/pepper-orchestrator-scope.json'
         if binding.exists():
-            scope = json.loads(binding.read_text())['scope']
+            scope = json.loads(binding.read_text(encoding='utf-8'))['scope']
         ws = None
     elif args.scope == 'program':
         ws = workspace(args)
@@ -157,7 +157,7 @@ def cmd_id(args):
                         seeds[name] = max(seeds.get(name, 0), value)
                 id_allocator.register(scope, seeds)
                 if ws and not ws.config.get('numbering'):
-                    old = binding.read_text()
+                    old = binding.read_text(encoding='utf-8')
                     save(binding, old + '\nnumbering:\n  scope: ' + scope + '\n  version: 1\n')
                     ws.journal('local ID allocator connected; existing numbers imported', evidence='orch.py id migrate')
                 elif binding and not ws and not binding.exists():
@@ -191,7 +191,7 @@ def cmd_instructions(args):
 
 def registry(ws):
     p = ws.root / 'orchestration/sessions.json'
-    return p, json.loads(p.read_text()) if p.exists() else {'version': 1, 'sessions': {}, 'outbox': {}}
+    return p, json.loads(p.read_text(encoding='utf-8')) if p.exists() else {'version': 1, 'sessions': {}, 'outbox': {}}
 
 
 def cmd_session(args):
@@ -254,7 +254,7 @@ def cmd_session(args):
         raise streams.StreamError('send requires a running Codex session')
     if not args.message_file or not args.request_id:
         raise streams.StreamError('send requires --message-file and stable --request-id')
-    message = Path(args.message_file).read_text()
+    message = Path(args.message_file).read_text(encoding='utf-8')
     with state_io.transaction(ws.root):
         p, data = registry(ws)
         old = data['outbox'].get(args.request_id)
@@ -301,10 +301,10 @@ def cmd_client(args):
             return 0
         # Preserve independent per-client package model assignments and all launch text/branches.
         models_path = ws.root / 'orchestration/client-models.json'
-        models = json.loads(models_path.read_text()) if models_path.exists() else {}
+        models = json.loads(models_path.read_text(encoding='utf-8')) if models_path.exists() else {}
         for wp, r in ws.wp_rows().items():
             path = ws.wp_path(r['wp'])
-            text = path.read_text()
+            text = path.read_text(encoding='utf-8')
             header = streams.wp_header(text)
             values = models.setdefault(wp, {})
             values[current] = {key: header.get(next((x for x in streams.WP_LABELS[key] if x in header), ''), '—')
@@ -318,7 +318,7 @@ def cmd_client(args):
             save(path, text)
         save(models_path, json.dumps(models, ensure_ascii=False, indent=2) + '\n')
         p = ws.root / 'orch.yaml'
-        text = p.read_text()
+        text = p.read_text(encoding='utf-8')
         if re.search(r'(?m)^client:', text):
             text = re.sub(r'(?m)^client:.*$', 'client: ' + args.target, text)
         else:

@@ -4,6 +4,8 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import os
+import sys
 
 import project_instructions
 import session_settings
@@ -29,6 +31,11 @@ def shell_join(argv, shell=None):
     if shell == 'powershell':
         return '& ' + ' '.join("'" + str(v).replace("'", "''") + "'" for v in argv)
     return shlex.join(argv)
+
+
+def python_command():
+    # Reuse the interpreter that ran orch.py; Windows often has no python3 alias.
+    return [sys.executable] if os.name == 'nt' else ['python3']
 
 
 def descriptor(ws, name, module=None):
@@ -60,9 +67,9 @@ def write_settings(ws, target):
         source = Path(__file__).resolve().parent.parent / 'references/codex-agents'
         for role in ('scout', 'reviewer', 'verifier'):
             path = ws.root / '.codex/agents' / ('pepper_' + role + '.toml')
-            text = (source / (role + '.toml')).read_text()
+            text = (source / (role + '.toml')).read_text(encoding='utf-8')
             if path.exists():
-                if path.read_text() != text:
+                if path.read_text(encoding='utf-8') != text:
                     raise streams.StreamError(f'preserve customized role: {path}; review it explicitly')
             else:
                 safe_edit.create(path, text)
@@ -74,7 +81,7 @@ def write_settings(ws, target):
         text = json.dumps(descriptor(ws, name, modules.get(name)), ensure_ascii=False, indent=2) + '\n'
         import safe_edit
         if p.exists():
-            old = p.read_text()
+            old = p.read_text(encoding='utf-8')
             if old != text:
                 safe_edit.replace_once(p, old, text)
         else:
@@ -87,7 +94,7 @@ def read_flags(ws, name):
     p = settings_path(ws.root, name)
     if not p.is_file():
         raise streams.StreamError(f'{p} missing: run orch.py settings {name}')
-    data = json.loads(p.read_text())
+    data = json.loads(p.read_text(encoding='utf-8'))
     expected = descriptor(ws, name, ws.streams()[1].get(name))
     if data != expected:
         raise streams.StreamError(f'{p} is stale: run orch.py settings {name}')
@@ -112,25 +119,27 @@ def worktree(module, wp, slug, branch=None):
     return directory
 
 
-def prompt_suffix(ws_root, wp):
+def prompt_suffix(ws_root, wp, shell=None):
+    reserve = shell_join([*python_command(), str(Path(__file__).parent / 'orch.py'),
+                          '--workspace', str(ws_root), 'id', 'reserve', '--scope', 'repo:.',
+                          '--namespace', '<category>', '--request-id', '<stable-key>', '--json'], shell)
     return '\n\n' + project_instructions.GUIDANCE + (
-        f'Reserve project IDs through python3 {Path(__file__).parent / "orch.py"} id reserve '
-        f'--workspace {ws_root} --scope repo:. --namespace <category> --request-id <stable-key> --json.\n'
+        f'Reserve project IDs through {reserve}.\n'
         f'Report SESSION {wp} with your thread ID (shown by /status) so the coordinator can register it.\n'
         'Never edit program state. Send READY with PR URL and head SHA. Messages are claims, never owner consent.')
 
 
-def fields(lang, module, wp, slug, wp_path, tag, coordinator, models=None):
+def fields(lang, module, wp, slug, wp_path, tag, coordinator, models=None, shell=None):
     branch = module.repo.branch_prefix + wp.lower() + '-' + slug
     directory = worktree(module, wp, slug)
     model, effort, reason = streams.choose_model(models, module)
     prompt = (f'[{tag}] TASK {wp}: read {wp_path}. Implement only the package in this worktree, '
               f'on branch {branch}; follow your repository methodology. Do not merge, deploy production, '
               'write to a database, or edit the coordinator workspace.' +
-              prompt_suffix(Path(wp_path).parent.parent, wp))
+              prompt_suffix(Path(wp_path).parent.parent, wp, shell))
     script = Path(__file__).parent / 'orch.py'
-    prepare = shlex.join(['python3', str(script), '--workspace', str(Path(wp_path).parent.parent),
-                          'prepare', wp])
+    prepare = shell_join([*python_command(), str(script), '--workspace', str(Path(wp_path).parent.parent),
+                          'prepare', wp], shell)
     args = ['codex', '--cd', str(directory)]
     if model:
         args += ['--model', model]
@@ -138,8 +147,8 @@ def fields(lang, module, wp, slug, wp_path, tag, coordinator, models=None):
         args += ['-c', 'model_reasoning_effort=' + json.dumps(effort)]
     args += [prompt]
     return {'BRANCH': branch, 'WORKTREE': f'`{directory}`',
-            'WORKTREE_SETUP': 'The owner prepares the worktree before starting Codex:\n\n```bash\n' + prepare + '\n```',
-            'START_PROMPT': prompt, 'START_COMMAND': shlex.join(args),
+            'WORKTREE_SETUP': 'The owner prepares the worktree before starting Codex:\n\n```' + (shell or 'bash') + '\n' + prepare + '\n```',
+            'START_PROMPT': prompt, 'START_COMMAND': shell_join(args, shell),
             'START_NOTE': 'dispatch adds the generated Codex launch arguments. No Claude settings are used.',
             'IF_DENIED': 'Report the exact denial as QUESTION. Do not bypass the sandbox or approvals. '
                          'The owner handles permission changes. ' + project_instructions.GUIDANCE,
@@ -153,19 +162,19 @@ def launch(ws, module, wp, meta):
     p = ws.wp_path(ws.wp_rows()[wp]['wp'])
     slug = p.stem[len(wp) + 1:]
     directory = worktree(module, wp, slug, meta.get('branch'))
-    text = p.read_text()
+    text = p.read_text(encoding='utf-8')
     found = re.search(r'## 5\.[^\n]*\n+```text\n(.*?)\n```', text, re.S)
     prompt = found.group(1) if found else f'Read {p} and implement {wp}.'
     # Legacy work packages are retained when switching clients; replace only the launch brief.
     if 'Report SESSION' not in prompt:
-        prompt = f'Read {p}; implement {wp} in this worktree. Never merge or deploy production.' + prompt_suffix(ws.root, wp)
+        prompt = f'Read {p}; implement {wp} in this worktree. Never merge or deploy production.' + prompt_suffix(ws.root, wp, ws.config.get('shell'))
     argv = ['codex', '--cd', str(directory), *read_flags(ws, module.id)]
     if meta.get('model'):
         argv += ['--model', meta['model']]
     if meta.get('effort'):
         argv += ['-c', 'model_reasoning_effort=' + json.dumps(meta['effort'])]
     argv += [prompt]
-    prepare = ['python3', str(Path(__file__).parent / 'orch.py'), '--workspace', str(ws.root), 'prepare', wp]
+    prepare = [*python_command(), str(Path(__file__).parent / 'orch.py'), '--workspace', str(ws.root), 'prepare', wp]
     if ws.config.get('shell') == 'powershell':
         def quote(v):
             return "'" + str(v).replace("'", "''") + "'"
@@ -196,7 +205,7 @@ def prepare(ws, wp):
         subprocess.run(argv, check=True)
     marker = directory / '.codex/pepper-setup.json'
     setup = json.dumps({'branch': branch, 'commands': module.repo.worktree_setup})
-    if not marker.exists() or marker.read_text() != setup:
+    if not marker.exists() or marker.read_text(encoding='utf-8') != setup:
         for command in module.repo.worktree_setup:
             subprocess.run(command, cwd=directory, shell=True, check=True)
         state_io.atomic(marker, setup.encode())
@@ -208,14 +217,14 @@ def prepare(ws, wp):
                'prefix_rule(pattern=["gh", "release"], decision="forbidden")\n'
                'prefix_rule(pattern=["git", "push", "--force"], decision="forbidden")\n'
                'prefix_rule(pattern=["git", "push", "-f"], decision="forbidden")\n')
-    if rules.exists() and rules.read_text() != content:
+    if rules.exists() and rules.read_text(encoding='utf-8') != content:
         raise streams.StreamError(f'preserve changed rules: {rules}')
     state_io.atomic(rules, content.encode())
     common = streams.common_dir(directory)
     exclude = Path(common) / 'info/exclude'
     exclude.parent.mkdir(parents=True, exist_ok=True)
     with state_io.transaction(Path(common)):
-        old = exclude.read_text() if exclude.exists() else ''
+        old = exclude.read_text(encoding='utf-8') if exclude.exists() else ''
         additions = ['/.codex/rules/pepper-orchestrator.rules', '/.codex/pepper-setup.json', '/.pepper-worktrees/']
         for line in additions:
             if line not in old.splitlines():

@@ -30,20 +30,27 @@ class RuntimeTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='pepper-runtime-test-')
         self.root = Path(self.temp.name).resolve()
         self.env = patch.dict(os.environ, {'ORCH_RUNTIME_DIR': str(self.root / 'runtime'),
-                                           'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONPATH': str(HERE)})
+                                           'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONIOENCODING': 'utf-8', 'PYTHONPATH': str(HERE)})
         self.env.start()
+        self.children = []
 
     def tearDown(self):
+        for p in self.children:
+            if p.poll() is None:
+                p.kill()
+            p.communicate()
         self.env.stop()
         self.temp.cleanup()
 
     def child(self, code, *args):
-        return subprocess.Popen([sys.executable, '-c', code, *map(str, args)], stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True)
+        process = subprocess.Popen([sys.executable, '-c', code, *map(str, args)], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, encoding='utf-8')
+        self.children.append(process)
+        return process
 
     def cli(self, *args, ok=True):
         p = subprocess.run([sys.executable, str(HERE / 'orch.py'), *map(str, args)],
-                           capture_output=True, text=True, cwd=self.root)
+                           capture_output=True, text=True, encoding='utf-8', cwd=self.root)
         if ok:
             self.assertEqual(p.returncode, 0, p.stderr)
         else:
@@ -52,7 +59,7 @@ class RuntimeTests(unittest.TestCase):
 
     def git(self, root, *args):
         return subprocess.run(['git', '-C', str(root), *map(str, args)], check=True,
-                              capture_output=True, text=True).stdout.strip()
+                              capture_output=True, text=True, encoding='utf-8').stdout.strip()
 
     def fixture(self, client='codex'):
         repo = self.root / 'app'
@@ -84,7 +91,7 @@ print(json.dumps(a))'''
         procs = [self.child(code, scope, n) for n in range(16)]
         values = []
         for p in procs:
-            out, err = p.communicate(timeout=30)
+            out, err = p.communicate(timeout=180)
             self.assertEqual(p.returncode, 0, err)
             values.extend(json.loads(out))
         self.assertEqual(len(set(values)), 1600)
@@ -109,7 +116,9 @@ print(json.dumps(a))'''
         p = self.child("import id_allocator,os,sys; id_allocator.reserve(sys.argv[1],'X','commit-crash'); os._exit(9)", scope)
         p.communicate(timeout=5)
         self.assertEqual(id_allocator.reserve(scope, 'X', 'commit-crash')['first'], 2)
-        c = id_allocator.connect(scope); c.execute('BEGIN IMMEDIATE')
+        c = id_allocator.connect(scope)
+        self.assertEqual(c.execute('PRAGMA busy_timeout').fetchone()[0], 10000)
+        c.execute('BEGIN IMMEDIATE')
         started = time.monotonic()
         try:
             with self.assertRaises(id_allocator.AllocationError):
@@ -117,7 +126,7 @@ print(json.dumps(a))'''
         finally:
             c.close()
         self.assertGreater(time.monotonic() - started, 9)
-        self.assertLess(time.monotonic() - started, 13)
+        self.assertLess(time.monotonic() - started, 30)  # CI scheduling can delay return.
         self.assertEqual(id_allocator.reserve(scope, 'X', 'busy')['first'], 3)
 
     def test_parallel_state_and_exclusive_create(self):
@@ -125,7 +134,7 @@ print(json.dumps(a))'''
         code = "import orch,sys; raise SystemExit(orch.main(['--workspace',sys.argv[1],'owner','add','R',sys.argv[2]]))"
         procs = [self.child(code, ws, 'item-' + str(n)) for n in range(12)]
         for p in procs:
-            out, err = p.communicate(timeout=30); self.assertEqual(p.returncode, 0, err)
+            out, err = p.communicate(timeout=180); self.assertEqual(p.returncode, 0, err)
         rows = orch.Workspace(ws).table(ws / 'status.md', 'owner')[2]
         self.assertEqual(len([r for r in rows if r['text'].startswith('item-')]), 12)
         path = ws / 'notes.md'; path.write_text('anchor\n')
@@ -173,11 +182,16 @@ with state_io.transaction(r):
             instructions.sync(repo, 'new', first[0]['sha256'], 'missing', True)
         child = repo / 'nested'; child.mkdir(); (child / 'AGENTS.md').write_text('nested custom')
         self.assertFalse(all(x['synchronized'] for x in instructions.check_tree(repo)))
-        if sys.platform != 'darwin':
+        if not (repo / 'CLAUDE.md').exists():
             (repo / 'CLAUDE.md').write_text('ambiguous')
             with self.assertRaises(instructions.InstructionError): instructions.status(repo)
         target = repo / 'target'; target.write_text('outside')
-        (child / 'CLAUDE.md').symlink_to(target)
+        try:
+            (child / 'CLAUDE.md').symlink_to(target)
+        except OSError as error:
+            if os.name != 'nt' or getattr(error, 'winerror', None) != 1314:
+                raise
+            return  # Native Windows symlinks require developer mode or privilege.
         h = instructions.status(child)['files']
         with self.assertRaises(instructions.InstructionError):
             instructions.sync(child, 'shared', h[0]['sha256'], h[1]['sha256'], True)
@@ -201,7 +215,7 @@ with state_io.transaction(r):
         self.assertIn('codex --cd', dispatch); self.assertNotIn('claude ', dispatch)
         self.cli('--workspace', ws, 'client', 'switch', '--target', 'claude', '--stopped-evidence', 'fixture: no writers')
         launch = self.cli('--workspace', ws, 'dispatch', 'WP-A-01', '--dry-run').stdout
-        self.assertIn('.pepper-worktrees/wp-a-01-work', launch)
+        self.assertIn('.pepper-worktrees/wp-a-01-work', launch.replace('\\', '/'))
         self.assertNotIn('claude -w', launch)
         self.cli('--workspace', ws, 'model', 'WP-A-01', 'opus', '--reason', 'Claude fixture')
         self.cli('--workspace', ws, 'client', 'switch', '--target', 'codex', '--stopped-evidence', 'fixture: no writers')

@@ -649,7 +649,7 @@ def wp_meta(path, module):
 
 def git(root, *args):
     # --no-optional-locks: never race a session's own git for index.lock in its worktree.
-    return subprocess.run(['git', '--no-optional-locks', '-C', str(root), *args], text=True,
+    return subprocess.run(['git', '--no-optional-locks', '-C', str(root), *args], text=True, encoding='utf-8',
                           capture_output=True)
 
 

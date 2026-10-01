@@ -87,7 +87,7 @@ def _save(tx):
 def _rollback(journal):
     if not journal.exists():
         return
-    entries = json.loads(journal.read_text())['entries']
+    entries = json.loads(journal.read_text(encoding='utf-8'))['entries']
     # Validate all touched files before rolling anything back.
     histories = {}
     for e in entries:

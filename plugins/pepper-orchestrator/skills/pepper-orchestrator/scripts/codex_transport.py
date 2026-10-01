@@ -16,7 +16,7 @@ def capabilities():
     if not shutil.which('codex'):
         return {'available': False, 'queue': False, 'app_server': False, 'version': None}
     def run(args):
-        r = subprocess.run(['codex', *args], capture_output=True, text=True, timeout=15)
+        r = subprocess.run(['codex', *args], capture_output=True, text=True, encoding='utf-8', timeout=15)
         return r.returncode == 0, r.stdout
     _, version = run(['--version'])
     sending, _ = run(['queue', '--help'])
@@ -27,7 +27,7 @@ def capabilities():
 class Server:
     def __init__(self):
         self.proc = subprocess.Popen(['codex', 'app-server', '--stdio'], stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding='utf-8', bufsize=1)
         self.responses = queue.Queue()
         self.next_id = 0
         def read():
@@ -106,7 +106,7 @@ def send(thread_id, message):
         return {'delivered': False, 'fallback': message, 'reason': 'codex queue unavailable'}
     try:
         r = subprocess.run(['codex', 'queue', '--thread', thread_id, '--message', message],
-                           capture_output=True, text=True, timeout=30)
+                           capture_output=True, text=True, encoding='utf-8', timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return {'delivered': False, 'outcome_unknown': True, 'fallback': message, 'reason': 'queue outcome unknown; read thread before retry'}
     return {'delivered': r.returncode == 0, 'queued': r.returncode == 0, 'fallback': None if r.returncode == 0 else message,

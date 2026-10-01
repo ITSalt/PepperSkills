@@ -18,10 +18,10 @@ class AllocationError(RuntimeError):
 def repo_scope(path):
     result = subprocess.run(['git', '-C', str(Path(path).expanduser()), 'rev-parse',
                              '--path-format=absolute', '--git-common-dir'],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, encoding='utf-8')
     if result.returncode:
         raise AllocationError(f'not a Git repository: {path}')
-    common = str(Path(result.stdout.strip()).resolve())
+    common = os.path.normcase(str(Path(result.stdout.strip()).resolve()))
     return 'repo-' + hashlib.sha256(common.encode()).hexdigest()
 
 
@@ -132,16 +132,16 @@ def import_seeds(root, branches=True, namespaces=()):
             scan(p.read_text(encoding='utf-8'))
     if branches:
         refs = subprocess.run(['git', '-C', str(root), 'for-each-ref', '--format=%(refname)'],
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, encoding='utf-8')
         if refs.returncode == 0:
             top = subprocess.run(['git', '-C', str(root), 'rev-parse', '--show-toplevel'],
-                                 capture_output=True, text=True)
+                                 capture_output=True, text=True, encoding='utf-8')
             rel = root.relative_to(Path(top.stdout.strip()))
             for ref in refs.stdout.splitlines():
                 result = subprocess.run(['git', '-C', str(root), 'grep', '-E',
                                          '(WP-|PLUGIN-BUG-|BUG-|[RPDAQB]-' + ''.join('|' + re.escape(n) + '[-_]' for n in namespaces) + ')[A-Z0-9-]*[0-9]',
                                          ref, '--', str(rel) if str(rel) != '.' else '.'],
-                                        capture_output=True, text=True)
+                                        capture_output=True, text=True, encoding='utf-8')
                 if result.returncode not in (0, 1):
                     raise AllocationError(f'cannot import IDs from {ref}: {result.stderr.strip()}')
                 scan(result.stdout)
