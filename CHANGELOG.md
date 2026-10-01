@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — pepper-orchestrator 0.10.0 (preview)
+
+Trusted release: by an explicit owner decision the orchestrator releases batches to production by a
+release sheet through gates P1-P7 by facts (`release` mode, `orch.py release --plan/--check/--apply`):
+promote of the SHA that passed the stand, prod deploy run, verification, hold and rollback rules, no
+database rollback ever. The delivery ledger follows the owner's language and gains prod and rollback
+columns. Preview, not yet released.
+
 ## Unreleased — pepper-orchestrator 0.9.1 (preview)
 
 Fixes from field reports: UTF-8 output and process text on Windows (#20), no owner escalation item

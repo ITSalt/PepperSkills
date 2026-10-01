@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.10.0 — preview, unreleased
+
+Stage 3d: production by the orchestrator, only when the owner handed `prod` over by a decision D-n
+(`DELIVERY.md` sections 5-7).
+
+- **`orch.py release --plan`** writes `release/release-sheet-<date>.md` (EN/RU): the `VERIFIED_TEST`
+  packages by repository with the SHA each passed the stand at (the evidence of its `verify --env
+  test`, else the ledger), migrations from the package's Migrations row, the promote SHA per
+  repository (the stand SHA that contains the others), open defects and self-contained steps with
+  expectations (the owner can release by the sheet too). `release_policy: per_package` writes a sheet
+  of one package right after its `VERIFIED_TEST` (never a second sheet for the same package).
+- **`orch.py release --check [<sheet>]`**: gates P1-P7 by facts, not status fields. P1: the promote SHA
+  is the tip of `origin/<integration_branch>` (for `ff`: on it), contains every stand SHA, and prod
+  has no commit the stand never saw (`git rev-list --no-merges`; merge commits of earlier promotes
+  aside; `ff` needs prod to be an ancestor and a clean `release_clone` of the same origin); it also
+  refuses a sheet planned for other branches or another promote method than `orch.yaml` has now, and a
+  promote SHA that would ship another unreleased package not in the sheet. P2: every
+  package `VERIFIED_TEST`. P3: no open defect of severity blocker, critical or high in `bugs/`. P4:
+  migrations (the sheet or the package file now): with `prod_migrations: owner` an owner item `R-n`
+  (once) and stop; with `orchestrator` the review report says `migrations: safe, reversible` and
+  `backup_prod` is set. P5: `release_window` ("Mon-Fri 10:00-18:00 Europe/Berlin"; IANA zone, `UTC` or
+  an offset; `Пн-Пт` too; past midnight allowed) and `max_prod_releases_per_day` counted from the
+  ledger. P6: `prod: orchestrator`, no hold, configuration valid after re-reading `orch.yaml`. P7:
+  after the release.
+- **`orch.py release --apply [<sheet>]`**: every gate first, nothing written before; then per
+  repository `backup_prod` when the batch has migrations (output in the ledger; a failure stops
+  before the promote), the promote (a PR `integration_branch` -> `prod_branch` titled `[TAG] release
+  <date>` with the sheet as body, pending checks waited for, merged with `--merge` and never
+  `--delete-branch`, so prod contains the stand SHA; or `git push origin <sha>:refs/heads/<prod>` from
+  the clean clone, never forced), the prod deploy run, `verify --env prod --sha <prod SHA>` per package
+  -> `PROD`, ledger rows and an FYI item in the owner queue. GitHub refusing the promote or red
+  promote checks become an owner item, closed by a later successful promote of the sheet.
+- **Failure on prod**: defect, `delivery.hold` for every delivery, `rollback_prod` (with
+  `{previous_sha}` = the prod tip before the release) only for a batch without migrations; otherwise,
+  or when the rollback fails, an owner item with the ready command (a revert PR of the promote when no
+  `rollback_prod` is set). The orchestrator never rolls back a database.
+- **Ledger (backlog B1 of the 3c review)**: `release/deliveries.md` is written in `owner_language`
+  (headings and fixed notes), package rows gain Prod run, Prod verification and Rollback columns (the
+  stand rollback moved there from the note), and a Releases table records backup, promote, prod SHA,
+  run, verification and rollback. A ledger written by 0.9.x is upgraded in place on the first write
+  (its rows keep their values; a journal line records it).
+- **Backlog B3 of the 3c review**: an owner item opened because GitHub refused a merge is closed when
+  a later `deliver` of the same package merges.
+- **Code, not only history (review rev.2).** P1 compares trees: the prod tip must carry the code of the
+  stand SHA of the last promote (a hand-resolved promote merge, a revert or a hotfix on prod is red,
+  with the recovery step; a reverted sheet is never offered for `verify --env prod`). `--apply` reads
+  the prod tip again right before the merge and refuses when it moved since the gates, and after the
+  promote compares the promoted commit's tree with the stand SHA's tree before any `PROD`. Any error
+  after the promote (other code, an unknown merge commit, a failing command) ends in a hold, a defect
+  and an owner item. P7 is red before the release when a package has nothing to verify on prod. The
+  P1 fact names the promote merge method (`merge_method` other than merge is not used for a promote).
+  The P4 migrations item is closed after the release of its batch and not opened again once the owner
+  closed it. Pushes to `integration_branch` and `prod_branch` are denied like pushes to the base in
+  the module and orchestrator settings when `orch.yaml` has a `delivery` block.
+- `lint`: `release_policy`, `release_window`, `max_prod_releases_per_day`, `promote` (and `ff` needs
+  `release_clone`), `prod_migrations: orchestrator` needs `prod: orchestrator`.
+- `orch.py settings orchestrator` with `prod: orchestrator` allows `verify_prod` and `backup_prod`
+  verbatim and `rollback_prod` (`ask` when `rollback` is in `checkpoints`); the promote PR, its merge
+  and the promote push happen only inside `release --apply`, so no allow rule for `gh pr create`,
+  `gh pr merge` or a push to prod (`gh pr merge` and pushes to the base stay denied).
+- `close`: the closeout has a Deliveries section from the ledger and the package Version column
+  from the ledger when the orchestrator delivered the package.
+- Documentation: `release` mode, `/pepper-orchestrator:release`, concept section 15 (EN/RU), README
+  scenario "Trusted release", the review brief's migrations verdict line.
+
 ## 0.9.1 — preview, unreleased
 
 Hotfix for three field reports (Issues #20, #21, #24).

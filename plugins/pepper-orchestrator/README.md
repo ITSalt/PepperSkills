@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.9.1).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `resume`, `owner`, `decide`,
+> **Preview (0.10.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
@@ -29,6 +29,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:dispatch <WP>` | checks overlaps and locks, prints the start command |
 | `/pepper-orchestrator:review <WP> [PR]` | automatic findings, reviewer agent, verdict, report |
 | `/pepper-orchestrator:deliver <WP>` | trusted delivery (by your decision): gates, merge, stand, verification |
+| `/pepper-orchestrator:release --plan\|--check\|--apply` | production by a release sheet (by your decision): gates P1-P7, promote, prod verification |
 | `/pepper-orchestrator:verify <WP> --env test\|prod` | deploy run, served version, verify commands, live scenario |
 | `/pepper-orchestrator:resume` | read state, reconcile with reality, next step |
 | `/pepper-orchestrator:owner` | owner queue as commands; on "done" verify and close |
@@ -37,13 +38,13 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 | `/pepper-orchestrator:report [what]` | report a defect of the plugin: anonymized record, Issue after your yes |
 
-Version 0.9.1 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c). Modules can be whole repositories or areas and
+Version 0.10.0 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c, 3d). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff
-on resubmissions. `verify` checks the stand and production by facts. Release and retro modes and
-PreToolUse guards come in later versions; until then the skill follows the concept for those steps
-by instructions.
+on resubmissions. `verify` checks the stand and production by facts. The retro mode and PreToolUse
+guards come in later versions; until then the skill follows the concept for those steps by
+instructions.
 
 ## Typical workflows
 
@@ -102,8 +103,22 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
     `deliver --apply` merges with the repository's own method (never `--admin`), waits for the stand
     deploy run, verifies it and sets `VERIFIED_TEST`. A failure puts delivery on hold with a defect and
     the REVISE text; `orch.py hold "<reason>"` or `delivery.<level>: owner` stops it at any time.
-    Every delivery is a row in `release/deliveries.md`. Production stays yours in this version.
-14. **The plugin broke - report it.** When the plugin itself is wrong (a script error, a wrong
+    Every delivery is a row in `release/deliveries.md` (in your language, with prod and rollback
+    columns).
+14. **Trusted release.** Production stays yours until you decide otherwise, best after two clean
+    batches on the stand (`decide`, then `orch.py delivery set prod orchestrator --decision D-n`;
+    migrations stay yours unless you also hand over `prod_migrations`). `orch.py release --plan`
+    writes `release/release-sheet-<date>.md` (the `VERIFIED_TEST` packages, the SHA each passed the
+    stand at, migrations, open defects, steps you could also run yourself); `release --check` shows
+    gates P1-P7 by facts (the same SHA as the stand and nothing the stand never saw, all packages
+    `VERIFIED_TEST`, no open high defect, migrations reviewed and backed up or your item, release
+    window and daily limit, still enabled and no hold); `release --apply` promotes by a PR
+    integration -> prod (or a fast-forward push from a clean clone), waits for the prod deploy run,
+    verifies every package and sets `PROD`, with an FYI line in your queue. A failure holds every
+    delivery; `rollback_prod` runs only for a batch without migrations, otherwise you get the
+    rollback command. The orchestrator never rolls back a database. With `release_policy:
+    per_package` every package gets its own sheet right after `VERIFIED_TEST`.
+15. **The plugin broke - report it.** When the plugin itself is wrong (a script error, a wrong
     generated rule), the orchestrator keeps the program going with a workaround and runs `report`:
     `orch.py report --check` writes an anonymized `bugs/PLUGIN-BUG-<n>.md` (names of your program,
     modules, sessions and repositories, paths, addresses, e-mails, tokens and the terms of your
