@@ -1,66 +1,87 @@
-# Pepper Orchestrator 0.11.0: validation
+# Pepper Orchestrator 0.11.0: validation and release gate
 
 Date: 2026-10-01. Local environment: macOS arm64, Python 3.14, Codex CLI 0.154.0.
+[Release](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.11.0).
+[Final PR checks](https://github.com/ITSalt/PepperSkills/pull/28/checks).
 
 ## Implemented scope
 
-- Dedicated Codex entrypoint selected by the Codex manifest; build injects canonical
-  resources without maintaining another editable core. Claude command/agent/mode
-  files retain their methodology and models.
-- Sequential program client selection, per-client model assignments, prepared Git
-  worktrees, session registry, documented App Server reads and codex queue delivery.
+- Portable `plugin.json` hosts discover fixed `skills/` components. The common
+  entrypoint explicitly routes Codex to its own governing workflow before Claude
+  instructions. The native compatibility manifest selects `codex/skills/`; the
+  ZIP supplies its canonical resources without another editable runtime. Native
+  Windows installation tests check the instructions actually discovered by Codex.
+- Sequential client selection, per-client models, prepared Git worktrees, session
+  registry, documented App Server reads and codex queue notification delivery.
 - Common local SQLite reservations, stable request replay, scope bindings, explicit
-  legacy migration, rollback journals and short cooperative state transactions.
-- Explicit paired project instruction synchronization and CAS; concrete file locks
-  and explicit sequence resources after producer migration. No automatic removal
-  of old wide locks, stand/port/application locks or push_deploys constraints.
+  legacy import, rollback journals and short cooperative state transactions.
+- Explicit paired project instruction synchronization and expected versions;
+  concrete file locks and sequence resources only after producer migration. Old
+  wide locks, stand/port/migration locks and push_deploys constraints remain.
+- Main's Claude 0.10.0 deliver/release and conditional escalation are retained.
+  Codex v1 keeps irreversible operations in the owner queue, as its workflow states.
 
-## Evidence
+The unreleased 0.9.0 adaptation was integrated with main's 0.10.0 development;
+0.11.0 is the first public preview. Existing programs are not migrated automatically.
 
-The complete offline release gate `PYTHON=<build-venv>/bin/python bash scripts/check.sh`
-passed (exit 0), including extracted packages, deterministic rebuilding, read-only
-build checks and the Claude and runtime selftests.
+## Automated release gate
 
-- Existing Claude selftest: local/cloud, legacy programs, models/settings, dispatch,
-  locks, review, verification, owner queue, closing/reopening and Windows command
-  formatting. This uses local fixtures and stub gh, not production providers.
-- Runtime selftest: 16 processes / 1,600 unique reservations plus idempotent replay;
-  namespace/count mismatch; death before/after SQLite commit; ten-second busy timeout;
-  missing/corrupt connected store; 12 parallel owner updates and 12 direct safe_edit
-  updates retained; eight exclusive creates yield one writer; multi-file recovery,
-  foreign conflict, interrupted init, paired instructions/CAS/case/CRLF preservation,
-  client model restoration and worktree reuse, explicit migration and narrow locks.
-- Actual Codex CLI: plugin ZIP extracted, Codex skill installed in fixture project
-  .agents/skills; two concurrent read-only CLI sessions in different Git worktrees
-  read both CLAUDE.md and AGENTS.md and the Codex adapter (both exit 0).
-- Native pepper_scout: a persisted CLI session loaded the native role. App Server
-  history records subAgentActivity started and completed for /root/pepper_scout.
-  An ephemeral CLI attempt could not spawn a child in this CLI version; real launch
-  descriptors do not use --ephemeral. The test parent was archived afterward.
-- codex queue accepted a REVISE fixture notification (delivered/queued=true).
-  App Server initialize, thread/start, thread/read with turns and thread/archive
-  succeeded. Queue acceptance does not prove consumption or completion of that turn.
-- Native execpolicy parser returns forbidden for gh pr merge with generated rules.
-- Plugin component checks verify the manifest entrypoint, identical injected core,
-  sorted/no-duplicate archive members and execution of the extracted common CLI.
+Publication requires the final PR's complete check matrix to be green:
 
-## Limits and release gate
+- Full offline suite on Ubuntu/Python 3.10, Ubuntu/Python 3.12 and macOS/Python 3.12.
+  It exercises source and extracted packages, deterministic rebuilding, read-only
+  builders, private traces and blocked network access. Claude fixtures cover
+  local/cloud, legacy programs, permissions/models, dispatch, review/verification,
+  owner queue, close/reopen, trusted deliver/release and UTF-8 output under cp1252.
+- Real process runtime tests on Windows, Ubuntu and macOS: 16 processes / 1,600
+  unique reservations and stable replays; namespace/count mismatch; death before
+  and after SQLite commit; configured ten-second busy timeout; missing/corrupt
+  connected stores; 12 parallel state updates and 12 direct safe_edit updates;
+  eight exclusive creates / one writer; recovery and foreign-edit conflict;
+  interrupted init; instruction versions/case/CRLF; client model restoration and
+  worktree reuse; migration and concrete shared file/stand serialization.
+- Busy reservations can return the documented retryable error after ten seconds.
+  The stress test retries that same request ID within a bounded budget, rather
+  than assuming fair scheduling or using unsafe max+1. No number is recycled.
+- Native Windows / Python 3.12 / Codex CLI 0.154.0: build/extract the plugin ZIP;
+  execute its PowerShell launch with spaces, apostrophes and Cyrillic paths;
+  prepare ordinary Git worktrees; preserve Russian instruction text; install and
+  enable version 0.11.0 through native Codex plugin commands; initialize App Server
+  and check the loaded skill's Codex routing via skills/list. No model call or
+  account credential is required. The npm transport resolves the native exe
+  without cmd.exe message parsing; Windows path case shares one state lock.
+- Package hashes must match across the three full-suite jobs. Release downloads
+  must match the distributed SHA256SUMS. The release contains the plugin ZIP and
+  the common/Claude standalone ZIP; use the plugin ZIP's Codex skill for manual
+  installation. Test runtime stores are disposable and separate from user state.
 
-Linux and Windows runtime jobs were added to CI; their results are not available
-from this local run. Existing Windows command-format fixtures do not certify native
-Windows filesystem/locking behavior. No cross-host counter or cloud connectivity
-is claimed. A real owner-driven interactive permissions grant, configured MCP/browser
-live scenario and full real PR/stand lifecycle remain environment-dependent acceptance
-checks. Required MCP configuration is checked at dispatch, while connection/tool
-authorization must be verified by the executing role. Project skill installation
-from the ZIP was tested; publishing and updating the user's global plugin installation
-were not performed. Existing user programs were not automatically migrated.
+## Native macOS baseline
 
-This is a local preview build. No public release was made.
+Before integration with main's 0.10.0 features, the 0.9.0 adaptation also passed:
 
-The unreleased 0.9.0 adaptation was integrated with main's 0.10.0 Claude deliver/release
-features. The first public build is 0.11.0; no existing main feature is rolled back.
-Windows-specific fixes include consistent UTF-8, native interpreter selection,
-PowerShell quoting, and CRLF-preserving exactly-once replacements. Contention can
-return the documented retryable error after ten seconds; the process stress test
-retries the same request ID and verifies all 1,600 unique reservations and replays.
+- Two concurrent actual Codex CLI sessions in separate worktrees, using the Codex
+  skill from the extracted ZIP; both read CLAUDE.md and AGENTS.md and exited 0.
+- A persisted native pepper_scout role, with App Server history recording start
+  and completion. An ephemeral parent could not spawn a child in this CLI version;
+  generated launches do not use --ephemeral. The test parent was archived.
+- codex queue accepted a REVISE fixture notification; App Server initialize,
+  thread/start, thread/read with turns and thread/archive succeeded. Acceptance
+  into the queue does not prove consumption or completion.
+- Native execpolicy parsing forbids gh pr merge with generated module rules.
+
+These model-backed observations are baseline evidence, not a new interactive
+Windows model run. Final native Windows checks cover installation and transport.
+
+## Remaining owner acceptance
+
+Interactive Windows account login/permissions, authorized MCP/browser tools and
+one full real module PR/stand lifecycle are checked on the owner's machine using
+[the Windows checklist](../../plugins/pepper-orchestrator/WINDOWS.md). Installation
+alone is not evidence that MCP tools are connected or authorized. No cross-host
+counter, shared WSL/native database, cloud counter connectivity or power-loss
+filesystem certification is claimed. The user's global installation and existing
+program instructions are not overwritten by these tests.
+
+[Portable plugin format and component discovery](https://developers.openai.com/plugins/build/plugins)
+explains why a compatibility `skills` path cannot replace the portable root's
+fixed components; client routing is explicit in both supported entrypoints.
