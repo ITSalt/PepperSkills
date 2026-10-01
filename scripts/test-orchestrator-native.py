@@ -34,7 +34,7 @@ def main():
             assert isinstance(result['data'], list), result
         print(json.dumps({'native_transport': caps, 'app_server': 'PASS'}))
     if args.powershell:
-        with tempfile.TemporaryDirectory(prefix="pepper smoke ' spaces ") as temp:
+        with tempfile.TemporaryDirectory(prefix="pepper smoke проба ' spaces ") as temp:
             root = Path(temp)
             os.environ['ORCH_RUNTIME_DIR'] = str(root / 'runtime')
             repo = root / 'project'; repo.mkdir()

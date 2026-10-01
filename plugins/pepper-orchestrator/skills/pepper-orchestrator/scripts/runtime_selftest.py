@@ -168,6 +168,21 @@ with state_io.transaction(r):
                 pass
         self.assertEqual(a.read_text(), 'foreign\n'); self.assertEqual(b.read_text(), 'new\n')
 
+    def test_crlf_point_edits_preserve_bytes_and_reject_ambiguity(self):
+        path = self.root / 'state.md'
+        path.write_bytes('Владелец\r\nanchor\r\ntail\r\n'.encode('utf-8'))
+        safe_edit.replace_once(path, 'anchor\n', 'one\ntwo\n')
+        safe_edit.replace_many(path, [('two\ntail', 'three\ntail')])
+        self.assertEqual(path.read_bytes(), 'Владелец\r\none\r\nthree\r\ntail\r\n'.encode('utf-8'))
+        path.write_bytes(b'anchor\r\nanchor\r\n')
+        with self.assertRaises(safe_edit.EditError):
+            safe_edit.replace_once(path, 'anchor\n', 'new\n')
+        self.assertEqual(path.read_bytes(), b'anchor\r\nanchor\r\n')
+        path.write_bytes(b'keep\nanchor\r\n')
+        with self.assertRaises(safe_edit.EditError):
+            safe_edit.replace_once(path, 'anchor\n', 'new\n')
+        self.assertEqual(path.read_bytes(), b'keep\nanchor\r\n')
+
     def test_instruction_pairs_case_nested_cas_and_preservation(self):
         repo = self.root / 'repo'; repo.mkdir()
         p = repo / 'claude.md'; p.write_bytes(b'custom\r\n[link](docs/a.md)\r\n')
