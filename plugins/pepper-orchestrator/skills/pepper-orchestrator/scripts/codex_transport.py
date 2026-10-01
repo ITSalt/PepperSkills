@@ -1,6 +1,8 @@
 """Documented Codex CLI / JSON-RPC transport. Never parse the TUI or Codex state DB."""
 from contextlib import contextmanager
 import json
+import os
+from pathlib import Path
 import queue
 import shutil
 import subprocess
@@ -12,11 +14,36 @@ class TransportError(RuntimeError):
     pass
 
 
+def command():
+    """Resolve the native CLI; Python does not resolve npm's .cmd via PATHEXT.
+
+    Avoid cmd.exe shell parsing of messages and keep App Server's lifetime tied
+    to the actual native process rather than a detached node/shim parent.
+    """
+    executable = shutil.which('codex')
+    if not executable:
+        raise TransportError('Codex CLI unavailable')
+    path = Path(executable)
+    if os.name == 'nt' and path.suffix.lower() in ('.cmd', '.bat'):
+        package = path.parent / 'node_modules/@openai/codex'
+        candidates = [*package.glob('vendor/*/codex/codex.exe'),
+                      *package.parent.glob('codex-win32-*/vendor/*/codex/codex.exe'),
+                      *package.glob('node_modules/@openai/codex-win32-*/vendor/*/codex/codex.exe')]
+        candidates = list(dict.fromkeys(p.resolve() for p in candidates if p.is_file()))
+        if len(candidates) != 1:
+            raise TransportError('Cannot resolve native codex.exe from npm shim; install the official CLI '
+                                 'for this architecture or put native codex.exe on PATH')
+        path = candidates[0]
+    return [str(path)]
+
+
 def capabilities():
-    if not shutil.which('codex'):
-        return {'available': False, 'queue': False, 'app_server': False, 'version': None}
+    try:
+        argv = command()
+    except TransportError as error:
+        return {'available': False, 'queue': False, 'app_server': False, 'version': None, 'reason': str(error)}
     def run(args):
-        r = subprocess.run(['codex', *args], capture_output=True, text=True, encoding='utf-8', timeout=15)
+        r = subprocess.run([*argv, *args], capture_output=True, text=True, encoding='utf-8', timeout=15)
         return r.returncode == 0, r.stdout
     _, version = run(['--version'])
     sending, _ = run(['queue', '--help'])
@@ -26,7 +53,7 @@ def capabilities():
 
 class Server:
     def __init__(self):
-        self.proc = subprocess.Popen(['codex', 'app-server', '--stdio'], stdin=subprocess.PIPE,
+        self.proc = subprocess.Popen([*command(), 'app-server', '--stdio'], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding='utf-8', bufsize=1)
         self.responses = queue.Queue()
         self.next_id = 0
@@ -105,7 +132,7 @@ def send(thread_id, message):
     if not caps['queue']:
         return {'delivered': False, 'fallback': message, 'reason': 'codex queue unavailable'}
     try:
-        r = subprocess.run(['codex', 'queue', '--thread', thread_id, '--message', message],
+        r = subprocess.run([*command(), 'queue', '--thread', thread_id, '--message', message],
                            capture_output=True, text=True, encoding='utf-8', timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return {'delivered': False, 'outcome_unknown': True, 'fallback': message, 'reason': 'queue outcome unknown; read thread before retry'}

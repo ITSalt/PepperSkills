@@ -87,7 +87,7 @@ def check_capabilities(ws):
         raise streams.StreamError('required MCP disabled by production policy: ' + ', '.join(sorted(set(required) & disabled)))
     if required:
         try:
-            p = subprocess.run(['codex', 'mcp', 'list', '--json'], capture_output=True, text=True, encoding='utf-8', timeout=20)
+            p = subprocess.run([*codex_transport.command(), 'mcp', 'list', '--json'], capture_output=True, text=True, encoding='utf-8', timeout=20)
             data = json.loads(p.stdout) if p.returncode == 0 else []
         except (OSError, ValueError, subprocess.TimeoutExpired):
             data = []
