@@ -1,6 +1,6 @@
 # Pepper Orchestrator
 
-> **Preview (0.8.0).** Режимы `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
+> **Preview (0.9.0).** Режимы `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > потоки в одном репозитории с worktree и замками; облачные сессии; сгенерированные настройки сессий.
 > Форматы и команды могут измениться до 1.0.0.
@@ -17,6 +17,29 @@ PROD и запись в БД остаются за владельцем — в �
 /plugin marketplace add ITSalt/PepperSkills
 /plugin install pepper-orchestrator@pepperskills
 ```
+
+## Codex CLI в Windows
+
+[Релиз 0.9.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.9.0).
+Нужны Python 3.12+, Git, GitHub CLI (`gh`) и Codex CLI (проверена версия 0.154.0).
+Установка из PowerShell:
+
+```powershell
+codex plugin marketplace add ITSalt/PepperSkills
+codex plugin add pepper-orchestrator@pepperskills
+codex plugin list --json
+```
+
+Перезапустите Codex и напишите: «Используй Pepper Orchestrator. Создай программу
+для Codex с локальными сессиями модулей и shell powershell». Владелец запускает
+команды, выданные dispatch. Модель берётся из ваших настроек. У Codex собственный
+[workflow](skills/pepper-orchestrator/references/codex.md); короткие команды и
+настройки прав Claude ниже относятся к Claude Code.
+
+Для обновления: `codex plugin marketplace upgrade pepperskills`, затем
+`codex plugin add pepper-orchestrator@pepperskills`. Перезапустите Codex и проверьте
+версию 0.9.0. Пользовательские настройки сохраняйте. Установка из ZIP и сценарий
+проверки на вашей машине описаны в [Windows guide](WINDOWS.md).
 
 ## Использование
 
@@ -36,7 +59,7 @@ PROD и запись в БД остаются за владельцем — в �
 | `/pepper-orchestrator:report [что]` | сообщить о дефекте плагина: обезличенная запись, Issue после вашего «да» |
 | `/pepper-orchestrator:decide <текст>` | решение D-n / допущение A-n / вопрос Q-n или вопрос владельцу P-n |
 
-Версия 0.8.0 — preview (этапы 2a–2e, 3a, 3b, 3e). Модуль — весь репозиторий либо раздел или домен одного
+Версия 0.9.0 — preview (этапы 2a–2e, 3a, 3b, 3e). Модуль — весь репозиторий либо раздел или домен одного
 репозитория: каждый поток работает в своём worktree (`claude -w`), общие пути и ресурсы держатся
 замками, слияния в один репозиторий идут очередью. `review` на первой сдаче запускает агента-рецензента
 (только чтение, одноразовый клон), на пересдачах читает дифф ревизии. `verify` проверяет стенд и прод по

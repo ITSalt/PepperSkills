@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0 — 2026-10-01, public preview
+
+- Dedicated Codex CLI skill, native scout/reviewer/verifier roles, prepared ordinary
+  Git worktrees and documented queue/App Server session transport. Keep Claude
+  methodology and per-client models; switch clients only after stopping writers.
+- Local SQLite ID reservations with idempotent retries, explicit legacy import,
+  short process locks and recoverable multi-file state changes.
+- Paired CLAUDE.md / AGENTS.md shared blocks preserve existing instructions and
+  check expected versions. Numbering locks narrow only after producer migration.
+- Windows UTF-8, interpreter selection, CRLF point edits and PowerShell quoting.
+  CI exercises concurrency/recovery on three platforms and installs the built
+  plugin with native Windows Codex. Interactive account permissions/MCP/PR lifecycle
+  remains a separate owner acceptance check. See [Windows guide](WINDOWS.md).
+
 ## 0.8.0 — preview, unreleased
 
 Preview of stage 3e: a channel for defects of the plugin itself.

@@ -18,6 +18,29 @@ Installation and update models: [English guide](../../docs/installation-and-upda
 /plugin install pepper-orchestrator@pepperskills
 ```
 
+## Codex CLI on Windows
+
+[Download 0.9.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.9.0).
+Use Python 3.12+, Git, GitHub CLI (`gh`) and Codex CLI (tested: 0.154.0).
+In PowerShell, install the native plugin:
+
+```powershell
+codex plugin marketplace add ITSalt/PepperSkills
+codex plugin add pepper-orchestrator@pepperskills
+codex plugin list --json
+```
+
+Restart Codex and ask: "Use Pepper Orchestrator. Initialize a Codex program with
+local module sessions and shell powershell." The owner launches the commands
+printed by dispatch. The model remains your configured default. Codex has its own
+[workflow](skills/pepper-orchestrator/references/codex.md); the short commands and
+Claude permission settings described below belong to Claude Code.
+
+To update an existing installation, run `codex plugin marketplace upgrade pepperskills`
+and `codex plugin add pepper-orchestrator@pepperskills`, then restart Codex and check
+version 0.9.0. Preserve customized files. A manual ZIP installation and a Windows
+acceptance checklist are in the [Windows guide](WINDOWS.md).
+
 ## Use
 
 Say "plan X by the single-orchestrator concept", or use the short commands:
@@ -154,7 +177,8 @@ commands are not installed, call `/pepper-orchestrator <mode> ...` or use a phra
   `shell: powershell` for PowerShell; `init` and `dispatch` then print `cd "<dir>"; claude ...`.
 - **Worktrees.** On Windows a worktree does not read `.claude/settings.local.json` of the main
   checkout; the plugin passes every session's rules with `--settings`, so nothing is to be copied.
-- Not yet: a Windows runner in CI and PowerShell-specific forms of Bash rules (backlog).
+- Native Windows CI covers the shared runtime, Codex plugin installation and PowerShell launches.
+  PowerShell-specific forms of Claude Bash permission rules remain outside this release.
 
 ## Models and environment
 
