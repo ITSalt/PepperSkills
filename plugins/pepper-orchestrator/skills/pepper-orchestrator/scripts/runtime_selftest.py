@@ -145,7 +145,9 @@ print(json.dumps(a))'''
         self.assertEqual(len([r for r in rows if r['text'].startswith('item-')]), 12)
         path = ws / 'notes.md'; path.write_text('anchor\n')
         code = "import safe_edit,sys; safe_edit.replace_once(sys.argv[1],'anchor\\n',sys.argv[2]+'\\nanchor\\n')"
-        procs = [self.child(code, path, 'line-' + str(n)) for n in range(12)]
+        # Windows path spelling must not create a second lock for the same file.
+        procs = [self.child(code, str(path).upper() if os.name == 'nt' and n % 2 else path,
+                            'line-' + str(n)) for n in range(12)]
         for p in procs:
             _, err = p.communicate(timeout=20); self.assertEqual(p.returncode, 0, err)
         self.assertEqual(len(path.read_text().splitlines()), 13)

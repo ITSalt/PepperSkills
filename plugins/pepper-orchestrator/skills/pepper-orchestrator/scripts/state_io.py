@@ -111,7 +111,7 @@ def _rollback(journal):
 
 @contextmanager
 def transaction(root, timeout=10):
-    root = str(Path(root).resolve())
+    root = os.path.normcase(str(Path(root).resolve()))
     active = getattr(_local, 'active', {})
     if root in active:
         yield
@@ -174,9 +174,9 @@ def transaction(root, timeout=10):
 
 def record(path, after):
     """Write-ahead undo record. Caller must hold the path's transaction lock."""
-    path = Path(path).resolve()
+    path = Path(os.path.normcase(str(Path(path).resolve())))
     active = getattr(_local, 'active', {})
-    tx = active.get(str(root_for(path)))
+    tx = active.get(os.path.normcase(str(root_for(path))))
     if tx is None:
         raise StateError(f'no transaction for {path}')
     before = path.read_bytes() if path.exists() else None

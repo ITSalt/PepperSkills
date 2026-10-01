@@ -26,9 +26,12 @@ def command():
     path = Path(executable)
     if os.name == 'nt' and path.suffix.lower() in ('.cmd', '.bat'):
         package = path.parent / 'node_modules/@openai/codex'
-        candidates = [*package.glob('vendor/*/codex/codex.exe'),
-                      *package.parent.glob('codex-win32-*/vendor/*/codex/codex.exe'),
-                      *package.glob('node_modules/@openai/codex-win32-*/vendor/*/codex/codex.exe')]
+        candidates = []
+        # Official npm 0.154 uses bin/; older packages used codex/.
+        for directory in ('bin', 'codex'):
+            candidates += [*package.glob(f'vendor/*/{directory}/codex.exe'),
+                           *package.parent.glob(f'codex-win32-*/vendor/*/{directory}/codex.exe'),
+                           *package.glob(f'node_modules/@openai/codex-win32-*/vendor/*/{directory}/codex.exe')]
         candidates = list(dict.fromkeys(p.resolve() for p in candidates if p.is_file()))
         if len(candidates) != 1:
             raise TransportError('Cannot resolve native codex.exe from npm shim; install the official CLI '

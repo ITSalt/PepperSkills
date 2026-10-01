@@ -199,7 +199,8 @@ codex plugin list --json
   передаёт правила каждой сессии через `--settings`, копировать ничего не нужно.
 - Вывод и текст процессов — в UTF-8 при любой кодовой странице (с 0.9.1): `PYTHONUTF8` и
   `PYTHONIOENCODING` больше не нужны.
-- Пока нет: Windows-раннера в CI и PowerShell-форм Bash-правил (backlog).
+- Windows CI проверяет общий runtime, установку Codex и запуск через PowerShell.
+  PowerShell-формы Bash-правил Claude остаются в backlog.
 
 ## Модели и окружение
 
