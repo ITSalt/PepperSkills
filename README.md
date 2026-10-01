@@ -1,5 +1,7 @@
 # PepperSkills
 
+Publisher: **Никитин Максим Геннадиевич**. [Privacy policy](PRIVACY.md) · [Русская версия](PRIVACY.ru.md).
+
 A library of portable skills and Agent Plugins. Plugins use client installation;
 standalone skills can be linked from a repository clone.
 

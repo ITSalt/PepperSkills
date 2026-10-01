@@ -3,8 +3,8 @@
   "version": "0.11.0",
   "description": "Preview: one orchestrator session runs work across several repositories or parallel streams of one repository - plan, work packages, dispatch with worktrees and locks, PR review with a read-only reviewer agent, owner queue, closing a program when its goal is reached, state in files. Start with /pepper-orchestrator:init <program>, then /pepper-orchestrator:plan <task>.",
   "author": {
-    "name": "ITSalt",
-    "email": "info@itsalt.ru",
+    "name": "Никитин Максим Геннадиевич",
+    "email": "mnikitin@itsalt.ru",
     "url": "https://github.com/ITSalt/PepperSkills"
   },
   "homepage": "https://github.com/ITSalt/PepperSkills/tree/main/plugins/pepper-orchestrator",
@@ -28,13 +28,15 @@
     "shortDescription": "Multi-repo orchestration",
     "longDescription": "Runs work that spans several repositories through one orchestrator session: verified facts, a plan, work packages for module sessions, an owner queue with ready commands, and all state in versioned Markdown files. Irreversible actions stay with the owner.",
     "category": "Productivity",
-    "developerName": "ITSalt",
+    "developerName": "Никитин Максим Геннадиевич",
     "capabilities": [
       "Analyze",
       "Generate"
     ],
     "defaultPrompt": [
       "Plan this multi-repository change by the single-orchestrator concept."
-    ]
+    ],
+    "privacyPolicyURL": "https://github.com/ITSalt/PepperSkills/blob/main/PRIVACY.md",
+    "supportURL": "https://github.com/ITSalt/PepperSkills/issues"
   }
 }

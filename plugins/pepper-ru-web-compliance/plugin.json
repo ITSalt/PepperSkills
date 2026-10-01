@@ -4,8 +4,8 @@
   "version": "2.4.0",
   "description": "Технический аудит сайта по требованиям РФ с доказательствами и планом исправлений.",
   "author": {
-    "name": "ITSalt",
-    "email": "info@itsalt.ru",
+    "name": "Никитин Максим Геннадиевич",
+    "email": "mnikitin@itsalt.ru",
     "url": "https://github.com/ITSalt/PepperSkills"
   },
   "homepage": "https://github.com/ITSalt/PepperSkills/tree/main/plugins/pepper-ru-web-compliance",
@@ -24,7 +24,7 @@
         "displayName": "RU Web Compliance",
         "shortDescription": "Аудит сайта по требованиям РФ",
         "longDescription": "Собирает технические доказательства, проверяет персональные данные, cookie, трекеры, реестры и формирует записку с планом для разработчика.",
-        "developerName": "ITSalt",
+        "developerName": "Никитин Максим Геннадиевич",
         "category": "Productivity",
         "websiteURL": "https://github.com/ITSalt/PepperSkills",
         "capabilities": [
@@ -36,7 +36,9 @@
         ],
         "logo": "./assets/logo.png",
         "composerIcon": "./assets/logo.png",
-        "brandColor": "#173E35"
+        "brandColor": "#173E35",
+        "privacyPolicyURL": "https://github.com/ITSalt/PepperSkills/blob/main/PRIVACY.md",
+        "supportURL": "https://github.com/ITSalt/PepperSkills/issues"
       }
     }
   }
