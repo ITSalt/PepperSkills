@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -2852,36 +2853,37 @@ def test_encoding_and_pr_cell(tmp):
 def main():
     with tempfile.TemporaryDirectory(prefix='pepper-orchestrator-selftest-') as raw:
         tmp = Path(raw)
-        (tmp / 'edit').mkdir()
-        test_safe_edit(tmp / 'edit')
-        test_yaml()
-        for lang in orch.LANGUAGES:
-            repo, ws = test_workflow(tmp, lang)
-        test_lint_failures(repo, ws)
-        test_discovery(tmp)
-        test_safe_edit_stdin(tmp / 'edit')
-        test_legacy_fixture(tmp)
-        test_monorepo(tmp)
-        test_p4_identity(tmp)
-        test_streams_edges(tmp)
-        test_legacy_shared_path(tmp)
-        test_cloud_in_repo(tmp)
-        test_cloud_deploy_scan(tmp)
-        test_cloud_dispatch_safety(tmp)
-        test_review(tmp)
-        test_close(tmp)
-        test_close_in_repo(tmp)
-        test_models(tmp)
-        test_local_cloud_matrix(tmp)
-        test_settings(tmp)
-        test_deploy_override_first_candidate(tmp)
-        test_verify(tmp)
-        test_windows_paths(tmp)
-        test_report(tmp)
-        test_deliver(tmp)
-        test_encoding_and_pr_cell(tmp)
-        test_release(tmp)
-        test_release_ff_and_ledger(tmp)
+        with patch.dict(os.environ, {'ORCH_RUNTIME_DIR': str(tmp / 'runtime')}):
+            (tmp / 'edit').mkdir()
+            test_safe_edit(tmp / 'edit')
+            test_yaml()
+            for lang in orch.LANGUAGES:
+                repo, ws = test_workflow(tmp, lang)
+            test_lint_failures(repo, ws)
+            test_discovery(tmp)
+            test_safe_edit_stdin(tmp / 'edit')
+            test_legacy_fixture(tmp)
+            test_monorepo(tmp)
+            test_p4_identity(tmp)
+            test_streams_edges(tmp)
+            test_legacy_shared_path(tmp)
+            test_cloud_in_repo(tmp)
+            test_cloud_deploy_scan(tmp)
+            test_cloud_dispatch_safety(tmp)
+            test_review(tmp)
+            test_close(tmp)
+            test_close_in_repo(tmp)
+            test_models(tmp)
+            test_local_cloud_matrix(tmp)
+            test_settings(tmp)
+            test_deploy_override_first_candidate(tmp)
+            test_verify(tmp)
+            test_windows_paths(tmp)
+            test_report(tmp)
+            test_deliver(tmp)
+            test_encoding_and_pr_cell(tmp)
+            test_release(tmp)
+            test_release_ff_and_ledger(tmp)
     print('PASS pepper-orchestrator selftest')
     return 0
 
