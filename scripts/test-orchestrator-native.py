@@ -20,6 +20,7 @@ def main():
     parser.add_argument('--skill', type=Path, required=True)
     parser.add_argument('--powershell', action='store_true')
     parser.add_argument('--transport', action='store_true')
+    parser.add_argument('--expected-plugin')
     args = parser.parse_args()
     skill = args.skill.resolve()
     sys.path.insert(0, str(skill / 'scripts'))
@@ -32,6 +33,14 @@ def main():
         with transport.server() as api:
             result = api.call('thread/list', {'limit': 1})
             assert isinstance(result['data'], list), result
+            if args.expected_plugin:
+                loaded = api.call('skills/list', {'cwds': [str(Path.cwd())], 'forceReload': True})
+                matches = [s for item in loaded['data'] for s in item['skills']
+                           if s.get('pluginId') == args.expected_plugin]
+                assert len(matches) == 1, loaded
+                entrypoint = Path(matches[0]['path'])
+                assert 'Pepper Orchestrator for Codex CLI' in entrypoint.read_text(encoding='utf-8')
+                assert (entrypoint.parent / 'scripts/orch.py').is_file(), entrypoint
         print(json.dumps({'native_transport': caps, 'app_server': 'PASS'}))
     if args.powershell:
         with tempfile.TemporaryDirectory(prefix="pepper smoke проба ' spaces ") as temp:

@@ -28,5 +28,5 @@ $installed = @($plugins.installed | Where-Object { $_.pluginId -eq 'pepper-orche
 if ($installed.Count -ne 1 -or $installed[0].version -ne '0.11.0' -or -not $installed[0].enabled) {
     throw 'Distributed Codex plugin was not installed and enabled'
 }
-python scripts/test-orchestrator-native.py --skill $skill --transport
+python scripts/test-orchestrator-native.py --skill $skill --transport --expected-plugin pepper-orchestrator@pepper-smoke
 Check-Exit
