@@ -19,4 +19,4 @@
 GitHub, поставщиков моделей и других внешних сервисов действуют отдельно.
 
 Сообщения об ошибках: https://github.com/ITSalt/PepperSkills/issues.
-Контакт издателя из метаданных: info@itsalt.ru.
+Контакт издателя из метаданных: mnikitin@itsalt.ru.
