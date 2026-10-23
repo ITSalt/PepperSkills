@@ -154,6 +154,7 @@ def private_names(config, repos, modules, workspace_root, home_repo=None):
             parts = normalized.split('/')
             add('/'.join(parts[-2:]), f'<{label}>')
             add(parts[-2], f'<{label}-owner>')
+            add(parts[-1].removesuffix('.git'), f'<{label}-repository>')
             if parts[0] not in PUBLIC_HOSTS:
                 add(parts[0], f'<{label}-host>')
 

@@ -1,5 +1,7 @@
 # Pepper Orchestrator
 
+> Local source candidate: **0.12.0, unreleased**. Adds Codex CLI trusted delivery and explicit live acceptance. The published 0.11.0 release instructions below describe the previous version.
+
 > **Preview (0.11.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.

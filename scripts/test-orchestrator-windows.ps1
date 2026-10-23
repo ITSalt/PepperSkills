@@ -5,9 +5,10 @@ function Check-Exit { if ($LASTEXITCODE -ne 0) { throw "Command failed: $LASTEXI
 # and actual PowerShell argument parsing. No credentials or model calls.
 python scripts/package.py --kind plugin pepper-orchestrator
 Check-Exit
+$pluginVersion = (Get-Content plugins/pepper-orchestrator/plugin.json -Raw | ConvertFrom-Json).version
 $stage = Join-Path $env:RUNNER_TEMP 'pepper archive smoke'
 New-Item -ItemType Directory -Force $stage | Out-Null
-Expand-Archive dist/pepper-orchestrator/0.11.0/pepper-orchestrator.plugin.zip -DestinationPath $stage -Force
+Expand-Archive "dist/pepper-orchestrator/$pluginVersion/pepper-orchestrator.plugin.zip" -DestinationPath $stage -Force
 $skill = Join-Path $stage 'pepper-orchestrator/codex/skills/pepper-orchestrator'
 python scripts/test-orchestrator-native.py --skill $skill --powershell
 Check-Exit
@@ -25,7 +26,7 @@ Check-Exit
 $plugins = codex plugin list --json | ConvertFrom-Json
 Check-Exit
 $installed = @($plugins.installed | Where-Object { $_.pluginId -eq 'pepper-orchestrator@pepper-smoke' })
-if ($installed.Count -ne 1 -or $installed[0].version -ne '0.11.0' -or -not $installed[0].enabled) {
+if ($installed.Count -ne 1 -or $installed[0].version -ne $pluginVersion -or -not $installed[0].enabled) {
     throw 'Distributed Codex plugin was not installed and enabled'
 }
 python scripts/test-orchestrator-native.py --skill $skill --transport --expected-plugin pepper-orchestrator@pepper-smoke

@@ -95,6 +95,9 @@ requires the connected namespace and refuses an old lock still held by another
 WP. A sequence resource is not held for the duration of a WP. This classification
 does not change shared path locks or waive migration format/order validation.
 
+Delivery/acceptance evidence and recovery follow [delivery-safety.md](delivery-safety.md).
+Only explicitly scoped WPs may synchronize instruction pairs; ordinary pairing drift is advisory.
+
 ## Validation
 
 Run `scripts/selftest.py` for the Claude compatibility baseline and

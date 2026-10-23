@@ -39,23 +39,36 @@ touch "$work/$marker" || exit 2
 cleanup() { if [[ $keep -eq 0 ]]; then rm -rf "$work"; fi; }
 trap cleanup EXIT
 clone="$work/repo"
+echo "review-run: ${work##*/}; clone-path: $clone; requested: $sha"
 if ! git clone -q --no-checkout "$repo" "$clone" 2>"$work/clone.log"; then
   echo "review_clone: clone failed: $(tail -n 3 "$work/clone.log")" >&2; exit 2
 fi
 if ! git -C "$clone" cat-file -e "$sha^{commit}" 2>/dev/null; then
   git -C "$clone" fetch -q origin "$sha" 2>/dev/null || true
 fi
-if ! git -C "$clone" -c advice.detachedHead=false checkout -q --detach "$sha" 2>"$work/checkout.log"; then
+expected="$(git -C "$clone" rev-parse --verify "$sha^{commit}")" || exit 2
+if ! git -C "$clone" -c advice.detachedHead=false checkout -q --detach "$expected" 2>"$work/checkout.log"; then
   echo "review_clone: $sha not found in $repo" >&2; exit 2
 fi
+check_head() {
+  local actual
+  actual="$(git -C "$clone" rev-parse --verify HEAD)" || exit 2
+  if [[ "$actual" != "$expected" ]]; then
+    echo "review_clone: HEAD mismatch; expected $expected, actual $actual; run ${work##*/}; $clone" >&2
+    exit 2
+  fi
+}
+check_head
 echo "clone: $repo at $(git -C "$clone" rev-parse --short=10 HEAD)"
 status=0
 run_step() {
   local kind="$1"
   local cmd="$2"
   local log="$work/$1-$3.log"
+  check_head
   ( cd "$clone" && bash -c "$cmd" ) >"$log" 2>&1
   local code=$?
+  check_head
   echo "$kind: $cmd -> exit $code"
   if [[ $code -ne 0 ]]; then
     tail -n 30 "$log" | sed 's/^/    /'
@@ -70,6 +83,7 @@ for cmd in ${setups[@]+"${setups[@]}"}; do
     echo "setup failed: tests not run"; exit 1
   fi
 done
+check_head
 i=0
 for cmd in ${tests[@]+"${tests[@]}"}; do
   i=$((i + 1))

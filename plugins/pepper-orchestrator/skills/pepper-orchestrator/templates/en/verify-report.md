@@ -1,6 +1,6 @@
 # Verification — {{WP}} on {{ENV}} (`{{SHA}}`) — {{DATE}}
 
-**Verdict: {{VERDICT}}** — {{SUMMARY}}
+**Verdict: {{VERDICT}}** (automatic checks only) — {{SUMMARY}}
 
 Branch `{{BRANCH}}`, base URL {{BASE_URL}}, package status at the start: {{STATUS}}.
 
@@ -10,7 +10,7 @@ Branch `{{BRANCH}}`, base URL {{BASE_URL}}, package status at the start: {{STATU
 
 ## Live scenario
 
-<Filled by the verify mode after the checks above passed: the package's acceptance criteria walked
-through on this environment. Per criterion: steps, expected, actual, evidence (command output,
-screenshot path). A failure of the checking tool (browser, MCP) is marked as a tool failure with the
-fallback used, never as a product defect.>
+Record live results in the generated table below. For every criterion provide
+expected and actual behavior plus command output, screenshot or read-only query
+evidence. Missing browser/MCP access is WAIT, not a product defect. The coordinator
+then runs `verify finalize`; automatic PASS alone is not completed acceptance.

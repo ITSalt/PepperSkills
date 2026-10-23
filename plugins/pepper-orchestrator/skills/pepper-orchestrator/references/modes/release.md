@@ -1,5 +1,8 @@
 # Mode: release
 
+Follow [the shared delivery and final acceptance contract](../delivery-safety.md).
+Automatic PASS alone never grants VERIFIED_TEST/PROD; complete `verify finalize`.
+
 Production by the orchestrator: a batch of packages verified on the stand goes to prod by a release
 sheet, through gates by facts, only when the owner handed `prod` over by a decision. Arguments:
 `--plan`, `--check [<sheet>]` or `--apply [<sheet>]` (default: the newest sheet not on prod yet).

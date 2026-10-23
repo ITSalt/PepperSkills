@@ -1,5 +1,8 @@
 # Mode: deliver
 
+Follow [the shared delivery and final acceptance contract](../delivery-safety.md).
+Automatic PASS alone never grants VERIFIED_TEST/PROD; complete `verify finalize`.
+
 Trusted delivery: the orchestrator merges an accepted package and runs the stand, the way the owner
 would, only when the owner handed these levels over by a decision. Argument: `<WP>`, or `--check
 <WP>` for the gates only.
@@ -43,7 +46,7 @@ The deploy command must be non-interactive: a script that asks for a TTY confirm
    --<merge_method> [--delete-branch]` (never `--admin`), status `MERGED`, the merge queue row, a row in
    `release/deliveries.md`, the journal. With `stand: orchestrator`: waits for the deploy run of the
    merge SHA (`deploy_workflows`, `gh run watch`, `run_timeout`) or runs `deploy_test`, then
-   `orch.py verify <WP> --env test`; PASS gives `VERIFIED_TEST`. Then the live scenario (verify mode).
+   `orch.py verify <WP> --env test`; automatic PASS stays VERIFYING. Run the live scenario and `verify finalize` before VERIFIED_TEST.
    A deploy run still in progress at verification ends with exit code 2: the package stays `MERGED`,
    no hold, no rollback; run `verify` again later. When GitHub has not reported the merge commit yet,
    `deliver` stops before the stand with a ledger row "merge SHA unknown".

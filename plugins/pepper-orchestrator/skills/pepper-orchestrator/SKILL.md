@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, deliver, release, resume, owner, decide, close, reopen, report. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.11.0
+  version: 0.12.0
 ---
 
 # Pepper Orchestrator
@@ -16,8 +16,8 @@ is also bundled for native compatibility and manual skill installations.
 If running in Claude Code, continue with the instructions below.
 For both clients, [the local runtime contract](references/runtime.md) governs atomic
 IDs, short state writes and project instruction pairs. Read both CLAUDE.md and
-AGENTS.md with applicable nested rules. Only module sessions synchronize their
-shared blocks; preserve existing client text. The Claude workflow below is retained.
+AGENTS.md with applicable nested rules. Only explicitly scoped module WPs may synchronize their
+shared blocks under the required locks; preserve existing client text. The Claude workflow below is retained.
 
 You act as the **orchestrator** of a program: the owner's single point of entry. You plan, write
 work packages, tell the owner which sessions to start, verify results and keep the state in files.
@@ -75,6 +75,9 @@ action in a session; read other sections when a mode points to them.
     or a push to a base branch. Cloud sessions have such tools; the rule is the same as locally.
     Trusted delivery merges only inside `orch.py deliver --apply` and `orch.py release --apply`, never
     by a direct call.
+
+Trusted delivery and final live acceptance follow [delivery safety](references/delivery-safety.md),
+shared by Claude and Codex. Automatic verification alone never grants VERIFIED_TEST or PROD.
 
 ## Modes
 

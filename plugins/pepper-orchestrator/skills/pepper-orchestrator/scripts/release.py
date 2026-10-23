@@ -227,24 +227,16 @@ def create_promote_pr(repo_name, base, head, title, body_file):
     return url.group(0)
 
 
-def wait_checks(repo_name, number, timeout, interval):
-    """(ok, detail): the checks of a PR, waited for while any is pending; a failed check ends the wait."""
+def wait_checks(repo_name, number, timeout, interval, exceptions=None, decisions=()):
+    """Reuse the shared fail-closed gate; wait only for explicitly pending checks."""
+    import delivery
     deadline = time.monotonic() + timeout
     while True:
-        result = subprocess.run(['gh', 'pr', 'checks', str(number), '--repo', repo_name, '--json', 'name,bucket'],
-                                encoding='utf-8', errors='replace', capture_output=True)
-        if result.returncode and 'no checks' in (result.stderr + result.stdout).lower():
-            return True, 'no checks reported'
-        try:
-            checks = json.loads(result.stdout or '[]')
-        except ValueError:
-            return False, (result.stderr or 'gh pr checks failed').strip().split('\n')[0]
-        buckets = [str(c.get('bucket', '')).lower() for c in checks]
-        bad = [c for c, b in zip(checks, buckets) if b not in delivery.PASSING and b != 'pending']
-        if bad:
-            return False, ', '.join(f'{c.get("name")}: {c.get("bucket")}' for c in bad[:5])
-        if 'pending' not in buckets:
-            return True, f'{len(checks)} checks passed' if checks else 'no checks reported'
+        ok, detail = delivery.pr_checks(repo_name, number, exceptions, decisions)
+        if ok:
+            return True, detail
+        if not re.search(r'(?:^|, )[^:;,]+: pending(?:,|;|$)', detail):
+            return False, detail
         if time.monotonic() >= deadline:
             return False, f'checks still pending after {timeout} s'
         time.sleep(interval)

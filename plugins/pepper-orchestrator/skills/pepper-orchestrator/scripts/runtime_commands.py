@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import uuid
 
 import codex_adapter
@@ -54,6 +55,14 @@ def save(path, text):
 def invoke(args):
     short = {'cmd_new_wp', 'cmd_set', 'cmd_model', 'cmd_cloud_env', 'cmd_journal', 'cmd_owner',
              'cmd_decide', 'cmd_delivery', 'cmd_settings', 'cmd_lock', 'cmd_merge', 'cmd_upgrade', 'cmd_reopen'}
+    if (args.func.__name__ in ('cmd_deliver', 'cmd_release') and args.apply or
+            args.func.__name__ == 'cmd_client' and args.action == 'switch' or
+            args.func.__name__ == 'cmd_delivery' and args.action == 'reconcile'):
+        import delivery
+        with delivery.operation_lock(workspace(args).root):
+            return args.func(args)
+    if args.func.__name__ == 'cmd_delivery' and args.action == 'reconcile':
+        return args.func(args)  # external facts are read outside the state lock
     if args.func.__name__ in short:
         with state_io.transaction(workspace(args).root):
             return args.func(args)
@@ -178,13 +187,33 @@ def cmd_instructions(args):
         if not args.text_file or not args.expected_claude or not args.expected_agents:
             raise project_instructions.InstructionError('sync requires --text-file and both expected hashes (or missing)')
         shared = Path(args.text_file).read_text(encoding='utf-8')
-        result = project_instructions.sync(root, shared, args.expected_claude, args.expected_agents, args.apply)
+        if args.apply:
+            if not args.wp or not args.workspace:
+                raise project_instructions.InstructionError('sync --apply needs --workspace and --wp')
+            ws = workspace(args)
+            with state_io.transaction(ws.root):
+                ws = workspace(args)
+                _, module, meta = api().wp_context(ws, args.wp)
+                if not streams.common_dir(root) or streams.common_dir(root) != streams.common_dir(module.repo.local):
+                    raise project_instructions.InstructionError('instruction repository does not belong to this WP')
+                held = [l['lock'].split(':', 1)[-1] for l in api().locks(ws) if l['holder'] == args.wp and l['repo'] == module.repo.id]
+                relative = root.relative_to(Path(streams.git_toplevel(root)).resolve())
+                names = [str(relative / p.name).replace('\\', '/') for p in project_instructions.paths(root)]
+                findings = api().file_findings(args.wp, meta, module.repo, names, held)
+                if findings:
+                    raise project_instructions.InstructionError('; '.join(findings))
+                result = project_instructions.sync(root, shared, args.expected_claude, args.expected_agents, True)
+        else:
+            result = project_instructions.sync(root, shared, args.expected_claude, args.expected_agents, False)
     elif args.action == 'check':
         result = project_instructions.check_tree(root)
     else:
         result = project_instructions.status(root)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if args.action == 'check':
+        if not all(item['synchronized'] for item in result):
+            print('Instruction pairs are missing, unmanaged or different; read existing rules. '
+                  'This diagnostic does not authorize sync or expand a WP.', file=sys.stderr)
         return 0 if all(item['synchronized'] for item in result) else 1
     return 0
 
@@ -299,6 +328,13 @@ def cmd_client(args):
         if current == args.target:
             print('client unchanged')
             return 0
+        import delivery
+        previous = delivery.settings(ws.config)
+        for level in delivery.LEVELS:
+            delivery.set_key(ws.root / 'orch.yaml', level, 'owner')
+        delivery.set_key(ws.root / 'orch.yaml', 'enabled_by', None)
+        ws.journal('delivery delegation reset on client switch: ' + json.dumps(previous, sort_keys=True),
+                   evidence=args.stopped_evidence)
         # Preserve independent per-client package model assignments and all launch text/branches.
         models_path = ws.root / 'orchestration/client-models.json'
         models = json.loads(models_path.read_text(encoding='utf-8')) if models_path.exists() else {}
@@ -353,6 +389,7 @@ def add_parsers(sub, common):
     p.add_argument('--json', action='store_true')
     p.set_defaults(func=cmd_id)
     p = sub.add_parser('instructions', parents=[common], help='module-owned paired project instructions')
+    p.add_argument('--wp', help='WP explicitly authorizing instruction writes')
     p.add_argument('action', choices=('status', 'check', 'sync'))
     p.add_argument('--repo', default='.')
     p.add_argument('--text-file')

@@ -243,7 +243,7 @@ CI: usually only a few lines.
   expected SHA (the merge commit) on the environment's branch finished with success; the served
   version is that SHA; the repository's read-only verify commands pass (health, migration journal,
   smoke); then the live scenario of the package's acceptance criteria. The report goes to
-  `reports/verify-<WP>-<env>-<date>.md`. PASS gives `VERIFIED_TEST` (test) or `PROD` (prod); FAIL
+  `reports/verify-<WP>-<env>-<date>.md`. Automatic PASS stays VERIFYING; live PASS recorded through `verify finalize` gives `VERIFIED_TEST` (test) or `PROD` (prod); FAIL
   keeps the status, writes a defect to `bugs/`, and asks the owner only when the next step needs
   their rights. This works the same whoever merged and deployed. Only `VERIFIED_TEST` packages go
   into a release sheet.
@@ -320,7 +320,8 @@ Discrepancies go to the `status.md` journal first, then action.
   failure, re-reading the configuration before every action). It never bypasses a TTY confirmation
   or a refusal of GitHub; those return to the owner.
 - Never ask another session to: deploy, merge, push to the base branch, touch PROD, write to the
-  database, change its permissions or `CLAUDE.md`, skip the checks of its methodology.
+  database, change its permissions, edit project instructions outside an explicitly scoped instruction-maintenance WP, or skip methodology checks.
+  Instruction maintenance follows the declared paths, shared locks and confirmed-rule contract in delivery-safety.md.
 - **Methodology limits (P5).** A package lists the commands of the module's methodology that the
   session may and may not use. Commands that merge, release, hotfix or deploy (for example the
   release, hotfix, deliver and deploy commands of a methodology) are forbidden; commands that
@@ -485,3 +486,11 @@ packages in a finished one.
 - **After closing:** a closed program is not planned or dispatched; resuming it shows only the
   result. It is reopened only when its own goal turns out not to be reached, with the reason
   recorded.
+
+
+## Local delivery and instruction clarification
+
+The current shared contract is [delivery-safety.md](delivery-safety.md). Automatic
+checks require explicit live finalization. Ordinary WPs read project instructions;
+only an explicit instruction-maintenance WP with declared paths, locks and confirmed
+common rules may synchronize them. The coordinator never edits module instructions.

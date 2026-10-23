@@ -29,6 +29,10 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/runtime_selftest.py
+      - name: Delivery reliability and explicit live acceptance
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/reliability_selftest.py
       - name: Install native Windows Codex CLI for transport acceptance
         if: runner.os == 'Windows'
         run: npm install --global @openai/codex@0.154.0

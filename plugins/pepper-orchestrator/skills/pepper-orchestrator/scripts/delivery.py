@@ -7,13 +7,18 @@ gates by facts; a red gate is never forced, it goes back to the owner. Standard 
 Imported by orch.py.
 """
 import json
+from contextlib import contextmanager
+import hashlib
+import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 
 import release
 import safe_edit
+import state_io
 import streams
 
 LEVELS = ('merge', 'stand', 'prod', 'prod_migrations')
@@ -27,6 +32,59 @@ PASSING = {'pass', 'skipping'}
 
 class DeliveryError(Exception):
     pass
+
+
+@contextmanager
+def operation_lock(root):
+    """One delivery workflow per local program; hold/state writes remain independent.
+
+    This is not a state transaction. Network waits may hold this workflow mutex,
+    while short transactions (including hold) remain usable. OS process death
+    releases the mutex; persisted outcome records still prevent blind replay.
+    """
+    key = hashlib.sha256(os.path.normcase(str(Path(root).resolve())).encode()).hexdigest()
+    directory = state_io.runtime_dir() / 'delivery-locks'
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (directory / (key + '.lock')).open('a+b') as handle:
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                if handle.tell() == 0:
+                    handle.write(b'0'); handle.flush()
+                handle.seek(0); msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (OSError, BlockingIOError) as error:
+            raise DeliveryError('another delivery operation is active; hold remains available; retry after reconciliation') from error
+        try:
+            yield
+        finally:
+            if os.name == 'nt':
+                handle.seek(0); msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def shell_program(shell):
+    if shell == 'powershell':
+        executable = shutil.which('pwsh')
+    elif shell == 'bash':
+        executable = None
+        if os.name == 'nt':
+            # System32/bash.exe starts WSL, not the program's Git Bash shell.
+            git = shutil.which('git')
+            if git:
+                for parent in Path(git).resolve().parents:
+                    for candidate in (parent / 'bin/bash.exe', parent / 'usr/bin/bash.exe'):
+                        if candidate.is_file():
+                            return str(candidate)
+        executable = shutil.which('bash') if os.name != 'nt' else None
+    else:
+        raise DeliveryError(f'unsupported delivery shell: {shell}')
+    if not executable:
+        raise DeliveryError(f'delivery shell unavailable: {shell}')
+    return executable
 
 
 def settings(config):
@@ -53,6 +111,41 @@ def run_timeout(module):
     return value if isinstance(value, int) and value > 0 else DEFAULT_RUN_TIMEOUT
 
 
+def stand_plan(module):
+    """Unambiguous stand transport; never guess that a missing command means automatic deploy."""
+    import session_settings
+    import verification
+    mode = repo_setting(module, 'deploy_test_mode')
+    command = repo_setting(module, 'deploy_test')
+    workflows = verification.workflows(module, 'test')
+    if mode is None:
+        if workflows:
+            mode = 'workflow'
+        elif session_settings.is_command(command):
+            mode = 'command'
+        elif str(command or '').lower().startswith('owner-confirmed'):
+            mode = 'owner'
+        elif repo_setting(module, 'base_deploys') == 'staging':
+            mode = 'automatic'
+        else:
+            raise DeliveryError('stand transport is ambiguous: set deploy_test_mode: command|workflow|automatic|owner')
+    if mode not in ('command', 'workflow', 'automatic', 'owner'):
+        raise DeliveryError('invalid deploy_test_mode: command|workflow|automatic|owner')
+    if mode == 'command' and (not isinstance(command, str) or not command.strip() or
+                              command.lower().startswith('owner-confirmed')):
+        raise DeliveryError('deploy_test_mode command needs a nonempty deploy_test command, not owner prose')
+    if mode == 'workflow' and not workflows:
+        raise DeliveryError('deploy_test_mode workflow needs deploy_workflows.test')
+    if mode == 'automatic' and repo_setting(module, 'base_deploys') != 'staging':
+        raise DeliveryError('automatic stand delivery needs base_deploys: staging')
+    if mode == 'command':
+        import shutil
+        shell = module.raw.get('shell') or module.repo.raw.get('shell')
+        if shell and not shutil.which('pwsh' if shell == 'powershell' else 'bash'):
+            raise DeliveryError(f'stand shell unavailable: {shell}')
+    return mode, command, workflows
+
+
 def errors(config, decision_ids):
     """lint errors of the delivery block and repository delivery settings."""
     found = []
@@ -69,6 +162,8 @@ def errors(config, decision_ids):
     if trusted and not d['enabled_by']:
         found.append(f'orch.yaml: delivery {", ".join(trusted)}: orchestrator needs enabled_by: D-n (the owner\'s '
                      'recorded decision)')
+    elif trusted and not re.fullmatch(r'D-\d+', str(d['enabled_by'])):
+        found.append('orch.yaml: delivery.enabled_by must name an owner decision D-n, not an assumption/question')
     elif trusted and str(d['enabled_by']) not in decision_ids:
         found.append(f'orch.yaml: delivery.enabled_by {d["enabled_by"]} is not in decisions.md')
     if d['prod'] == 'orchestrator' and d['merge'] == 'owner':
@@ -91,6 +186,14 @@ def errors(config, decision_ids):
         for item in items:
             if not isinstance(item, dict):
                 continue
+            if item.get('deploy_test_mode') not in (None, 'command', 'workflow', 'automatic', 'owner'):
+                found.append(f'orch.yaml: {kind} {item.get("id")}: invalid deploy_test_mode')
+            exceptions = item.get('nonblocking_checks')
+            if exceptions is not None and (not isinstance(exceptions, list) or any(not isinstance(e, dict) or
+                    set(e) != {'name', 'source', 'decision'} or not isinstance(e['name'], str) or not e['name'] or
+                    not re.fullmatch(r'D-\d+', str(e['decision'])) or e['decision'] not in decision_ids or not isinstance(e['source'], str) or
+                    not re.fullmatch(r'(app|status):[A-Za-z0-9_.-]+', e['source']) for e in exceptions)):
+                found.append(f'orch.yaml: {kind} {item.get("id")}: nonblocking_checks needs exact name, source and recorded decision')
             method = item.get('merge_method')
             if method is not None and method not in MERGE_METHODS:
                 found.append(f'orch.yaml: {kind} {item.get("id")}: merge_method must be merge, squash or rebase')
@@ -158,29 +261,116 @@ def gh_json(args):
 
 def pr_facts(repo_name, pr):
     return gh_json(['pr', 'view', pr, '--repo', repo_name, '--json',
-                    'number,url,state,headRefOid,mergeable,baseRefName,title,mergeCommit'])
+                    'number,url,state,headRefOid,mergeable,baseRefName,title,mergeCommit,autoMergeRequest,mergeStateStatus'])
 
 
-def pr_checks(repo_name, number):
+def not_queued(repo_name, number):
+    owner, name = repo_name.split('/', 1)
+    query = ('query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name)'
+             '{pullRequest(number:$number){mergeQueueEntry{id}}}}')
+    data = gh_json(['api', 'graphql', '-f', 'query=' + query, '-f', 'owner=' + owner,
+                    '-f', 'name=' + name, '-F', 'number=' + str(number)])
+    try:
+        if data.get('errors'):
+            return False
+        return data['data']['repository']['pullRequest']['mergeQueueEntry'] is None
+    except (KeyError, TypeError, AttributeError):
+        return False
+
+
+def pr_checks(repo_name, number, exceptions=None, decisions=()):
     """(verdict, detail) of the PR's checks: all passed or skipped is green."""
     result = subprocess.run(['gh', 'pr', 'checks', str(number), '--repo', repo_name, '--json', 'name,bucket'],
                             encoding='utf-8', errors='replace', capture_output=True)
-    if result.returncode and 'no checks' in (result.stderr + result.stdout).lower():
+    if result.returncode == 1 and not result.stdout.strip() and re.fullmatch(
+            r'no checks reported on the .+ branch\s*', result.stderr.strip(), re.I):
         return True, 'no checks reported'
+    if result.stderr.strip():
+        return False, result.stderr.strip()
+    if result.returncode not in (0, 1, 8) or (result.returncode and not result.stdout.strip()):
+        return False, (result.stderr.strip() or 'cannot read PR checks')
     try:
-        checks = json.loads(result.stdout or '[]')
+        checks = json.loads(result.stdout)
     except ValueError:
         return False, (result.stderr or 'gh pr checks failed').strip().split('\n')[0]
+    if not isinstance(checks, list) or any(not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'] or
+            c.get('bucket') not in ('pass', 'skipping', 'fail', 'pending', 'cancel') for c in checks):
+        return False, 'incomplete PR checks response'
+    if result.returncode and not checks:
+        return False, 'checks command failed without verified check results'
+    if result.returncode == 1 and not any(c['bucket'] in ('fail', 'cancel') for c in checks) or \
+            result.returncode == 8 and not any(c['bucket'] == 'pending' for c in checks):
+        return False, 'checks command exit status contradicts its response'
+    ignored = []
+    if exceptions:
+        try:
+            if not isinstance(exceptions, list) or any(not isinstance(e, dict) or
+                    set(e) != {'name', 'source', 'decision'} or not re.fullmatch(r'D-\d+', str(e['decision'])) or e['decision'] not in decisions or
+                    not e['name'] or not re.fullmatch(r'(app|status):[A-Za-z0-9_.-]+', e['source']) for e in exceptions):
+                raise DeliveryError('nonblocking_checks needs exact name, app:<slug>|status:<login>, recorded decision')
+            required = subprocess.run(['gh', 'pr', 'checks', str(number), '--repo', repo_name, '--required',
+                                       '--json', 'name,bucket'], encoding='utf-8', errors='replace', capture_output=True)
+            if required.returncode == 1 and not required.stdout.strip() and re.fullmatch(
+                    r'no required checks reported on the .+ branch\s*', required.stderr.strip(), re.I):
+                required_names = set()
+            else:
+                if required.stderr.strip():
+                    raise DeliveryError(required.stderr.strip())
+                required_data = json.loads(required.stdout)
+                if required.returncode not in (0, 1, 8) or not isinstance(required_data, list) or any(
+                        not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'] or
+                        c.get('bucket') not in ('pass', 'skipping', 'fail', 'pending', 'cancel') for c in required_data):
+                    raise DeliveryError('required checks could not be established')
+                if required.returncode == 1 and not any(c['bucket'] in ('fail', 'cancel') for c in required_data) or \
+                        required.returncode == 8 and not any(c['bucket'] == 'pending' for c in required_data):
+                    raise DeliveryError('required checks exit status contradicts its response')
+                required_names = {c['name'] for c in required_data}
+                missing = required_names - {c['name'] for c in checks}
+                if missing:
+                    raise DeliveryError('required checks missing from response: ' + ', '.join(sorted(missing)))
+            head = pr_facts(repo_name, str(number)).get('headRefOid')
+            if not re.fullmatch(r'[0-9a-f]{40}', head or ''):
+                raise DeliveryError('cannot establish check source revision')
+            sources = {}
+            for endpoint, field in (('check-runs', 'check_runs'), ('statuses', None)):
+                for page in range(1, 21):
+                    data = gh_json(['api', f'repos/{repo_name}/commits/{head}/{endpoint}?per_page=100&page={page}'])
+                    data = data.get(field) if field and isinstance(data, dict) else data
+                    if not isinstance(data, list):
+                        raise DeliveryError('incomplete check sources response')
+                    for c in data:
+                        name = c.get('name') if field else c.get('context')
+                        source = ('app:' + str((c.get('app') or {}).get('slug') or '')) if field else (
+                            'status:' + str((c.get('creator') or {}).get('login') or ''))
+                        sources.setdefault(name, set()).add(source)
+                    if len(data) < 100:
+                        break
+                else:
+                    raise DeliveryError('check sources pagination incomplete')
+            retained = []
+            for c in checks:
+                match = next((e for e in exceptions if e['name'] == c['name'] and
+                              sources.get(c['name']) == {e['source']}), None)
+                if match and c['name'] not in required_names:
+                    ignored.append(f'{c["name"]} {match["source"]}: {c["bucket"]} (nonblocking by {match["decision"]})')
+                else:
+                    retained.append(c)
+            checks = retained
+        except (DeliveryError, ValueError, KeyError, TypeError, AttributeError) as error:
+            return False, f'cannot apply CI exception: {error}'
     bad = [c for c in checks if str(c.get('bucket', '')).lower() not in PASSING]
     if bad:
-        return False, ', '.join(f'{c.get("name")}: {c.get("bucket")}' for c in bad[:5])
-    return True, f'{len(checks)} checks passed' if checks else 'no checks reported'
+        return False, '; '.join([', '.join(f'{c.get("name")}: {c.get("bucket")}' for c in bad[:5]), *ignored])
+    return True, '; '.join([f'{len(checks)} checks passed' if checks else 'no blocking checks', *ignored])
 
 
-def merge(repo_name, number, method, delete_branch):
+def merge(repo_name, number, method, delete_branch, expected_head=None):
     if method not in MERGE_METHODS:  # never --admin or any other flag from a mistyped orch.yaml
         raise DeliveryError(f'merge_method {method!r} is not one of {", ".join(MERGE_METHODS)}')
     args = ['gh', 'pr', 'merge', str(number), '--repo', repo_name, f'--{method}']
+    if not re.fullmatch(r'[0-9a-f]{40}', expected_head or ''):
+        raise DeliveryError('merge requires the full accepted PR head SHA')
+    args += ['--match-head-commit', expected_head]
     if delete_branch:
         args.append('--delete-branch')
     result = subprocess.run(args, encoding='utf-8', errors='replace', capture_output=True)
@@ -214,14 +404,22 @@ def wait_run(repo_name, workflow, sha, branch_name, timeout, interval):
     return True, f'{workflow}: run {run.get("url") or run["databaseId"]} succeeded'
 
 
-def run_command(command, cwd, timeout):
+def run_command(command, cwd, timeout, shell='bash'):
     """(ok, detail) of a configured command (deploy_test, rollback_test); stdin is closed, so a script that
     asks for a TTY confirmation fails instead of waiting."""
     try:
-        result = subprocess.run(command, shell=True, cwd=cwd, encoding='utf-8', errors='replace',
+        executable = shell_program(shell)
+        argv = ([executable, '-NoProfile', '-NonInteractive', '-Command',
+                 "$ErrorActionPreference='Stop'; " + command + '; if ($LASTEXITCODE) { exit $LASTEXITCODE }']
+                if shell == 'powershell' else [executable, '-c', command])
+        result = subprocess.run(argv, cwd=cwd, encoding='utf-8', errors='replace',
                                 capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return False, f'`{command}` timed out after {timeout} s'
+    except OSError as error:
+        return False, f'cannot start {shell}: {error}'
+    except DeliveryError as error:
+        return False, str(error)
     tail = (result.stdout + result.stderr).strip().split('\n')[-1:]
     return result.returncode == 0, f'`{command}` exited {result.returncode}' + (f': {tail[0]}' if tail and tail[0] else '')
 

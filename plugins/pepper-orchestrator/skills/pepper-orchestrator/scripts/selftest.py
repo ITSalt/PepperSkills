@@ -13,6 +13,7 @@ from unittest.mock import patch
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import orch  # noqa: E402
+import acceptance  # noqa: E402
 import safe_edit  # noqa: E402
 
 ORCH = [sys.executable, str(HERE / 'orch.py')]
@@ -32,6 +33,33 @@ def run(cwd, *args, ok=True, extra_env=None):
     env = {**os.environ, **GIT_ENV, 'PYTHONDONTWRITEBYTECODE': '1', **(extra_env or {})}
     env.pop('ORCH_WORKSPACE', None)
     result = subprocess.run([*ORCH, *args], cwd=cwd, env=env, encoding='utf-8', errors='replace', capture_output=True)
+    if args and args[0] == 'new-wp' and result.returncode == 0:
+        for wpfile in Path(cwd).glob('features/*/work-packages/WP-*.md'):
+            text = wpfile.read_text(encoding='utf-8')
+            text = text.replace('<verifiable: test, measurement, live scenario, SELECT>', 'Fixture command produces its expected output')
+            text = text.replace('<проверяемо: тест, замер, живой сценарий, SELECT>', 'Fixture command produces its expected output')
+            wpfile.write_text(text, encoding='utf-8')
+    if args and args[0] in ('verify', 'deliver', 'release') and not any(x in args for x in ('--check', '--list', '--dry-run', '--plan')):
+        pending = result.returncode == 0 and args[0] == 'verify' or result.returncode == 2 and (
+            'automatic checks PASS' in result.stdout or 'live prod acceptance pending' in result.stdout)
+        if pending:
+            for workspace_ in Path(cwd).glob('features/*'):
+                for meta in sorted((workspace_ / 'reports').glob('*.checks.json')):
+                    data = json.loads(meta.read_text(encoding='utf-8'))
+                    report = workspace_ / data['report']
+                    if data['automatic'] != 'PASS' or Path(str(report) + '.final.json').exists():
+                        continue
+                    # The fixture's live action is read-only and has a tangible output artifact.
+                    text = report.read_text(encoding='utf-8').replace('| TODO | TODO | TODO | WAIT |',
+                        '| expected fixture output | observed fixture output | fixture command output above | PASS |')
+                    report.write_text(text, encoding='utf-8')
+                    final = subprocess.run([*ORCH, '--workspace', str(workspace_), 'verify', 'finalize', data['wp'],
+                        '--env', data['env'], '--sha', data['sha'], '--report', str(report), '--verdict', 'PASS'],
+                        cwd=cwd, env=env, encoding='utf-8', errors='replace', capture_output=True)
+                    if final.returncode:
+                        raise AssertionError(final.stderr)
+                    result.stdout += '\n' + final.stdout
+            result.returncode = 0
     if ok and result.returncode:
         raise AssertionError(f'orch {args} failed: {result.stderr}')
     if not ok and not result.returncode:
@@ -469,7 +497,7 @@ def test_monorepo(tmp):
     for wp in ('WP-ADMIN-01', 'WP-APP-01', 'WP-BILLING-01'):
         run(home, 'set', wp, 'status', 'READY')
     planned = run(home, 'overlap', '--planned', ok=False).stdout
-    assert 'WP-APP-01 and WP-BILLING-01 both declare shared path pnpm-lock.yaml' in planned, planned
+    assert 'WP-APP-01 and WP-BILLING-01 shared paths collide: pnpm-lock.yaml' in planned, planned
     out = run(home, 'dispatch', 'WP-APP-01').stdout
     settings = (ws / 'orchestration/settings/app.json').resolve()
     assert out.startswith(f'cd {mono} && claude -w wp-app-01-checkout --permission-mode auto --settings {settings} '
@@ -1020,7 +1048,7 @@ def test_review(tmp):
     assert escalations() == [], 'no owner item before the round is reviewed'
     assert 'if the same REVISE items are still open' in Path(third['report']).read_text(encoding='utf-8')
     run(home, 'set', 'WP-APP-01', 'status', 'REVISE', '--evidence', 'round 3: items 2 and 3 again')
-    assert len(escalations()) == 1 and 'round 3: the same REVISE items are still open' in escalations()[0]['text']
+    assert len(escalations()) == 1 and 'round 3: third or later revision round' in escalations()[0]['text']
     again = json.loads(run(home, 'review-start', 'WP-APP-01', '--since', third['sha'], '--round', '4', '--json').stdout)
     assert any(w.startswith('round 4:') for w in again['warnings']), 'the hint is printed every round'
     run(home, 'set', 'WP-APP-01', 'status', 'REVISE')
@@ -1674,7 +1702,7 @@ def test_verify(tmp):
     # Dry run: the plan, nothing written, gh never called.
     before = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file() and '.orch-backup' not in p.parts}
     plan = run(home, 'verify', 'WP-APP-01', '--env', 'test', '--dry-run', extra_env=gh_env).stdout
-    assert '1. deploy: deploy.yml' in plan and '2. version: file://' in plan and 'PASS -> status VERIFIED_TEST' in plan
+    assert '1. deploy: deploy.yml' in plan and '2. version: file://' in plan and 'finalize PASS -> VERIFIED_TEST' in plan
     assert 'merge commit of https://github.com/example/mono/pull/5 (gh)' in plan, plan
     after = {p: p.read_bytes() for p in ws.rglob('*') if p.is_file() and '.orch-backup' not in p.parts}
     assert before == after and not (stub / 'calls.log').exists(), 'dry run must not write or call gh'
@@ -1701,7 +1729,8 @@ def test_verify(tmp):
     assert 'WP-APP-02: verification on test failed' in status, status
     flag.unlink()
     # --sha that the environment does not serve -> FAIL.
-    other = '0123456789abcdef0123456789abcdef01234567'
+    git(mono, 'commit', '--allow-empty', '-qm', 'different served revision')
+    other = git(mono, 'rev-parse', 'HEAD').strip()
     mismatch = run(home, 'verify', 'WP-APP-02', '--env', 'test', '--sha', other, extra_env=gh_env, ok=False).stderr
     assert 'served version `file://' in mismatch and 'bugs/BUG-2-verify-wp-app-02-test.md' in mismatch, mismatch
     text = (ws / 'bugs/BUG-2-verify-wp-app-02-test.md').read_text(encoding='utf-8')
@@ -1729,7 +1758,7 @@ def test_verify(tmp):
     (stub / 'pr.json').write_text(json.dumps({'state': 'MERGED', 'mergeCommit': {'oid': sha}}), encoding='utf-8')
     run(home, 'verify', 'WP-APP-04', '--env', 'test', extra_env=gh_env)
     status = (ws / 'status.md').read_text(encoding='utf-8')
-    assert 'WP-APP-04: ACCEPTED -> MERGED' in status and 'WP-APP-04: MERGED -> VERIFIED_TEST' in status, status
+    assert 'WP-APP-04: ACCEPTED -> MERGED' in status and 'WP-APP-04: VERIFYING -> VERIFIED_TEST' in status, status
     run(home, 'new-wp', 'app', 'draft')
     assert 'needs one of MERGED' in run(home, 'verify', 'WP-APP-05', '--env', 'test', extra_env=gh_env, ok=False).stderr
     # Timeout of a verify command -> FAIL with a note; the status stays VERIFIED_TEST.
@@ -2034,6 +2063,8 @@ def load(name):
     return open(os.path.join(root, name)).read()
 if args[:2] == ['pr', 'view']:
     print(load('pr.json'))
+elif args[:2] == ['api', 'graphql']:
+    print(json.dumps({'data': {'repository': {'pullRequest': {'mergeQueueEntry': None}}}}))
 elif args[:2] == ['pr', 'checks']:
     print(load('checks.json'))
 elif args[:2] == ['pr', 'merge']:
@@ -2064,14 +2095,16 @@ def test_deliver(tmp):
     (stub / 'bin').mkdir(parents=True)
     (stub / 'bin/gh').write_text(DELIVER_GH_STUB, encoding='utf-8')
     (stub / 'bin/gh').chmod(0o755)
+    different = git(mono, 'rev-parse', 'HEAD').strip()
+    git(mono, 'commit', '--allow-empty', '-qm', 'reviewed head')
     head = git(mono, 'rev-parse', 'HEAD').strip()
-    merge_sha = 'ab' * 20
+    merge_sha = head
 
     def pr(wp, number):
         (stub / 'pr.json').write_text(json.dumps({
             'number': number, 'url': f'https://github.com/example/mono/pull/{number}', 'state': 'OPEN',
             'headRefOid': head, 'mergeable': 'MERGEABLE', 'baseRefName': 'main',
-            'title': f'[SHOP] {wp}: work', 'mergeCommit': None}), encoding='utf-8')
+            'title': f'[SHOP] {wp}: work', 'mergeCommit': None, 'autoMergeRequest': None, 'mergeStateStatus': 'CLEAN'}), encoding='utf-8')
     pr('WP-APP-01', 5)
     (stub / 'checks.json').write_text(json.dumps([{'name': 'ubuntu', 'bucket': 'pass'}]), encoding='utf-8')
     (stub / 'merge_sha.txt').write_text(merge_sha, encoding='utf-8')
@@ -2089,6 +2122,7 @@ def test_deliver(tmp):
     ws = home / 'features/shop'
     config = ws / 'orch.yaml'
     safe_edit.replace_once(config, '    checks: []\n', '    checks: []\n    merge_method: squash\n'
+                           '    deploy_test_mode: command\n    deploy_test: "git status --porcelain && echo stand-command"\n'
                            '    deploy_workflows: [deploy.yml]\n    verify_test: ["echo stand ok"]\n'
                            '    rollback_test: "echo rollback {previous_sha}"\n')
     git(mono, 'remote', 'set-url', 'origin', 'https://github.com/example/mono.git')
@@ -2126,7 +2160,7 @@ def test_deliver(tmp):
     review = ws / 'reports/wp-app-01-review.md'
     review.parent.mkdir(exist_ok=True)
     review.write_text('# Review\n\n**Decision: ACCEPTED**\n', encoding='utf-8')
-    run(home, 'accept', 'WP-APP-01', 'c' * 40, '--report', 'reports/wp-app-01-review.md')
+    run(home, 'accept', 'WP-APP-01', different, '--report', 'reports/wp-app-01-review.md')
     g2 = run(home, 'deliver', '--check', 'WP-APP-01', extra_env=env, ok=False).stdout
     assert '| G2 | RED |' in g2 and 'new commits need a new review' in g2, g2
     run(home, 'accept', 'WP-APP-01', head, '--report', 'reports/wp-app-01-review.md')
@@ -2143,12 +2177,12 @@ def test_deliver(tmp):
     applied = run(home, 'deliver', '--apply', 'WP-APP-01', extra_env=env).stdout
     assert f'merged (squash) at {merge_sha[:10]}' in applied and 'VERIFIED_TEST' in applied, applied
     calls = [json.loads(line) for line in (stub / 'calls.log').read_text(encoding='utf-8').splitlines()]
-    assert ['pr', 'merge', '5', '--repo', 'example/mono', '--squash', '--delete-branch'] in calls, calls
+    assert ['pr', 'merge', '5', '--repo', 'example/mono', '--squash', '--match-head-commit', head, '--delete-branch'] in calls, calls
     assert any(c[:2] == ['run', 'watch'] for c in calls) and not any('--admin' in c for c in calls)
     assert all(tuple(c[:2]) in {('pr', 'view'), ('pr', 'checks'), ('pr', 'merge'), ('run', 'list'), ('run', 'watch')}
                for c in calls), 'no command outside the delivery commands'
     status = (ws / 'status.md').read_text(encoding='utf-8')
-    assert 'WP-APP-01: MERGED -> VERIFIED_TEST' in status, status
+    assert 'WP-APP-01: VERIFYING -> VERIFIED_TEST' in status, status
     ledger = (ws / 'release/deliveries.md').read_text(encoding='utf-8')
     assert f'| WP-APP-01 | https://github.com/example/mono/pull/5 | {merge_sha[:12]} |' in ledger and '| PASS |' in ledger
     # A failed stand run: hold, defect, rollback, the queue stops.
@@ -2162,7 +2196,7 @@ def test_deliver(tmp):
     assert 'delivery is on hold' in failed and 'REVISE text for the module session' in failed, failed
     assert 'WP-APP-02' in orch.parse_yaml(config.read_text(encoding='utf-8'))['delivery']['hold']
     assert list((ws / 'bugs').glob('BUG-*-verify-wp-app-02-test.md')), 'defect written'
-    assert '| rollback_test needs the previous SHA of ababababab, not found: the owner rolls back | hold |' in \
+    assert 'rollback not started: deployment did not complete or its outcome is unknown' in \
         (ws / 'release/deliveries.md').read_text(encoding='utf-8'), 'the rollback in its own ledger column (B1)'
     pr('WP-APP-03', 7)
     review3 = ws / 'reports/wp-app-03-review.md'
@@ -2191,8 +2225,9 @@ def test_deliver(tmp):
     review3.write_text('# Review\n\ngraph: checked (status command output in the PR report)\n', encoding='utf-8')
     assert '| G9 | green |' in run(home, 'deliver', '--check', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env).stdout
     # M3: a deploy run still in progress at verification: exit 2, MERGED, no hold, no rollback.
-    run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env)  # green again
-    assert 'R-1' not in run(home, 'queue').stdout, 'B3: the refusal item closes after the successful delivery'
+    run(home, 'delivery', 'reconcile', 'WP-APP-03', '--decision', 'D-1', extra_env=env)
+    run(home, 'deliver', '--apply', 'WP-APP-03', '--after-failure', 'D-1', extra_env=env)  # reconciled before retry
+    assert 'WP-APP-03: GitHub refused the merge' not in run(home, 'queue').stdout, 'B3: the refusal item closes after the successful delivery'
     assert 'merged by orch.py deliver at' in (ws / 'status.md').read_text(encoding='utf-8')
     pr('WP-APP-04', 8)
     (ws / 'reports/wp-app-04-review.md').write_text('# Review\n', encoding='utf-8')
@@ -2218,6 +2253,8 @@ def test_deliver(tmp):
                   ok=False).stderr
     assert 'merge commit is unknown yet' in unknown, unknown
     assert 'merge SHA unknown: stand not started' in (ws / 'release/deliveries.md').read_text(encoding='utf-8')
+    assert '| ACCEPTED |' in next(l for l in (ws / 'status.md').read_text(encoding='utf-8').splitlines()
+                                 if l.startswith('| [WP-APP-05]')), 'unconfirmed merge must not set MERGED'
     (stub / 'no_merge_commit').unlink()
     # lint: prod by the orchestrator needs merge by the orchestrator; a hold is the first warning.
     original = config.read_text(encoding='utf-8')
@@ -2348,7 +2385,10 @@ def stand_package(mono, home, ws, slug, number):
     (ws / 'reports').mkdir(exist_ok=True)
     (ws / f'reports/{wp.lower()}-review.md').write_text('# Review\n\n**Decision: ACCEPTED**\n', encoding='utf-8')
     run(home, 'accept', wp, sha, '--report', f'reports/{wp.lower()}-review.md')
-    run(home, 'set', wp, 'status', 'VERIFIED_TEST', '--evidence', f'verify --env test {sha[:10]}: reports/v.md')
+    run(home, 'set', wp, 'status', 'MERGED')
+    env_ = {'ORCH_NO_GH': '', 'GH_STUB_DIR': str(ws.parent.parent.parent / 'stub'),
+            'PATH': str(ws.parent.parent.parent / 'stub/bin') + os.pathsep + os.environ['PATH']}
+    run(home, 'verify', wp, '--env', 'test', '--sha', sha, extra_env=env_)
     return wp, sha
 
 
@@ -2501,12 +2541,13 @@ def test_release(tmp):
     assert create[create.index('--base') + 1] == 'main' and create[create.index('--head') + 1] == 'stage' and \
         create[create.index('--title') + 1] == f'[SHOP] release {today}', create
     assert sum(c[:2] == ['pr', 'checks'] for c in calls) >= 2, 'pending checks are waited for'
-    assert ['pr', 'merge', '40', '--repo', 'example/mono', '--merge'] in calls, calls
+    assert any(c[:6] == ['pr', 'merge', '40', '--repo', 'example/mono', '--merge'] and
+               c[6:] == ['--match-head-commit', sha2] for c in calls), calls
     assert not any('--admin' in c or '--delete-branch' in c for c in calls), 'never --admin, stage is never deleted'
     assert all(tuple(c[:2]) in {('pr', 'list'), ('pr', 'create'), ('pr', 'view'), ('pr', 'checks'), ('pr', 'merge'),
                                 ('run', 'list'), ('run', 'watch')} for c in calls), 'no command outside the release'
     status = (ws / 'status.md').read_text(encoding='utf-8')
-    assert f'{wp1}: VERIFIED_TEST -> PROD' in status and f'{wp2}: VERIFIED_TEST -> PROD' in status, status
+    assert f'{wp1}: VERIFYING -> PROD' in status and f'{wp2}: VERIFYING -> PROD' in status, status
     assert 'FYI, no action needed: release release-sheet-' in run(home, 'queue').stdout
     ledger_text = ledger_path.read_text(encoding='utf-8')
     assert '| Prod run | Prod verification | Rollback | Note |' in ledger_text, ledger_text
