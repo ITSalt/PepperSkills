@@ -58,6 +58,7 @@ repos: []
 #    prod_branch: main                # branch production deploys from (verify --env prod; default: base)
 #    merge_method: merge              # merge | squash | rebase: the repository's own method (deliver; never --admin)
 #    delete_branch: true              # deliver deletes the merged PR branch
+#    deploy_test_mode: command           # command | workflow | automatic | owner; inferred only when unambiguous
 #    deploy_test: ./scripts/deploy.sh --target test   # non-interactive; only when a merge does not deploy the stand
 #    rollback_test: "./scripts/deploy.sh --target test --ref {previous_sha}"   # optional; run on a stand failure
 #    run_timeout: 1800                # seconds to wait for a deploy run or promote checks (deliver, release)
@@ -132,3 +133,8 @@ guards: {}
 spec_graph: none
 # Live checks: playwright | none.
 e2e: none
+
+# Optional CI exception (strict all-checks policy otherwise):
+# nonblocking_checks belongs on a repo/module, with exact name and provider:
+#   nonblocking_checks: [{name: Preview, source: "app:preview-provider", decision: D-7}]
+# Required checks cannot be excluded; unknown required/source facts remain blocking.

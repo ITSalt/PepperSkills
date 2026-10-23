@@ -3,7 +3,7 @@
   "shortDescription": "Аудит сайта по требованиям РФ",
   "longDescription": "Собирает технические доказательства, проверяет персональные данные, cookie, трекеры, реестры и формирует записку с планом для разработчика.",
   "developerName": "Никитин Максим Геннадиевич",
-  "category": "Productivity",
+  "category": "Business & Operations",
   "websiteURL": "https://github.com/ITSalt/PepperSkills",
   "capabilities": [
     "Analyze",

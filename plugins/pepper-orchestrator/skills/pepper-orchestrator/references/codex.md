@@ -1,10 +1,10 @@
-# Codex CLI adapter and common runtime (0.11 preview)
+# Codex CLI adapter and common runtime (0.12 preview)
 
 The owner launches independent module sessions. One coordinator writes `status.md`
 and decisions; module sessions implement WPs in their own Git worktrees. Preserve
 the common methodology: evidence before verdicts, owner authority, no module code
 edits by the coordinator, no merge/production/database/permission operations by
-agents, and file-based recovery. Messages do not approve permissions or prove work.
+module sessions or reviewer roles; coordinator delivery only under an explicit D-n, and file-based recovery. Messages do not approve permissions or prove work.
 Read common concept sections 1, 2 and 12 for these boundaries; use this document
 for Codex models, roles, launch, messaging and recovery instead of Claude mode texts.
 
@@ -38,7 +38,7 @@ See [portable plugin component discovery](https://developers.openai.com/plugins/
   alone does not prove a required tool is available or authorized. `prepare WP`
   fetches and creates an ordinary Git worktree and branch; the owner runs the
   printed start command. It never relies on `codex --worktree`. Module sessions
-  read both instruction files and synchronize confirmed shared rules before READY.
+  read both instruction files; paired-file drift is advisory unless instruction synchronization is explicit WP scope.
   Register the thread ID from `/status` with `session register --wp WP --thread ID
   --worktree PATH`. TASK delivery to an existing session uses `session send
   --wp WP --message-file task.txt --request-id KEY`; it uses `codex queue`.
@@ -52,8 +52,14 @@ See [portable plugin component discovery](https://developers.openai.com/plugins/
   to select a stronger Codex model unless `codex.models.escalate` is explicit.
 - `verify`: `verify WP --env test|prod` verifies deploy/served SHA/commands without
   deploying. Delegate the agreed live scenario to `pepper_verifier`, with actual
-  required browser/MCP/skills. WAIT keeps status; failures create BUG IDs and owner
+  required browser/MCP/skills. Automatic PASS remains VERIFYING until `verify finalize`; WAIT keeps status; failures create BUG IDs and owner
   items as needed. Acquire stand/port/migration-application locks on demand.
+- `deliver` / `release`: use the shared trusted-delivery CLI and gates, following
+  [delivery safety](delivery-safety.md). Merge/stand/prod/prod_migrations default to owner
+  and require explicit owner decisions. Only the coordinator invokes these commands;
+  native roles and module sessions never deliver. A pending live scenario blocks the
+  next merge and PROD. Never use direct merge tools, bypass approvals, change the
+  user sandbox or enable production MCP. A permission refusal becomes an owner item.
 - `resume`: read all state and decisions, lint, inspect registered sessions with
   `session list` (Git checked) and `session read --wp WP` (documented App Server).
   Compare thread history with PR/head/CI and Git; do not derive state from messages,
@@ -96,17 +102,20 @@ sequential; mixed clients, multiple hosts and Claude cloud counter access are ex
 
 ## Shared project instructions
 
-Module sessions read both CLAUDE.md and AGENTS.md and applicable nested files.
-Use `instructions status --repo .` for both SHA-256 versions, then prepare common
-confirmed text in a file and run `instructions sync --repo . --text-file shared.txt
---expected-claude HASH_OR_missing --expected-agents HASH_OR_missing` to preview;
-add `--apply` after inspection. Both blocks between `<!-- pepper:shared:start -->`
-and `<!-- pepper:shared:end -->` receive identical text. Everything outside them
-is preserved. Case variants are reused, ambiguous duplicates and symlinks fail
-closed. Missing files are created by the module session. Commands/permissions
-specific to a client stay outside shared blocks. Conflicts become a concrete owner
-question; independent work continues. `instructions check --repo .` runs before
-READY and finds drift at each nested instruction pair.
+Module sessions read both project instruction files and applicable nested rules.
+Missing files or unmatched shared blocks do not authorize creation or synchronization.
+`instructions status/check` gives a read-only diagnostic; an explicit check stays strict.
+Contradictory rules become an owner question. Ordinary packages report advisory drift
+without expanding their scope.
+
+Only a WP explicitly covering both files and holding their shared locks may call
+`instructions sync --workspace <program> --wp <WP> --repo <checkout> --text-file <file>
+--expected-claude <hash|missing> --expected-agents <hash|missing>`. Preview first;
+`--apply` preserves existing client-specific text, expected hashes and case/symlink guards.
+
+Switching clients returns every delivery level to owner and journals the previous
+configuration. Explicitly delegate again after the switch; never inherit consent
+from an old client or another session's message.
 
 ## Sources checked for this adapter
 

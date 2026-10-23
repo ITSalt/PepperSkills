@@ -128,6 +128,27 @@ def is_command(text):
     return bool(first) and (first.startswith(('./', '/', '~/')) or first in RUNNERS)
 
 
+def owner_prose(text):
+    """A deploy_test / deploy_prod value that describes the owner's step (`owner-confirmed ...`)."""
+    return str(text or '').strip().lower().startswith('owner-confirmed')
+
+
+def denied_command(text):
+    """A deploy_prod value to deny: anything set that is not owner prose. A deny rule runs nothing, so
+    a first word is_command does not know (ssh, git, rsync) is denied too."""
+    return isinstance(text, str) and bool(text.strip()) and not owner_prose(text)
+
+
+def stand_command(raw):
+    """The deploy_test command of a repository/module entry: `deploy_test_mode: command`, or without a
+    mode a recognised command (the inference of delivery.stand_plan); None for workflow/automatic/owner."""
+    command = raw.get('deploy_test')
+    if not denied_command(command):
+        return None
+    mode = raw.get('deploy_test_mode')
+    return command if mode == 'command' or (mode is None and is_command(command)) else None
+
+
 def secret_copies(commands):
     """worktree_setup commands that copy or link secrets or session settings into a worktree."""
     found = []
@@ -343,12 +364,12 @@ def module_settings(config, workspace_root, module, in_repo=False):
     for command in copies:
         notes.append(f'worktree_setup `{command}` is not allowed: {WORKTREEINCLUDE_HINT}')
     allow.extend(bash_rules(module_tests(module) + repo.checks + [c for c in setup if c not in copies]))
-    deploy_test = module.raw.get('deploy_test')
-    if 'deploy_test' in points and is_command(deploy_test):
+    raw = {**repo.raw, **module.raw}
+    deploy_test = stand_command(raw)
+    if 'deploy_test' in points and deploy_test:
         ask.extend(prefix_rules(deploy_test))
-    deploy_prod = module.raw.get('deploy_prod')
-    if is_command(deploy_prod):
-        deny.extend(prefix_rules(deploy_prod))
+    if denied_command(raw.get('deploy_prod')):
+        deny.extend(prefix_rules(raw['deploy_prod']))
     deny.extend(_prod_servers(config))
     if config.get('guards'):
         deny.extend(['Bash(ssh *)', 'Bash(psql *)', 'Bash(mysql *)'])
@@ -385,8 +406,9 @@ def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, wor
             for branch in delivery_branches(config, raws, repo.base):
                 perms['deny'].extend(_base_push_rules(branch))
     for module in modules.values():
-        if is_command(module.raw.get('deploy_prod')):
-            perms['deny'].extend(prefix_rules(module.raw['deploy_prod']))
+        deploy_prod = {**module.repo.raw, **module.raw}.get('deploy_prod')
+        if denied_command(deploy_prod):
+            perms['deny'].extend(prefix_rules(deploy_prod))
     if workspace_branch:
         perms['allow'].append(f'Bash(git push origin {workspace_branch})')
     delivery_rules(config, modules, perms)
@@ -418,8 +440,8 @@ def delivery_rules(config, modules, perms):
         perms['allow'] += ['Bash(gh run watch *)', 'Bash(gh run list *)', 'Bash(gh pr view *)', 'Bash(gh pr checks *)']
         raw = {**module.repo.raw, **module.raw}
         if stand_level:
-            if is_command(raw.get('deploy_test')):
-                perms['allow'].append(f'Bash({raw["deploy_test"]})')
+            if stand_command(raw):
+                perms['allow'].append(f'Bash({stand_command(raw)})')
             perms['allow'] += bash_rules(streams.as_list(raw.get('verify_test')))
             if raw.get('rollback_test'):
                 rule = f'Bash({str(raw["rollback_test"]).replace("{previous_sha}", "*")})'  # the SHA varies

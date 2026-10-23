@@ -1,5 +1,8 @@
 # Mode: verify
 
+Follow [the shared delivery and final acceptance contract](../delivery-safety.md).
+Automatic PASS alone never grants VERIFIED_TEST/PROD; complete `verify finalize`.
+
 Verify a package on the stand (`test`) or in production (`prod`) by facts, after a merge or a
 deploy, whoever made it (the owner, or a delivery mode later). Arguments: `<WP> --env test|prod
 [--sha <sha>]`, or nothing: then list what waits (`orch.py verify --list`).
@@ -33,7 +36,7 @@ deploy, whoever made it (the owner, or a delivery mode later). Arguments: `<WP> 
    workflow run or a merge commit: read the run with the session's GitHub tools and pass `--sha`,
    or ask the owner. It writes `reports/verify-<WP>-<env>-<date>.md` (table: check, command or target,
    exit, first lines of output, verdict).
-   - **PASS:** status `VERIFIED_TEST` (test) or `PROD` (prod); a package already past it keeps its
+   - **PASS:** status `VERIFYING` until live acceptance is finalized; a package already past it keeps its
      status. `DONE` stays the orchestrator's decision after prod.
    - **WAIT** (exit code 2): the deploy run for the SHA is still queued or running. Nothing else is
      checked, no report and no defect are written, the journal gets one line: verify again when the
@@ -54,7 +57,10 @@ deploy, whoever made it (the owner, or a delivery mode later). Arguments: `<WP> 
      it; when nothing can check the criterion, the package stays without `VERIFIED_TEST` and does not
      go to production. A real mismatch: set the status back with `orch.py set <WP> status VERIFYING
      --evidence "<report>"`, write the defect, send `REVISE`.
-4. **Commit.** `orch.py lint`, `orch.py commit "<program>: verify <WP> on <env>"`.
+4. **Finalize.** Fill the generated live table for every criterion, then run
+   `orch.py verify finalize <WP> --env <env> --sha <full SHA> --report <report> --verdict PASS|FAIL|WAIT`.
+   Only final PASS grants VERIFIED_TEST/PROD; unverified tools remain WAIT.
+5. **Commit.** `orch.py lint`, `orch.py commit "<program>: verify <WP> on <env>"`.
 
 ## Result for the owner
 

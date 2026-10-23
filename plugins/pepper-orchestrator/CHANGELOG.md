@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.12.0 — 2026-10-23, public preview: reliability and Codex CLI delivery
+
+- Shared fail-closed CI gates, exact provider exceptions by owner decision, SHA-bound merges,
+  explicit stand transport and recoverable delivery phases. No blind rollback of unknown outcomes.
+- Automatic checks remain VERIFYING; explicit live acceptance binds each criterion and report
+  to a full SHA before VERIFIED_TEST/PROD and downstream delivery gates.
+- Codex CLI deliver/release workflow uses the common runtime and native approval policy.
+  Client switches revoke inherited delivery delegation; module and review roles remain restricted.
+- Advisory instruction-pair diagnostics; scoped synchronization with path/lock checks;
+  lock waiting cancellation, planned glob diagnostics, private-template-safe reports,
+  full review-clone SHA checks and one supply per WP.
+- Claude Code settings: `deploy_prod` is denied whenever it is set and is not an `owner-confirmed`
+  description (a first word such as `ssh` or `git` no longer escapes the deny), and `deploy_test`
+  rules follow `deploy_test_mode`. Claude modes and the reviewer agent describe the new gates,
+  `lock cancel`, wave diagnostics and the review-clone SHA stop.
+- #35 hardening is not a claim that the original Linux sandbox collision was reproduced.
+
+
 ## 0.11.0 — 2026-10-01, public preview
 
 - Dedicated Codex CLI skill, native scout/reviewer/verifier roles, prepared ordinary
@@ -116,12 +134,12 @@ Hotfix for three field reports (Issues #20, #21, #24).
   cells too.
 - The self-test reads child output as UTF-8 itself, so it runs under a non-UTF-8 locale too.
 
-## 0.11.0 — preview, unreleased
+## 0.9.0 — preview, unreleased
 
 Preview of stage 3c: trusted delivery of merges and the stand, only by an explicit owner decision.
 
 - `delivery` block in `orch.yaml`: `merge`, `stand`, `prod`, `prod_migrations` (owner | orchestrator,
-  default owner; workspaces before 0.11.0 = all owner), `enabled_by`, `hold`. `orch.py delivery show`
+  default owner; workspaces before 0.9.0 = all owner), `enabled_by`, `hold`. `orch.py delivery show`
   and `delivery set <level> owner|orchestrator --decision D-n` (orchestrator only with a recorded
   decision). `lint`: orchestrator without `enabled_by` or with an unrecorded one, `prod: orchestrator`
   without `merge: orchestrator`, `merge_method` and `run_timeout` values. Repository keys:

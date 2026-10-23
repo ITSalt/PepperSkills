@@ -1,0 +1,176 @@
+# Pepper Orchestrator 0.12.0 — реализация и проверка
+
+23 октября 2026. Локальный кандидат; публичного релиза нет.
+
+## Результат
+
+Codex CLI получил deliver/release через общее ядро. Сборщик по-прежнему копирует
+канонические ресурсы в Codex-архив; второй редактируемой реализации нет.
+Claude Code использует те же исправленные проверки и семантику приёмки.
+
+Merge, стенд, PROD и миграции по умолчанию остаются у владельца. Каждый уровень
+передаётся по решению D-n; A-n/Q-n не принимаются как делегирование. Смена клиента
+возвращает уровни в owner и журналирует прежнюю конфигурацию. Sandbox/approval
+не ослабляются, production MCP не открываются.
+
+## Изменения
+
+| Задача | Результат |
+|---|---|
+| Ошибочное разрешение G3 | Ошибка чтения, stderr, неполный ответ и противоречащий ответу код завершения не превращаются в отсутствие проверок. Общий gate применяется и к promote-PR. |
+| #30/#37 | Строгая политика по умолчанию. Исключение требует точного имени, App slug/создателя status и D-n. Обязательные проверки и неизвестная обязательность не исключаются; результат остаётся в отчёте. |
+| #31 | Однозначный префикс SHA раскрывается до записей. Неизвестный/неоднозначный ввод не создаёт BUG/R-n. |
+| #21 | Причина эскалации описывает номер раунда; повтор одинаковых замечаний не объявляется доказанным. |
+| #38 | Явный deploy_test_mode и preflight до merge. Git-команды не пропускаются; ручной текст не исполняется. Неизвестный исход сохраняется, слепой откат не запускается. |
+| #32 | Обычный WP читает инструкции. Запись требует явного WP, путей, блокировок и хешей; авторизация и запись проходят в одной короткой транзакции. |
+| #33 | Динамические данные отделены от доверенного шаблона, очищаются и повторно проверяются перед публикацией. Глобального исключения организации нет. |
+| #22 | lock cancel убирает ожидание; завершённые пакеты покидают очереди с журналированием. Держатели не освобождаются этой операцией. |
+| #34 | Планирование и dispatch используют одинаковое консервативное пересечение glob. Dry-run показывает конфликты READY-волны без записей. |
+| #36 | Новая поставка завершённого WP отклоняется; expand/contract — отдельные зависимые WP. Коррекция статуса при реальном дефекте сохранена. |
+| #35 | Полный SHA сверяется до/после команд; вывод содержит ID запуска и путь. Причина исходного случая не объявлена установленной. |
+| CHANGELOG | Второй раздел 0.11.0 восстановлен как исторический 0.9.0. |
+| Claude Code (1e374b4) | Настройки Claude запрещают deploy_prod, если он задан и не является описанием owner-confirmed; первое слово ssh, git, rsync и т. п. больше не выводит команду из deny. Правила allow/ask для deploy_test следуют deploy_test_mode; учитываются ключи уровня репозитория. |
+
+Неподтверждённый merge сохраняет ACCEPTED: CLI exit 0 и очередь GitHub не выставляют MERGED.
+Merge привязан к полному принятому head через --match-head-commit. Для повторной
+попытки после неизвестного исхода нужен reconcile; отсутствие mergeQueueEntry
+читается через GitHub, а не выводится из mergeability.
+
+Отдельный OS mutex сериализует доставку и смену клиента. Он не удерживает state
+transaction lock: hold и короткие записи доступны во время ожидания сети.
+Смерть процесса освобождает mutex, но не отменяет сверку неизвестного исхода.
+
+При внешней приёмке найдены и устранены ещё две проблемы: Windows выбирал WSL
+bash.exe вместо Git Bash; команда деплоя могла завершиться раньше регистрации
+workflow. Runner выбирает Git Bash явно, а настроенный workflow ожидается и после
+команды деплоя, чтобы задержка не становилась ложным дефектом.
+
+## Приёмка и интерфейсы
+
+Автоматический PASS оставляет VERIFYING. Финализация связывает WP, окружение,
+полный SHA, автоматические проверки, неизменённые критерии и хеш отчёта.
+Только итоговый PASS даёт VERIFIED_TEST/PROD. Наблюдаемый FAIL требует доказательства,
+создаёт дефект и hold. WAIT из-за недоступного инструмента не создаёт дефект продукта.
+Исторические статусы не переписываются; перед новой автоматической поставкой
+недостающие доказательства требуется дополнить.
+
+~~~text
+verify finalize <WP> --env test|prod --sha <full SHA> --report <file> --verdict PASS|FAIL|WAIT
+lock cancel <name> --wp <WP>
+delivery reconcile <WP> --decision D-n
+~~~
+
+Новые параметры репозитория/модуля: deploy_test_mode и nonblocking_checks.
+Legacy-конфигурация принимается при однозначном способе доставки. deliver/release
+возвращают 2 при ожидании приёмки; старым скриптам нужно учитывать финализацию.
+Подробный [контракт доставки](../../plugins/pepper-orchestrator/skills/pepper-orchestrator/references/delivery-safety.md).
+
+## Claude Code adapter (1e374b4)
+
+Исправление после основной приёмки; затрагивает только сгенерированные настройки Claude и тексты режимов.
+
+- session_settings: deploy_prod попадает в deny модуля и оркестратора всегда, когда он задан и не начинается
+  с owner-confirmed. Раньше deny ставился только для распознанных команд, и `ssh prod ./deploy.sh` оставался без запрета.
+- deploy_test получает ask (модуль с checkpoint deploy_test) или allow (делегированный стенд) только при deploy_test_mode: command либо,
+  без режима, для распознанной команды; при workflow/automatic/owner правило не создаётся. Ключи репозитория
+  учитываются вместе с ключами модуля.
+- Режимы deliver и dispatch для Claude описывают fail-closed G3 и nonblocking_checks, --match-head-commit,
+  способы deploy_test_mode, откат только после завершённого деплоя, delivery reconcile, lock cancel и
+  диагностику READY-волны в --dry-run.
+- Агент orchestrator-reviewer и review brief: exit 2 у review_clone (HEAD mismatch, неизвестный SHA) останавливает
+  ревью; используется только клон своего запуска.
+- Регрессия test_claude_settings_deny_any_prod_command_and_follow_stand_mode в reliability_selftest.
+
+Внешняя приёмка и финальная CI ниже выполнены до этого коммита.
+
+## Проверки
+
+Результаты этого раздела, CI и внешней приёмки относятся к снимку до 1e374b4.
+
+- scripts/check.sh: PASS (Python 3.14/macOS), включая основной selftest, 11 runtime-тестов, 18 delivery-регрессий, упаковку и неизменность исходников.
+- [Финальная CI](https://github.com/ITSalt/pepper-orchestrator-acceptance-20261023-mk0k2e/actions/runs/40012418898): PASS, все 7 jobs. Linux Python 3.10/3.12 и macOS Python 3.12 — полный check; runtime и reliability — Linux/macOS/Windows; compare-packages подтвердил одинаковые архивы. Оба SHA256 Orchestrator совпали и с локальной сборкой.
+- Linux-контейнер: изолированные review-clone, сверка SHA и обработка ошибок. Исходная среда Claude Bash sandbox не воспроизведена.
+- Нативный PowerShell: UTF-8, путь с пробелами/кириллицей/апострофом, ненулевой exit и timeout.
+- Извлечённый plugin ZIP: Codex App Server smoke PASS локально (CLI 0.154.0); native Windows install/load, PowerShell worktree и выбор Codex workflow — PASS. SHA256 plugin ZIP совпал с Windows CI; все 18 регрессий отдельно прошли из Codex-копии внутри ZIP.
+
+Новый reliability_selftest: 18 тестов в проверенном снимке; 1e374b4 добавил девятнадцатый.
+
+Регрессии покрывают CI и исключения, неверный SHA без записей, привязку merge,
+блокировки и инструкции, приватность report, чужие/изменённые отчёты, живые WAIT/FAIL/PASS,
+отзыв делегирования, очереди GitHub, отсутствие повторной поставки, конкурентные
+клоны и освобождение mutex после смерти процесса.
+
+Ошибки сети/токена, повреждённые ответы, обязательность CI и очередь merge
+проверены управляемыми подменами ответов GitHub; это не живое испытание всех
+вариантов branch protection/enterprise rulesets. Права пользовательского PROD,
+production MCP и реальные миграции/откат БД не испытывались.
+
+### Локальная проверка после 1e374b4
+
+Linux, 23 октября 2026: selftest.py, reliability_selftest.py (19 тестов), runtime_selftest.py (11 тестов)
+и scripts/check.sh — PASS, кроме двух шагов, которым нужен zsh (test-install-links.sh,
+test-install-docs.py); они оставлены CI. CI для 1e374b4 в этом отчёте ещё не зафиксирована.
+
+### Воспроизведение локальных проверок
+
+Из корня репозитория; Python 3.10+ и Git, для native smoke — установленный Codex CLI:
+
+~~~bash
+python3 -m venv /tmp/pepper-orchestrator-check
+/tmp/pepper-orchestrator-check/bin/python -m pip install -r scripts/requirements-build.txt
+PYTHON=/tmp/pepper-orchestrator-check/bin/python bash scripts/check.sh
+python3 -m zipfile -e dist/pepper-orchestrator/0.12.0/pepper-orchestrator.plugin.zip /tmp/pepper-orchestrator-unpack
+/tmp/pepper-orchestrator-check/bin/python scripts/test-orchestrator-native.py --transport \
+  --skill /tmp/pepper-orchestrator-unpack/pepper-orchestrator/codex/skills/pepper-orchestrator
+~~~
+
+Полный check включает сборку, selftest из извлечённых архивов и отсутствие изменений
+исходников. Матрица native Windows запускает scripts/test-orchestrator-windows.ps1.
+Сценарий внешней приёмки ниже использует настоящие GitHub PR/workflow и требует
+отдельных полномочий на одноразовый репозиторий; offline selftest его не подменяет.
+
+## Внешняя приёмка
+
+Использован отдельный приватный [тестовый репозиторий](https://github.com/ITSalt/pepper-orchestrator-acceptance-20261023-mk0k2e).
+Ссылки требуют доступа; пользовательские приложения и БД в тесте не участвуют.
+
+Реальная Codex CLI-сессия изменила только acceptance/app.py в своём worktree.
+Модель не переопределялась, обход sandbox не включался. Регистрация сессии,
+App Server history read и stopped-state прошли. Архивирована только эта тестовая
+сессия. Координаторный CLI вызывался управляемым сценарием приёмки.
+Внешний цикл проверен до последних дополнительных ограничений G3/очереди/mutex;
+эти ограничения отдельно покрыты регрессиями в финальной CI.
+
+- [WP-PR](https://github.com/ITSalt/pepper-orchestrator-acceptance-20261023-mk0k2e/pull/1): точный head проверен в одноразовом клоне, принят и слит.
+- [Стенд](https://github.com/ITSalt/pepper-orchestrator-acceptance-20261023-mk0k2e/actions/runs/40008278967): проверены отданная SHA и VALUE = 42.
+- До finalize команда release --plan отказывала. После живого PASS получен VERIFIED_TEST.
+- [Promote-PR](https://github.com/ITSalt/pepper-orchestrator-acceptance-20261023-mk0k2e/pull/2) прошёл ворота и merge.
+- [PROD](https://github.com/ITSalt/pepper-orchestrator-acceptance-20261023-mk0k2e/actions/runs/40008925793): автоматические проверки оставили VERIFYING, живой PASS завершился PROD.
+- Проверены hold/возобновление, восстановление после задержки workflow и отказ повторного deliver.
+
+Это изолированные экземпляры тестового приложения, получающие реальные артефакты
+GitHub Actions. Пользовательский PROD не выкатывался; интерактивное TTY-согласование
+владельца не проверялось.
+
+SHA стенда: 8c8675a5f2c08ba865ce7729fb41c565e9cadd0c.
+SHA PROD: ac21012cb0f9ecd39016f5ce73969542b9d3fae4.
+
+## Артефакты и границы
+
+Архивы создаются в dist/pepper-orchestrator/0.12.0/. SHA256 проверенного снимка (до 1e374b4;
+архивы публикуемой версии будут другими и сверяются по SHA256SUMS релиза):
+
+~~~text
+2c56af37c0db49fd8927e6cce3cbcff74ebe14e47dd275dbb29804c22e5f707f  pepper-orchestrator.plugin.zip
+73ba0e74cdd94cac93b603b88adad86071f289e4ce0e65084321a987807fa82a  pepper-orchestrator.zip
+~~~
+
+Проверенный снимок реализации в тестовом репозитории:
+3ab21d478114041852be47607889fb0cb284a217. В нём только trigger CI заменён
+на workflow_dispatch; jobs исходной матрицы сохранены. Прочие пользовательские
+правки категорий в снимок не перенесены; для Orchestrator метаданные совпадают.
+Финальная документация этого отчёта добавлена после проверки неизменности исходников.
+
+Пользовательские правки метаданных сохранены. На время приёмки исходный ITSalt/PepperSkills не пушился; позже ветка
+codex/orchestrator-trusted-delivery опубликована как draft PR #40 без merge. Публичный релиз и обновление issues не выполнялись. #23 и #39 остаются следующим этапом.
+Одноразовый приватный репозиторий архивирован после завершения CI; PR, коммиты и журналы сохранены. Тестовый HTTP-сервис остановлен. Публичной публикации не было.

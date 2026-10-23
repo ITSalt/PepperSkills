@@ -1,6 +1,8 @@
 # Pepper Orchestrator
 
-> **Preview (0.11.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
+> New in 0.12.0: Codex CLI trusted delivery and explicit live acceptance. See the [changelog](CHANGELOG.md).
+
+> **Preview (0.12.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
@@ -20,7 +22,7 @@ Installation and update models: [English guide](../../docs/installation-and-upda
 
 ## Codex CLI on Windows
 
-[Download 0.11.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.11.0).
+[Download 0.12.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.12.0).
 Use Python 3.12+, Git, GitHub CLI (`gh`) and Codex CLI (tested: 0.154.0).
 In PowerShell, install the native plugin:
 
@@ -38,7 +40,7 @@ Claude permission settings described below belong to Claude Code.
 
 To update an existing installation, run `codex plugin marketplace upgrade pepperskills`
 and `codex plugin add pepper-orchestrator@pepperskills`, then restart Codex and check
-version 0.11.0. Preserve customized files. A manual ZIP installation and a Windows
+version 0.12.0. Preserve customized files. A manual ZIP installation and a Windows
 acceptance checklist are in the [Windows guide](WINDOWS.md).
 
 ## Use
@@ -61,7 +63,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 | `/pepper-orchestrator:report [what]` | report a defect of the plugin: anonymized record, Issue after your yes |
 
-Version 0.11.0 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c, 3d). Modules can be whole repositories or areas and
+Version 0.12.0 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c, 3d). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff

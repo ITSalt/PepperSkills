@@ -97,9 +97,10 @@ def _fill_empty(path, text):
 
 GUIDANCE = '''Before implementing, read both CLAUDE.md and AGENTS.md (including existing case variants)
 and the applicable nested instruction files. Preserve all existing client-specific text.
-If one file is missing or shared blocks differ, prepare confirmed common project rules and
-use orch.py instructions status/sync with both expected hashes. Update both shared blocks
-when a common rule changes. Do not decide contradictory existing instructions yourself:
-send QUESTION with the conflict. Run orch.py instructions check --repo . before READY.
+Missing paired files or unmanaged shared blocks are advisory, not a request to edit them.
+Use orch.py instructions status/check for read-only diagnostics. Synchronize only when this
+WP explicitly includes both instruction paths and holds the required shared-path locks;
+pass --workspace and --wp to instructions sync. Do not resolve contradictory existing rules:
+send QUESTION with the conflict. Report advisory drift in the PR, without expanding the WP.
 Only the module session edits its repository's instructions; the coordinator never does.
 '''

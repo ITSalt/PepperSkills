@@ -56,6 +56,7 @@ import plugin_report  # noqa: E402
 import release as prodrelease  # noqa: E402 (orch.py has its own release() of locks)
 import streams  # noqa: E402
 import verification  # noqa: E402
+import acceptance  # noqa: E402
 import state_io  # noqa: E402
 import id_allocator  # noqa: E402
 import project_instructions  # noqa: E402
@@ -1007,7 +1008,7 @@ def review_round(ws, wp):
 
 
 def escalate_on_revise(ws, wp):
-    """REVISE from round 3: the same items came back, so the restart on the stronger model is confirmed."""
+    """REVISE from round 3: a revision count is evidence, repeated identical findings are not inferred."""
     number, report = review_round(ws, wp)
     if number < 3:
         return
@@ -1020,7 +1021,7 @@ def escalate_on_revise(ws, wp):
         return
     target, how = escalation_restart(ws, module)
     cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', where=f'reports/{report}',
-                                 quiet=True, text=f'{wp}: round {number}: the same REVISE items are still open - '
+                                 quiet=True, text=f'{wp}: round {number}: third or later revision round - '
                                                   f'restart the module session on {target}: {how} ; expected: the '
                                                   'session continues on the stronger model with its context'))
     print(f'escalation: {wp} REVISE at round {number}: owner item to restart the session on {target}', file=sys.stderr)
@@ -1086,6 +1087,7 @@ def cmd_set(args):
     value = ' '.join(args.text.split())
     if column == 'pr':
         value = pr_cell(ws, args.wp, value)
+        guard_new_delivery(ws, args.wp, value)
     if column == 'status' and not valid_status(value):
         raise OrchError(f'invalid status {value!r}; allowed: {", ".join(STATUSES)}, '
                         'BLOCKED (reason), CANCELLED (reason)')
@@ -1111,6 +1113,8 @@ def cmd_set(args):
                    evidence=args.evidence or '—')
         if value in ('REVIEW', 'DONE') or value.startswith('CANCELLED'):
             release_on_demand(ws, args.wp)
+        if value in ('MERGED', 'VERIFIED_TEST', 'PROD', 'DONE') or value.startswith('CANCELLED'):
+            clear_waits(ws, args.wp)
         if value == 'REVISE':
             escalate_on_revise(ws, args.wp)
     if not getattr(args, 'quiet', False):
@@ -1340,6 +1344,12 @@ def lint(ws):
                 errors.append(f'orch.yaml: checkpoint {point!r} must be one of '
                               f'{", ".join(session_settings.CHECKPOINTS)}')
     errors.extend(delivery.errors(config, decision_ids(ws)))
+    if delivery.settings(config)['stand'] == 'orchestrator':
+        for module in ws.streams()[1].values():
+            try:
+                delivery.stand_plan(module)
+            except delivery.DeliveryError as error:
+                errors.append(f'{module.id}: {error}')
     if config.get('bug_reports') not in (None, 'confirm', 'auto'):
         errors.append('orch.yaml: bug_reports must be confirm or auto')
     if config.get('bug_reports') == 'auto':
@@ -1527,6 +1537,11 @@ def lint_warnings(ws):
                         'mode the sessions run in (auto recommended), add `permission_mode: <mode>` and run '
                         'orch.py settings all')
     warnings.extend(settings_warnings(ws))
+    for lock in locks(ws):
+        for waiting in waiting_of(lock):
+            status = ws.wp_rows().get(waiting, {}).get('status', '')
+            if status in ('MERGED', 'VERIFIED_TEST', 'PROD', 'DONE') or status.startswith('CANCELLED'):
+                warnings.append(f'stale waiting request {waiting} for {lock["lock"]}: lock cancel')
     seen = set()
     for module in local:
         repo = module.repo
@@ -1767,6 +1782,106 @@ def lock_key(repo, name):
 FREE = '—'
 
 
+def resolve_commit(repo, value):
+    if not re.fullmatch(r'[0-9a-fA-F]{7,40}', value or ''):
+        raise OrchError('SHA must be a hexadecimal commit id (7-40 characters)')
+    full = streams.git(repo.local, 'rev-parse', '--verify', '-q', f'{value}^{{commit}}').stdout.strip()
+    if not re.fullmatch(r'[0-9a-f]{40}', full):
+        raise OrchError(f'{value}: unknown or ambiguous commit; fetch the intended revision explicitly, then retry')
+    return full
+
+
+def cancel_wait(ws, key, wp):
+    lock = next((r for r in locks(ws) if r['lock'] == key), None)
+    if lock is None or wp not in waiting_of(lock):
+        raise OrchError(f'{wp} has no waiting request for {key}; holder is never released by cancel')
+    rest = [w for w in waiting_of(lock) if w != wp]
+    update_lock(ws, key, {'waiting': ', '.join(rest) or FREE}, remove=lock['holder'] == FREE and not rest)
+    ws.journal(f'{wp}: waiting request for {key} cancelled; holder preserved', wp=wp, evidence='orch.py lock cancel')
+    print(f'{wp}: waiting request cancelled for {key}')
+
+
+def clear_waits(ws, wp):
+    for lock in locks(ws):
+        if wp in waiting_of(lock):
+            cancel_wait(ws, lock['lock'], wp)
+
+
+def guard_new_delivery(ws, wp, candidate=None):
+    """A correction may change status; another supply requires a new WP, never another merge row."""
+    merged = [q for q in ws.table(ws.status, 'merge')[2] if q['wp'] == wp and q['status'] == 'merged'] if \
+        ws.has_table(ws.status, 'merge') else []
+    delivered = [q for q in ledger_rows(ws) if q['wp'] == wp]
+    old = pr_url(ws.wp_rows().get(wp, {}).get('pr', ''))
+    new = pr_url(candidate) if candidate else None
+    if (merged or delivered) and (not new or old != new):
+        raise OrchError(f'{wp} was already delivered: one WP = one PR/merge; create linked expand/contract WPs')
+
+
+def finalize_verify(args):
+    ws = Workspace(find_workspace(args.workspace))
+    ws.require_open('verify finalize')
+    if not args.env or not args.sha or not args.report or not args.verdict or args.dry_run or args.list:
+        raise OrchError('verify finalize WP requires --env --sha <full SHA> --report --verdict PASS|FAIL|WAIT')
+    if not SHA40.fullmatch(args.sha):
+        raise OrchError('verify finalize requires a full 40-character SHA')
+    r, module, _ = wp_context(ws, args.wp)
+    sha = resolve_commit(module.repo, args.sha)
+    report = Path(args.report) if Path(args.report).is_absolute() else ws.root / args.report
+    with state_io.transaction(ws.root):
+        ws = Workspace(ws.root)
+        r, module, _ = wp_context(ws, args.wp)
+        try:
+            data, text = acceptance.load(ws.root, report, args.wp, args.env, sha)
+            if data['automatic'] != 'PASS' or not data['checks'] or any(x['verdict'] != 'PASS' for x in data['checks']):
+                raise ValueError('automatic checks did not PASS')
+            current = acceptance.criteria(ws.wp_path(r['wp']).read_text(encoding='utf-8'))
+            if current != data['criteria']:
+                raise ValueError('acceptance criteria changed; run verify again')
+            if args.verdict in ('PASS', 'FAIL'):
+                acceptance.validate_live(data, text, args.verdict)
+            final_path = Path(str(report) + '.final.json')
+            final = {'wp': args.wp, 'env': args.env, 'sha': sha, 'verdict': args.verdict,
+                     'report_digest': acceptance.digest(text)}
+            runtime_commands.save(final_path, json.dumps(final, indent=2) + '\n')
+        except (OSError, ValueError, KeyError) as error:
+            raise OrchError(f'cannot finalize verification: {error}')
+        target = verification.TARGET[args.env] if args.verdict == 'PASS' else 'VERIFYING'
+        if args.verdict == 'PASS' and r['status'] in verification.LATER[args.env]:
+            target = r['status']
+        cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='status', text=target, quiet=True,
+                                   evidence=f'verify --env {args.env} {sha}: {workspace_rel(ws, report)}; live {args.verdict}'))
+        ws.journal(f'{args.wp}: live acceptance {args.env} {args.verdict} at {sha}', wp=args.wp,
+                   evidence=workspace_rel(ws, report))
+        if args.verdict == 'FAIL':
+            bug = write_bug(ws, args.wp, module, args.env, sha, workspace_rel(ws, report),
+                            [{'kind': 'live', 'target': 'observed acceptance mismatch', 'exit': '—',
+                              'output': ['See the failed live criterion and evidence in the report']}])
+            delivery.set_key(ws.root / 'orch.yaml', 'hold', f'{args.wp}: live {args.env} acceptance failed ({bug})')
+            ws.journal(f'{args.wp}: live failure; delivery held; send REVISE to module', wp=args.wp, evidence=bug)
+        if args.env == 'test':
+            ledger(ws, args.wp, pr_url(r['pr'], module.repo) or '—', sha, stand_verify=args.verdict)
+        else:
+            ledger_prod(ws, args.wp, pr_url(r['pr'], module.repo) or '—', prod_verify=args.verdict)
+            for row_ in ledger_rows(ws, 'releases'):
+                sheet = ws.root / 'release' / Path(row_['sheet']).name
+                if row_['repo'] != module.repo.id or not sheet.is_file():
+                    continue
+                entries = [e for e in ws.table(sheet, 'release')[2] if e['repo'] == module.repo.id]
+                if any(e['wp'] == args.wp for e in entries):
+                    passed = all(acceptance.finalized(ws.root, e['wp'], 'prod', sha) for e in entries)
+                    release_row(ws, row_['sheet'], module.repo.id, prod_verify='PASS' if passed else args.verdict
+                                if args.verdict != 'PASS' else 'WAIT')
+                    all_entries = ws.table(sheet, 'release')[2]
+                    repo_rows = {x['repo']: x for x in ledger_rows(ws, 'releases') if x['sheet'] == row_['sheet']}
+                    if passed and all(repo_rows.get(e['repo'], {}).get('prod_verify') == 'PASS' and
+                                      ws.wp_rows().get(e['wp'], {}).get('status') in ('PROD', 'DONE') for e in all_entries):
+                        owner_item(ws, f'FYI, no action needed: release {sheet.name}: all live PROD acceptances passed',
+                                   workspace_rel(ws, sheet), dedup=f'FYI, no action needed: release {sheet.name}')
+    print(f'{args.wp}: live {args.env} {args.verdict}; status {target}')
+    return 0 if args.verdict == 'PASS' else 2 if args.verdict == 'WAIT' else 1
+
+
 def waiting_of(lock):
     return [w for w in lock['waiting'].split(', ') if w and w != FREE]
 
@@ -1943,6 +2058,9 @@ def cmd_lock(args):
         ws.journal(f'lock {key} acquired', wp=args.wp, evidence=args.note or 'orch.py lock')
         print(f'lock {key}: held by {args.wp}')
         return 0
+    if args.action == 'cancel':
+        cancel_wait(ws, key, args.wp)
+        return 0
     waiting = release(ws, key, args.wp)
     ws.journal(f'lock {key} released', wp=args.wp, evidence=args.note or 'orch.py lock')
     print(f'lock {key}: released' + (f'; next in queue: {", ".join(waiting)}' if waiting else ''))
@@ -2046,6 +2164,16 @@ def cmd_dispatch(args):
                         'starts with --settings <that file>); --no-settings keeps the pre-0.6.0 start command')
     _, _, meta0 = wp_context(ws, wp)
     known, unknown = lock_names(module.repo, meta0)
+    if args.dry_run:
+        for other, orow in ws.wp_rows().items():
+            if other == wp or orow['status'] != 'READY':
+                continue
+            _, omodule, ometa = wp_context(ws, other)
+            if omodule.repo.key == module.repo.key:
+                for x in meta0['shared']:
+                    for y in ometa['shared']:
+                        if streams.patterns_overlap(x, y):
+                            print(f'planned collision with {other}: {x} ~ {y}; serialize or narrow paths', file=sys.stderr)
     for name in unknown:
         print(f'dispatch: warning: `{name}` in the Shared paths or Resources row is not a lock of repo '
               f'{module.repo.id} (not in its shared_paths or resources): ignored', file=sys.stderr)
@@ -2155,6 +2283,7 @@ def cmd_merge(args):
         raise OrchError(f'merge {args.action} needs a WP')
     _, module, _ = wp_context(ws, args.wp)
     if args.action == 'add':
+        guard_new_delivery(ws, args.wp)
         if any(q['wp'] == args.wp and q['status'] == 'queued' for q in rows):
             raise OrchError(f'{args.wp} is already in the merge queue')
         if args.pr:  # validated before anything is written
@@ -2288,6 +2417,7 @@ def cmd_review_start(args):
     r, module, meta = wp_context(ws, wp)
     if args.pr:  # validated and normalized before any file or table is written
         args.pr = pr_cell(ws, wp, args.pr)
+        guard_new_delivery(ws, wp, args.pr)
     if not module.repo.local.is_dir():
         raise OrchError(f'{module.repo.path} is not available locally: clone it (read-only) or pass --workspace '
                         'from a place where it is')
@@ -2472,12 +2602,13 @@ def _cmd_verify(args):
             print(f'{wp} is ACCEPTED: first confirms through gh that {pr or "its PR"} is merged, then sets MERGED')
         if env == 'prod' and branch != repo_base(module):
             print(f'expected SHA on prod: the tip of origin/{branch} when it contains the merge commit (else pass --sha)')
-        print(f'PASS -> status {target}' + (' (kept: already later)' if r['status'] in verification.LATER[env] else '')
+        print(f'automatic PASS -> VERIFYING; finalize PASS -> {target}' + (' (kept: already later)' if r['status'] in verification.LATER[env] else '')
               + f'; FAIL -> status stays {r["status"]}, a defect in bugs/, a journal line')
         return 0
     repo = module.repo
     if not repo.local.is_dir():
         raise OrchError(f'{repo.path} is not available locally: verify runs in the repository\'s main checkout')
+    explicit_sha = resolve_commit(repo, args.sha) if args.sha else None
     needs_gh = any(k == 'deploy' for k, _ in checks) or not args.sha or accepted
     name = streams.origin_name(repo)
     if needs_gh and not shutil_which('gh'):
@@ -2503,7 +2634,7 @@ def _cmd_verify(args):
                                        evidence=f'gh pr view {pr}: MERGED at {(oid or "?")[:10]}'))
             state_version = runtime_commands.state_version(ws)
         r = dict(r, status='MERGED')
-    sha = args.sha
+    sha = explicit_sha
     if not sha:
         if not pr:
             raise OrchError(f'{wp} has no PR link in the WP table: pass --sha <deployed sha>')
@@ -2513,6 +2644,7 @@ def _cmd_verify(args):
                 sha = verification.prod_tip(repo, branch, sha)
         except RuntimeError as error:
             raise OrchError(f'{wp}: {error}; pass --sha <deployed sha>')
+    sha = resolve_commit(repo, sha)
     url = verification.base_url(module, env)
     rows, limit = [], verification.timeout(ws.config)
     t = verification.TEXT[ws.lang]
@@ -2559,16 +2691,20 @@ def _cmd_verify(args):
             t['no_vtest'].format(status=r['status'])
         template = (TEMPLATES / ws.lang / 'verify-report.md').read_text(encoding='utf-8')
         safe_edit.create(path, fill(template, {
-            'WP': wp, 'ENV': env, 'SHA': sha[:12], 'DATE': today(), 'VERDICT': verdict, 'SUMMARY': summary + note,
+            'WP': wp, 'ENV': env, 'SHA': sha, 'DATE': today(), 'VERDICT': verdict, 'SUMMARY': summary + note,
             'BRANCH': branch, 'BASE_URL': url or '—', 'STATUS': r['status'], 'ROWS': verification.table(rows, ws.lang)}))
+        items = acceptance.criteria(ws.wp_path(r['wp']).read_text(encoding='utf-8'))
+        safe_edit.replace_once(path, path.read_text(encoding='utf-8'),
+                               path.read_text(encoding='utf-8') + '\n' + acceptance.live_table(items))
+        acceptance.record(ws.root, path, wp, env, sha, verdict, items, rows)
         if not failed:
             if r['status'] in verification.LATER[env]:
                 ws.journal(f'{wp}: verified on {env} at {sha[:10]} (status {r["status"]} kept)', wp=wp, evidence=rel)
             else:
-                cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text=target, quiet=True,
-                                           evidence=f'verify --env {env} {sha[:10]}: {rel}'))
-            print(f'verify {wp} --env {env}: PASS at {sha[:10]} ({summary}); status '
-                  f'{r["status"] if r["status"] in verification.LATER[env] else target}')
+                cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status', text='VERIFYING', quiet=True,
+                                           evidence=f'automatic verify --env {env} {sha[:10]}: {rel}'))
+            print(f'verify {wp} --env {env}: automatic PASS at {sha[:10]} ({summary}); status '
+                  f'{r["status"] if r["status"] in verification.LATER[env] else "VERIFYING"}')
             print(f'report: {path}')
             print('next: the live scenario of the package (verify mode), recorded in the report\'s "Live scenario" section')
             return 0
@@ -2591,7 +2727,13 @@ def _cmd_verify(args):
 
 
 def cmd_verify(args):
-    result = _cmd_verify(args)
+    if getattr(args, 'final_wp', None):
+        if args.wp != 'finalize':
+            raise OrchError('use verify finalize <WP>')
+        args.wp = args.final_wp
+        result = finalize_verify(args)
+    else:
+        result = _cmd_verify(args)
     # Automatic Claude release planning fetches Git after the state commit.
     if result == 0 and not args.list and not args.dry_run and args.env == 'test':
         ws = Workspace(find_workspace(args.workspace))
@@ -2714,13 +2856,13 @@ def report_check(ws, args, repos, modules, names, terms):
         rid = f'PLUGIN-BUG-{number}'
         issue_rel = f'bugs/{rid}.issue.md'
         values = {'ID': rid, 'TITLE': title, 'DATE': today(), 'PLUGIN': facts['plugin'], 'VERSION': facts['version'],
-                  'CLAUDE': clean(facts['claude']), 'OS': facts['os'], 'PYTHON': facts['python'], 'SHELL': facts['shell'],
-                  'SHAPE': plugin_report.workspace_shape(ws.config, repos, modules), 'FINGERPRINT': fp,
+                  'CLAUDE': clean(facts['claude']), 'OS': clean(facts['os']), 'PYTHON': clean(facts['python']), 'SHELL': clean(facts['shell']),
+                  'SHAPE': clean(plugin_report.workspace_shape(ws.config, repos, modules)), 'FINGERPRINT': clean(fp),
                   'COMMAND': clean(args.command or '—'), 'OUTPUT': output, 'EXPECTED_ACTUAL': expected_actual,
                   'WORKAROUND': workaround, 'ISSUE_FILE': issue_rel}
         record = fill((TEMPLATES / ws.lang / 'plugin-bug.md').read_text(encoding='utf-8'), values)
         issue = fill((TEMPLATES / 'issue-body.md').read_text(encoding='utf-8'), values)
-        problems = plugin_report.leaks(record + '\n' + issue, names, terms, SECRET_PATTERNS)
+        problems = plugin_report.leaks('\n'.join(str(v) for v in values.values()), names, terms, SECRET_PATTERNS)
         if problems:
             raise OrchError('the report still looks private after anonymization (' + ', '.join(sorted(set(problems)))
                             + '); nothing was written: shorten --log or --command to the failing lines')
@@ -2857,6 +2999,7 @@ def cmd_accept(args):
     ws = Workspace(find_workspace(args.workspace))
     ws.require_open('accept')
     r, module, _ = wp_context(ws, args.wp)
+    guard_new_delivery(ws, args.wp)
     if r['status'] not in ('REVIEW', 'REVISE', 'ACCEPTED'):
         raise OrchError(f'{args.wp} is {r["status"]}: accept follows a review (REVIEW, REVISE or ACCEPTED)')
     report = (ws.root / args.report) if not Path(args.report).is_absolute() else Path(args.report)
@@ -2866,9 +3009,7 @@ def cmd_accept(args):
     sha = args.sha.lower()
     if not re.fullmatch(r'[0-9a-f]{7,40}', sha):
         raise OrchError(f'{args.sha}: a commit SHA of 7-40 hex characters')
-    if module.repo.local.is_dir():
-        full = streams.git(module.repo.local, 'rev-parse', '--verify', '-q', f'{sha}^{{commit}}').stdout.strip()
-        sha = full or sha
+    sha = resolve_commit(module.repo, sha)
     # The PR URL is extracted by search, so an older free-text cell never refuses the acceptance.
     url = pr_url(r['pr'], module.repo)
     note = f'{url} (accepted {sha[:10]})' if url else f'(accepted {sha[:10]})'
@@ -2889,8 +3030,25 @@ def cmd_delivery(args):
             print(f'{level}: {d[level]}')
         print(f'enabled_by: {d["enabled_by"] or "—"}')
         print(f'hold: {d["hold"] or "—"}')
+        for path in sorted((ws.root / 'release').glob('delivery-state-*.json')):
+            print(path.name + ': ' + path.read_text(encoding='utf-8').strip())
         return 0
     ws.require_open('delivery set')
+    if args.action == 'reconcile':
+        wp = args.level
+        if not re.fullmatch(r'D-\d+', str(args.decision)) or args.decision not in decision_ids(ws):
+            raise OrchError('delivery reconcile WP needs --decision D-n after the owner checks the unknown outcome')
+        r, module, _ = wp_context(ws, wp)
+        if not streams.origin_name(module.repo) or not pr_url(r['pr'], module.repo):
+            raise OrchError('delivery reconcile requires a hosted repository and recorded PR URL')
+        facts = delivery.pr_facts(streams.origin_name(module.repo), pr_url(r['pr'], module.repo))
+        if facts.get('state') != 'OPEN' or 'autoMergeRequest' not in facts or facts['autoMergeRequest'] is not None or \
+                facts.get('mergeStateStatus') not in ('CLEAN', 'BLOCKED', 'BEHIND', 'DIRTY', 'UNSTABLE') or \
+                not delivery.not_queued(streams.origin_name(module.repo), facts.get('number')):
+            raise OrchError('PR is merged, queued or cannot be established as unmerged; reconcile served SHA/workflows and verify, do not retry delivery')
+        delivery_stage(ws, wp, 'reconciled-open', facts.get('headRefOid', ''),
+                       f'{args.decision}: PR OPEN, no auto-merge request or merge queue entry')
+        return 0
     if args.level not in delivery.LEVELS or args.value not in delivery.VALUES:
         raise OrchError(f'delivery set <{"|".join(delivery.LEVELS)}> <owner|orchestrator> [--decision D-n]')
     config = ws.root / 'orch.yaml'
@@ -3091,10 +3249,11 @@ def delivery_gates(ws, wp, args):
             gates.append(('G2', False, f'gh pr view: {error}'))
     if facts is not None:
         head = str(facts.get('headRefOid') or '')
-        same = bool(sha) and bool(head) and (head.startswith(sha) or sha.startswith(head))
+        same = bool(SHA40.fullmatch(sha or '')) and sha == head
         gates.append(('G2', same, f'PR head {head[:10] or "?"}, accepted {sha[:10] if sha else "none"}'
                       + ('' if same else ': new commits need a new review, not a merge')))
-        ok, detail = delivery.pr_checks(name, facts.get('number'))
+        ok, detail = delivery.pr_checks(name, facts.get('number'),
+                                        delivery.repo_setting(module, 'nonblocking_checks'), decision_ids(ws))
         gates.append(('G3', ok, detail))
         base = verification.branch(module, 'test')
         title = str(facts.get('title') or '')
@@ -3117,7 +3276,8 @@ def delivery_gates(ws, wp, args):
         if merged and not args.after_failure:
             last = merged[-1]['wp']
             status = ws.wp_rows().get(last, {}).get('status')
-            if status not in ('VERIFIED_TEST', 'PROD', 'DONE'):
+            last_sha = stand_sha(ws, last, repo)
+            if status not in ('VERIFIED_TEST', 'PROD', 'DONE') or not acceptance.finalized(ws.root, last, 'test', last_sha):
                 problems.append(f'the previous merge {last} is {status}, not VERIFIED_TEST (or --after-failure D-n)')
     known, _ = lock_names(repo, meta)
     for name_ in known:
@@ -3125,6 +3285,13 @@ def delivery_gates(ws, wp, args):
             problems.append(f'lock {lock["lock"]} is held by {lock["holder"]}')
     gates.append(('G5', not problems, '; '.join(problems) or 'queue and locks free'))
     findings = run_checks(repo, [meta['branch']] if meta.get('branch') else [])
+    if delivery.settings(ws.config)['stand'] == 'orchestrator':
+        try:
+            delivery.stand_plan(module)
+            shell = ws.config.get('shell', 'bash')
+            delivery.shell_program(shell)
+        except delivery.DeliveryError as error:
+            findings.append(str(error))
     gates.append(('G6', not findings, '; '.join(findings) or (f'{len(repo.checks)} repository checks passed'
                                                               if repo.checks else 'no repository checks')))
     blocking = [i['id'] for i in open_owner_items(ws) if wp in i['text'] and delivery.BLOCKS.search(i['text'])]
@@ -3152,11 +3319,48 @@ def delivery_gates(ws, wp, args):
     return gates, {'row': r, 'module': module, 'facts': facts, 'sha': sha, 'name': name, 'pr': pr}
 
 
+def delivery_authority(ws, level, compensating=False):
+    fresh = Workspace(ws.root)
+    d = delivery.settings(fresh.config)
+    invalid = delivery.errors(fresh.config, decision_ids(fresh))
+    if invalid or d[level] != 'orchestrator' or (d['hold'] and not compensating):
+        raise OrchError(f'{level}: delivery authority revoked, held or invalid: {invalid or d["hold"] or d[level]}')
+    return fresh
+
+
+def delivery_stage(ws, wp, phase, sha='', detail=''):
+    path = ws.root / 'release' / f'delivery-state-{wp}.json'
+    with state_io.transaction(ws.root):
+        runtime_commands.save(path, json.dumps({'wp': wp, 'phase': phase, 'sha': sha, 'detail': detail}, indent=2) + '\n')
+        ws.journal(f'{wp}: delivery phase {phase}', wp=wp, evidence=detail or sha)
+
+
+def delivery_progress(ws, wp):
+    path = ws.root / 'release' / f'delivery-state-{wp}.json'
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except (ValueError, OSError) as error:
+        raise OrchError(f'preserve and reconcile {path}: {error}')
+
+
 def cmd_deliver(args):
     ws = Workspace(find_workspace(args.workspace))
     ws.require_open('deliver')
     d = delivery.settings(ws.config)
     r, module, _ = wp_context(ws, args.wp)
+    progress = delivery_progress(ws, args.wp)
+    if args.apply and progress and progress.get('phase') != 'reconciled-open':
+        name = streams.origin_name(module.repo)
+        pr = pr_url(r['pr'], module.repo)
+        facts = delivery.pr_facts(name, pr) if name and pr else {}
+        actual = (facts.get('mergeCommit') or {}).get('oid') if facts.get('state') == 'MERGED' else None
+        if actual:
+            print(f'{args.wp}: already merged at {actual}; phase {progress["phase"]}. Do not repeat merge/deploy. '
+                  f'Reconcile workflow and served version, then orch.py verify {args.wp} --env test --sha {actual}')
+        raise OrchError(f'{args.wp}: prior delivery phase {progress.get("phase")}; reconcile PR, workflow and served '
+                        'version before any retry; no merge/deploy repeated')
     if d['merge'] != 'orchestrator':
         raise OrchError(f'delivery is done by the owner (delivery.merge: {d["merge"]}): the owner merges with '
                         f'`{owner_delivery_command(ws, module, r)}`; to hand merges to the orchestrator the owner '
@@ -3185,9 +3389,12 @@ def cmd_deliver(args):
     facts, name, pr = ctx['facts'], ctx['name'], ctx['pr']
     method = delivery.merge_method(module)
     delete = delivery.repo_setting(module, 'delete_branch', True) is not False
+    delivery_authority(ws, 'merge')
+    delivery_stage(ws, args.wp, 'merge-requested', ctx['sha'])
     try:
-        delivery.merge(name, facts['number'], method, delete)
+        delivery.merge(name, facts['number'], method, delete, ctx['sha'])
     except delivery.DeliveryError as error:
+        delivery_stage(ws, args.wp, 'unknown', ctx['sha'], str(error))
         item = (f'{args.wp}: GitHub refused the merge ({error}); a merge needs your rights or an approval: '
                 f'{owner_delivery_command(ws, module, r)} ; expected: PR merged, then orch.py verify {args.wp} --env test')
         cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='R', text=item, where=pr, quiet=True))
@@ -3202,52 +3409,78 @@ def cmd_deliver(args):
         except delivery.DeliveryError:
             after = None
         merge_sha = ((after or {}).get('mergeCommit') or {}).get('oid') or ''
-        if merge_sha:
+        if merge_sha and after.get('state') == 'MERGED' and SHA40.fullmatch(merge_sha):
             break
+        merge_sha = ''
         time.sleep(interval)
     lt = LEDGER[ws.lang]
     after_note = f'; after failure by {args.after_failure}' if args.after_failure else ''
     after_ledger = ('; ' + lt['after_failure'].format(decision=args.after_failure)) if args.after_failure else ''
-    close_owner_items(ws, [f'{args.wp}: GitHub refused the merge'],
-                      f'merged by orch.py deliver at {merge_sha[:10] or "a merge commit not reported yet"}')
-    cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='status', text='MERGED', quiet=True,
-                               evidence=f'gh pr merge --{method}: {merge_sha[:10] or "SHA unknown"} ({pr}){after_note}'))
     if not merge_sha:
+        delivery_stage(ws, args.wp, 'unknown', detail='merge not confirmed; may be queued by GitHub')
         ledger(ws, args.wp, pr, 'unknown',
-               note=f'{lt["merged"].format(method=method)}; {lt["sha_unknown"]}{after_ledger}')
-        ws.journal(f'{args.wp}: merged, but GitHub has not reported the merge commit: stand and verification not '
+               note=f'merge not confirmed; {lt["sha_unknown"]}{after_ledger}')
+        ws.journal(f'{args.wp}: merge not confirmed by GitHub: stand and verification not '
                    'started', wp=args.wp, evidence=pr)
-        print(f'deliver: {args.wp} merged, but the merge commit is unknown yet: find it (gh pr view {pr} --json '
-              f'mergeCommit), then orch.py verify {args.wp} --env test --sha <sha>', file=sys.stderr)
+        print(f'deliver: {args.wp} merge not confirmed; the merge commit is unknown yet: inspect '
+              f'(gh pr view {pr} --json state,mergeCommit). Keep the current status; reconcile actual '
+              'merge, workflow and served version before verification or retry.', file=sys.stderr)
         return 1
+    close_owner_items(ws, [f'{args.wp}: GitHub refused the merge'],
+                      f'merged by orch.py deliver at {merge_sha[:10]}')
+    cmd_set(argparse.Namespace(workspace=str(ws.root), wp=args.wp, column='status', text='MERGED', quiet=True,
+                               evidence=f'gh pr merge --{method}: {merge_sha[:10]} ({pr}){after_note}'))
     if ws.has_table(ws.status, 'merge') and any(q['wp'] == args.wp and q['status'] == 'queued'
                                                for q in ws.table(ws.status, 'merge')[2]):
         cmd_merge(argparse.Namespace(workspace=str(ws.root), action='done', wp=args.wp, pr=None, json=False,
                                      evidence=f'orch.py deliver: {merge_sha[:10]}'))
     note = lt['merged'].format(method=method) + after_ledger
+    delivery_stage(ws, args.wp, 'not-started', merge_sha, 'merge confirmed; stand not started')
     ledger(ws, args.wp, pr, merge_sha, note=note)
     print(f'{args.wp}: merged ({method}) at {merge_sha[:10]}')
     if d['stand'] != 'orchestrator':
         print(f'stand: the owner\'s (delivery.stand: owner): after the deploy, orch.py verify {args.wp} --env test')
         return 0
     repo = module.repo
-    workflows = verification.workflows(module, 'test')
-    if workflows:
+    fresh = delivery_authority(ws, 'stand')
+    module = wp_context(fresh, args.wp)[1]
+    mode, command, workflows = delivery.stand_plan(module)
+    if mode == 'owner':
+        print(f'{args.wp}: stand requires the owner; no deployment or rollback started')
+        return 2
+    delivery_stage(ws, args.wp, 'started', merge_sha, mode)
+    if mode == 'workflow':
         ok, detail = True, ''
         for wf in workflows:
             ok, detail = delivery.wait_run(name, wf, merge_sha, verification.branch(module, 'test'),
                                            delivery.run_timeout(module), interval)
             if not ok:
                 break
-    elif delivery.repo_setting(module, 'deploy_test') and session_settings.is_command(
-            delivery.repo_setting(module, 'deploy_test')):
-        ok, detail = delivery.run_command(delivery.repo_setting(module, 'deploy_test'), repo.local,
-                                          delivery.run_timeout(module))
+    elif mode == 'command':
+        ok, detail = delivery.run_command(command, repo.local, delivery.run_timeout(module),
+                                          fresh.config.get('shell', 'bash'))
     else:
-        ok, detail = True, 'no deploy_workflows or deploy_test: the stand deploys by itself'
+        ok, detail = True, 'automatic stand deployment declared; served SHA still needs verification'
+    if ok and mode != 'workflow' and workflows:
+        # A command may return before GitHub registers its deployment run. Wait
+        # for configured workflow evidence rather than recording a false defect.
+        for wf in workflows:
+            delivery_authority(ws, 'stand')
+            ok, run_detail = delivery.wait_run(name, wf, merge_sha, verification.branch(module, 'test'),
+                                               delivery.run_timeout(module), interval)
+            detail += '; ' + run_detail
+            if not ok:
+                break
     if not ok:
+        delivery_stage(ws, args.wp, 'unknown', merge_sha, detail)
         return delivery_failure(ws, args.wp, module, pr, merge_sha, detail, stand_run=detail)
+    delivery_stage(ws, args.wp, 'completed' if mode != 'automatic' else 'unknown', merge_sha, detail)
     ledger(ws, args.wp, pr, merge_sha, stand_run=detail, note=note)
+    if not streams.git(repo.local, 'cat-file', '-e', f'{merge_sha}^{{commit}}').returncode == 0:
+        fetched = streams.git(repo.local, 'fetch', '-q', 'origin', merge_sha)
+        if fetched.returncode:
+            owner_item(ws, f'{args.wp}: fetch merge revision {merge_sha} before verification: {fetched.stderr.strip()}', pr)
+            return 2
     code = cmd_verify(argparse.Namespace(workspace=str(ws.root), wp=args.wp, env='test', sha=merge_sha,
                                          expect_version=None, dry_run=False, list=False))
     if code == 2:  # the deploy is still under way: not a failure, no hold, no rollback
@@ -3258,9 +3491,11 @@ def cmd_deliver(args):
     if code != 0:
         return delivery_failure(ws, args.wp, module, pr, merge_sha, 'stand verification failed',
                                 stand_run=detail, verified=False)
-    ledger(ws, args.wp, pr, merge_sha, stand_run=detail, stand_verify='PASS', note=note)
-    print(f'{args.wp}: VERIFIED_TEST; next: the live scenario (verify mode), then the next package in the queue')
-    return 0
+    delivery_stage(ws, args.wp, 'completed', merge_sha, 'automatic verification PASS; live acceptance pending')
+    ledger(ws, args.wp, pr, merge_sha, stand_run=detail, stand_verify='WAIT', note=note)
+    print(f'{args.wp}: automatic checks PASS, live acceptance pending. Fill the report and verify finalize; '
+          'the next merge and PROD remain blocked.')
+    return 2
 
 
 def delivery_failure(ws, wp, module, pr, sha, detail, stand_run='—', verified=None):
@@ -3272,14 +3507,20 @@ def delivery_failure(ws, wp, module, pr, sha, detail, stand_run='—', verified=
                   [{'kind': 'deploy', 'target': detail, 'exit': '—', 'output': []}])
     rollback = delivery.repo_setting(module, 'rollback_test')
     note = LEDGER[ws.lang]['no_rollback_test']
-    if rollback:
+    if rollback and delivery_progress(ws, wp).get('phase') == 'completed':
         previous = delivery.previous_sha(module.repo, sha) if '{previous_sha}' in rollback else None
         if '{previous_sha}' in rollback and not previous:
             note = f'rollback_test needs the previous SHA of {sha[:10]}, not found: the owner rolls back'
         else:
+            fresh = delivery_authority(ws, 'stand', compensating=True)
             ok, out = delivery.run_command(rollback.replace('{previous_sha}', previous or ''), module.repo.local,
-                                           delivery.run_timeout(module))
+                                           delivery.run_timeout(module), fresh.config.get('shell', 'bash'))
             note = f'rollback_test: {out}'
+    elif rollback:
+        note = 'rollback not started: deployment did not complete or its outcome is unknown; owner reconciles facts'
+        owner_item(ws, f'{wp}: reconcile PR, workflow and served SHA before retry or rollback; '
+                      f'orch.py delivery show ; expected: the actual deployed revision is established',
+                   f'release/delivery-state-{wp}.json')
     ledger(ws, wp, pr, sha, stand_run=stand_run, stand_verify='FAIL' if verified is False else '—', rollback=note,
            note=LEDGER[ws.lang]['hold'])
     ws.journal(f'{wp}: {note}', wp=wp, evidence='orch.py deliver')
@@ -3390,6 +3631,8 @@ def release_plan(ws, only=None):
     policy = release_policy(ws)
     rows = ws.wp_rows()
     wps = [wp for wp, r in sorted(rows.items()) if r['status'] == 'VERIFIED_TEST' and (only is None or wp in only)]
+    wps = [wp for wp in wps if acceptance.finalized(ws.root, wp, 'test',
+           stand_sha(ws, wp, wp_context(ws, wp)[1].repo))]
     if not wps:
         raise OrchError('release --plan: no package is VERIFIED_TEST (verified on the stand and not on prod yet)')
     if policy == 'per_package':  # one sheet per package: a package that has one keeps it
@@ -3592,7 +3835,8 @@ def release_gates(ws, path):
                      f'({how}; prod code = stand code of {base[:10] if base else "?"})')
     gates.append(('P1', bool(promotes) and not problems, '; '.join(problems) or '; '.join(facts) or 'no promote rows'))
     waiting = [f'{e["wp"]} {rows.get(e["wp"], {}).get("status", "has no row")}' for e in entries
-               if rows.get(e['wp'], {}).get('status') != 'VERIFIED_TEST']
+               if rows.get(e['wp'], {}).get('status') != 'VERIFIED_TEST' or
+               not acceptance.finalized(ws.root, e['wp'], 'test', e['stand_sha'])]
     gates.append(('P2', bool(entries) and not waiting, (f'not VERIFIED_TEST: {", ".join(waiting)}' if waiting else
                   f'{len(entries)} packages VERIFIED_TEST, batch by {rel}') if entries else 'the sheet lists no package'))
     defects = prodrelease.open_high_defects(ws.root)
@@ -3721,10 +3965,12 @@ def release_apply(ws, path, ctx):
     for repo_id, info in ctx['repos'].items():
         module, repo, name, sha = info['module'], info['repo'], info['name'], info['sha']
         entries = [e for e in ctx['entries'] if e['repo'] == repo_id]
+        delivery_authority(ws, 'prod')
         timeout = delivery.run_timeout(module)
         has_migrations = any(e['wp'] in ctx['migrations'] for e in entries)
         if has_migrations:  # P4 green: prod_migrations orchestrator, reviewed, backup_prod configured
-            ok, out = delivery.run_command(delivery.repo_setting(module, 'backup_prod'), repo.local, timeout)
+            delivery_authority(ws, 'prod_migrations')
+            ok, out = delivery.run_command(delivery.repo_setting(module, 'backup_prod'), repo.local, timeout, ws.config.get('shell', 'bash'))
             release_row(ws, sheet, repo_id, backup=out)
             ws.journal(f'release {sheet}: {repo_id} backup_prod: {out}', evidence='release/deliveries.md')
             if not ok:
@@ -3736,6 +3982,7 @@ def release_apply(ws, path, ctx):
         prod_sha, promote_note = '', ''
         try:
             if info['method'] == 'ff':  # git refuses anything but a fast-forward: prod becomes exactly sha
+                delivery_authority(ws, 'prod')
                 prodrelease.ff_push(info['clone'], sha, info['prod'])
                 prod_sha, promote_note = sha, f'git push origin {sha[:12]}:{info["prod"]} ({info["clone"]})'
             else:
@@ -3749,7 +3996,8 @@ def release_apply(ws, path, ctx):
                     print(f'release: the promote PR {url} is at {str(facts.get("headRefOid"))[:10]}, the sheet '
                           f'promotes {sha[:10]}: plan again; nothing merged', file=sys.stderr)
                     return 1
-                ok, detail = prodrelease.wait_checks(name, facts['number'], timeout, interval)
+                ok, detail = prodrelease.wait_checks(name, facts['number'], timeout, interval,
+                                                  delivery.repo_setting(module, 'nonblocking_checks'), decision_ids(ws))
                 if not ok:
                     owner_item(ws, f'Release {sheet}: the promote PR checks of {repo_id} are not green ({detail}): '
                                    f'{url} ; expected: green checks, then orch.py release --apply {rel}', url)
@@ -3766,10 +4014,12 @@ def release_apply(ws, path, ctx):
                     print(f'release: {moved}; nothing merged: check the new commits, then release --check again',
                           file=sys.stderr)
                     return 1
-                delivery.merge(name, facts['number'], 'merge', False)  # a merge commit keeps the stand SHA reachable
+                delivery_authority(ws, 'prod')
+                delivery.merge(name, facts['number'], 'merge', False, facts['headRefOid'])  # a merge commit keeps the stand SHA reachable
                 for _ in range(int(os.environ.get('ORCH_MERGE_POLLS', '6'))):
                     try:
-                        prod_sha = ((delivery.pr_facts(name, url).get('mergeCommit') or {}).get('oid') or '')
+                        actual = delivery.pr_facts(name, url)
+                        prod_sha = ((actual.get('mergeCommit') or {}).get('oid') or '') if actual.get('state') == 'MERGED' else ''
                     except delivery.DeliveryError:
                         prod_sha = ''
                     if prod_sha:
@@ -3793,6 +4043,9 @@ def release_apply(ws, path, ctx):
             return release_stop(ws, sheet, info, entries, prod_sha, f'{type(error).__name__}: {error}')
         if code is not None:
             return code
+    if any(ws.wp_rows().get(e['wp'], {}).get('status') not in ('PROD', 'DONE') for e in ctx['entries']):
+        print(f'release {sheet}: deployments checked; live prod acceptance pending for every unfinalized package')
+        return 2
     text = (f'FYI, no action needed: release {sheet} is on prod: {"; ".join(digest)}; verify_prod passed; DONE follows '
             'the first live case or log line (verify mode) ; close this item when read')
     close_owner_items(ws, [f'Release {sheet}: migrations'], f'released by orch.py release {sheet}')
@@ -3809,7 +4062,7 @@ def release_after_promote(ws, sheet, rel, info, entries, sha, prod_sha, promote_
     repository is on prod, else the exit code."""
     module, repo, name, repo_id = info['module'], info['repo'], info['name'], info['repo'].id
     close_owner_items(ws, refused, f'promoted by orch.py release: {promote_note}')
-    release_row(ws, sheet, repo_id, promote=promote_note, prod_sha=prod_sha[:12] or 'unknown')
+    release_row(ws, sheet, repo_id, promote=promote_note, prod_sha=prod_sha or 'unknown')
     if not prod_sha:
         return release_stop(ws, sheet, info, entries, '', f'{repo_id} merged ({promote_note}), but GitHub has not '
                             'reported the merge commit: the code on prod is unchecked')
@@ -3844,8 +4097,9 @@ def release_after_promote(ws, sheet, rel, info, entries, sha, prod_sha, promote_
             release_row(ws, sheet, repo_id, prod_verify='FAIL')
             return release_failure(ws, sheet, info, entries, prod_sha, f'{e["wp"]}: prod verification failed',
                                    has_migrations, deploy=False)
-        ledger_prod(ws, e['wp'], e['pr'], prod_verify='PASS')
-    release_row(ws, sheet, repo_id, prod_verify='PASS')
+        ledger_prod(ws, e['wp'], e['pr'], prod_verify='WAIT')
+    release_row(ws, sheet, repo_id, prod_verify='WAIT')
+    print(f'release {sheet}: automatic prod checks PASS; verify finalize every package before PROD')
     digest.append(f'{", ".join(e["wp"] for e in entries)} ({repo_id}) at {prod_sha[:10]}')
     return None
 
@@ -3883,8 +4137,9 @@ def release_failure(ws, sheet, info, entries, prod_sha, detail, has_migrations, 
     ws.journal(f'delivery on hold: release {sheet}: {detail}', evidence='release/deliveries.md')
     rollback = delivery.repo_setting(module, 'rollback_prod')
     command = rollback.replace('{previous_sha}', prev) if rollback else None
-    if command and not has_migrations:
-        ok, out = delivery.run_command(command, repo.local, delivery.run_timeout(module))
+    if command and not has_migrations and not deploy:
+        delivery_authority(ws, 'prod', compensating=True)
+        ok, out = delivery.run_command(command, repo.local, delivery.run_timeout(module), ws.config.get('shell', 'bash'))
         note = f'rollback_prod: {out}'
         if not ok:
             owner_item(ws, f'Release {sheet}: production failed at {prod_sha[:10]} ({detail}) and rollback_prod '
@@ -3899,6 +4154,7 @@ def release_failure(ws, sheet, info, entries, prod_sha, detail, has_migrations, 
                        f'origin {branch} && gh pr create --repo {info["name"]} --base {info["prod"]} --head {branch} '
                        '--fill')
         reason = ('the batch has migrations: the orchestrator never rolls back a database' if has_migrations
+                  else 'production deployment outcome unknown; reconcile before rollback' if rollback and deploy
                   else 'no rollback_prod configured')
         item = owner_item(ws, f'Release {sheet}: production failed at {prod_sha[:10]} ({detail}); {reason}: roll back '
                               f'to {prev[:10]} with `{command}`; database changes need your decision ; expected: prod '
@@ -3938,10 +4194,11 @@ def cmd_overlap(args):
             for x, y in streams.overlap_outside_shared(meta_a['paths'], meta_b['paths'],
                                                        ma.repo.shared_paths):
                 findings.append(('declared', f'{a} and {b}: paths overlap outside shared paths: {x} ~ {y}'))
-            both = set(meta_a['shared']) & set(meta_b['shared'])
-            for p in sorted(both):
-                findings.append(('declared', f'{a} and {b} both declare shared path {p}: '
-                                 'serialize them with the lock'))
+            for x in meta_a['shared']:
+                for y in meta_b['shared']:
+                    if streams.patterns_overlap(x, y):
+                        findings.append(('declared', f'{a} and {b} shared paths collide: {x} ~ {y}; '
+                                         'serialize or narrow to concrete paths'))
             for res in sorted(set(meta_a['resources']) & set(meta_b['resources'])):
                 if res in ma.repo.resources and not ma.repo.on_demand(res):
                     findings.append(('declared', f'{a} and {b} both declare resource {res}: '
@@ -4468,8 +4725,11 @@ def build_parser():
                    help='local module: start command without --settings (the pre-0.6.0 form)')
     p.set_defaults(func=cmd_dispatch)
 
-    p = sub.add_parser('verify', parents=[common], help='verify a package on test or prod by facts')
+    p = sub.add_parser('verify', parents=[common], help='verify a package, or verify finalize WP after the live scenario')
     p.add_argument('wp', nargs='?')
+    p.add_argument('final_wp', nargs='?')
+    p.add_argument('--report')
+    p.add_argument('--verdict', choices=('PASS', 'FAIL', 'WAIT'))
     p.add_argument('--env', choices=verification.ENVS)
     p.add_argument('--sha', help='expected deployed SHA (default: the merge commit of the package PR, through gh)')
     p.add_argument('--expect-version', help='package version the version_url may serve instead of the SHA')
@@ -4499,7 +4759,7 @@ def build_parser():
     p.set_defaults(func=cmd_accept)
 
     p = sub.add_parser('delivery', parents=[common], help='delivery levels: show, or set one (by an owner decision)')
-    p.add_argument('action', choices=('show', 'set'))
+    p.add_argument('action', choices=('show', 'set', 'reconcile'))
     p.add_argument('level', nargs='?')
     p.add_argument('value', nargs='?')
     p.add_argument('--decision', help='the owner decision D-n that hands the level to the orchestrator')
@@ -4542,7 +4802,7 @@ def build_parser():
     p.set_defaults(func=cmd_overlap)
 
     p = sub.add_parser('lock', parents=[common], help='locks on shared paths and resources')
-    p.add_argument('action', choices=('acquire', 'release', 'list'))
+    p.add_argument('action', choices=('acquire', 'release', 'cancel', 'list'))
     p.add_argument('name', nargs='?', help='resource or shared path (repo:name or name)')
     p.add_argument('--wp', help='holder work package')
     p.add_argument('--repo', help='repository id when --wp does not identify it')
@@ -4611,7 +4871,7 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
         return runtime_commands.invoke(args)
-    except (OrchError, safe_edit.EditError, streams.StreamError, state_io.StateError,
+    except (OrchError, delivery.DeliveryError, safe_edit.EditError, streams.StreamError, state_io.StateError,
             id_allocator.AllocationError, project_instructions.InstructionError,
             codex_transport.TransportError) as error:
         print(f'orch: {error}', file=sys.stderr)

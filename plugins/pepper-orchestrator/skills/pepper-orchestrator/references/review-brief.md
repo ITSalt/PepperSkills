@@ -23,6 +23,8 @@ Facts collected by the orchestrator with MCP tools (database SELECT results, CI,
 Disposable clone and tests:
   <clone command printed by orch.py review-start>
 Mutations: rerun with --keep, change the clone, rerun the tests, then --cleanup.
+Use only the clone-path your own run printed. Exit code 2 (HEAD mismatch, unknown SHA): stop and
+report the expected and actual SHA; do not review another revision.
 
 Automatic findings already found (verify, do not repeat blindly):
   <list from orch.py review-start>

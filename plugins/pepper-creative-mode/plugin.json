@@ -23,7 +23,7 @@
         "displayName": "Creative Mode",
         "shortDescription": "Fair sampling and creativity",
         "longDescription": "Produces reproducible, self-seeded random choices and varied creative alternatives when a task explicitly requires variation.",
-        "category": "Productivity",
+        "category": "Creativity",
         "developerName": "Никитин Максим Геннадиевич",
         "capabilities": [
           "Generate"

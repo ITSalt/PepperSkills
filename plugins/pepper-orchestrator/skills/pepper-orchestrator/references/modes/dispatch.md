@@ -25,12 +25,16 @@ a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
    start command). A declared name that is not one of the repository's `resources` and lies outside
    its `shared_paths` is not a lock: dispatch warns and ignores it (typos never create new locks;
    `lint` warns too). On-demand resources are not taken at dispatch: the session asks with `LOCK`
-   (step 6).
+   (step 6). `--dry-run` also reports collisions of shared globs with the other READY packages of
+   the wave, with the same conservative intersection, without taking locks: narrow the declared
+   paths in `plan` rather than weakening the check.
 2. **Refused:** explain each reason to the owner in one line, with what unblocks it (a merge, a
    lock release, an owner answer). Running `dispatch <WP>` without `--dry-run` also records the
    refusal in the journal and queues the package in the `Waiting` column of every busy lock;
-   `orch.py lock release` then names the next package in that queue. Do not work around a
-   refusal by editing the package's declared paths unless the facts changed.
+   `orch.py lock release` then names the next package in that queue. A package that no longer
+   needs to wait leaves it with `orch.py lock cancel <lock> --wp <WP>`: only the waiting request
+   goes, the holder is never released; requests of finished packages are cleared by themselves.
+   Do not work around a refusal by editing the package's declared paths unless the facts changed.
 3. **Allowed:** run it for real.
 
    ```bash

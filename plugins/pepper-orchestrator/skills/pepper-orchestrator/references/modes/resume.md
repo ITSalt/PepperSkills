@@ -1,5 +1,8 @@
 # Mode: resume
 
+Follow [the shared delivery and final acceptance contract](../delivery-safety.md).
+Automatic PASS alone never grants VERIFIED_TEST/PROD; complete `verify finalize`.
+
 Restore the orchestrator after a lost or new session: files, reconciliation with reality, next
 step. No argument, or the program name when several workspaces exist.
 
