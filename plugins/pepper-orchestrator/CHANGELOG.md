@@ -11,6 +11,10 @@
 - Advisory instruction-pair diagnostics; scoped synchronization with path/lock checks;
   lock waiting cancellation, planned glob diagnostics, private-template-safe reports,
   full review-clone SHA checks and one supply per WP.
+- Claude Code settings: `deploy_prod` is denied whenever it is set and is not an `owner-confirmed`
+  description (a first word such as `ssh` or `git` no longer escapes the deny), and `deploy_test`
+  rules follow `deploy_test_mode`. Claude modes and the reviewer agent describe the new gates,
+  `lock cancel`, wave diagnostics and the review-clone SHA stop.
 - #35 hardening is not a claim that the original Linux sandbox collision was reproduced.
 
 

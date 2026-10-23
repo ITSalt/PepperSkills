@@ -210,6 +210,22 @@ class ReliabilityTests(unittest.TestCase):
         del module.repo.raw['deploy_test_mode']
         self.assertEqual(delivery.stand_plan(module)[0], 'owner')
 
+    def test_claude_settings_deny_any_prod_command_and_follow_stand_mode(self):
+        self.assertTrue(session_settings.denied_command('ssh prod ./deploy.sh'))
+        self.assertFalse(session_settings.denied_command('owner-confirmed in module window'))
+        self.assertIsNone(session_settings.stand_command({'deploy_test': 'git pull && make up'}))
+        self.assertEqual(session_settings.stand_command({'deploy_test': 'git pull && make up',
+                                                         'deploy_test_mode': 'command'}), 'git pull && make up')
+        self.assertIsNone(session_settings.stand_command({'deploy_test': './up.sh', 'deploy_test_mode': 'owner'}))
+        repo, ws, sha = self.fixture()
+        w = orch.Workspace(ws); repos, modules = w.streams()[0], w.streams()[1]
+        module = modules['a']
+        module.raw['deploy_prod'] = 'ssh prod ./deploy.sh'
+        data, _ = session_settings.module_settings(w.config, w.root, module)
+        self.assertIn('Bash(ssh prod ./deploy.sh)', data['permissions']['deny'])
+        data = session_settings.orchestrator_settings(w.config, w.root, modules, repos, orch.SKILL_DIR)
+        self.assertIn('Bash(ssh prod ./deploy.sh *)', data['permissions']['deny'])
+
     def test_reconciliation_requires_authoritative_queue_absence(self):
         for data, expected in [({'data': {'repository': {'pullRequest': {'mergeQueueEntry': None}}}}, True),
                                ({'data': {'repository': {'pullRequest': {'mergeQueueEntry': {'id': 'queued'}}}}}, False),

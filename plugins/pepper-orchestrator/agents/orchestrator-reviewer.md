@@ -19,7 +19,10 @@ and its output, a test run.
   Never reach a database or server through Bash instead (no `psql`, `mysql`, `mongosh`,
   `redis-cli`, database CLIs, `ssh` to servers, connection strings).
 - **Disposable clone only** for installs, tests and mutations: `review_clone.sh` from the brief
-  (`--keep` for mutations, then `--cleanup`). Nothing is pushed anywhere.
+  (`--keep` for mutations, then `--cleanup`). Nothing is pushed anywhere. Each run prints its own
+  `review-run` and `clone-path`; use only that clone, never one another reviewer kept. Exit code 2
+  (`HEAD mismatch` or an unknown SHA) stops the review: report it as a tool failure with the
+  printed expected and actual SHA, never review or test another revision.
 - **No outward actions.** Never merge (no `gh pr merge`, no merge tool such as
   `mcp__github__merge_pull_request`, no auto-merge), never approve, comment or request changes on
   the PR, never write to a database, never deploy.

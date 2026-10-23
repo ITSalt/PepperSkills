@@ -37,15 +37,19 @@ The deploy command must be non-interactive: a script that asks for a TTY confirm
    of the queue is delivered, and only after the previous merge is `VERIFIED_TEST` (or
    `--after-failure D-n`: a decision recorded in decisions.md, written to the journal and the ledger).
 3. **Gates.** `orch.py deliver --check <WP>` prints G1-G10 with facts: G1 accepted with a report; G2
-   PR head = accepted SHA; G3 checks green; G4 open, mergeable, base = integration branch, title with
+   PR head = accepted SHA; G3 every reported check passed or skipped (a failure to read the checks is red, never "no checks";
+   only `nonblocking_checks` named with source and D-n are excluded, and shown); G4 open, mergeable, base = integration branch, title with
    `[TAG]` and the package id; G5 queue head and locks free; G6 repository `checks`; G7 no owner item
    of the package marked "blocks delivery", referenced decisions recorded; G8 checked by GitHub at
    merge time; G9 "graph: checked" in the review report when the package has a Specification; G10
    delivery still handed over and no hold (orch.yaml re-read before every action).
 4. **Deliver.** `orch.py deliver --apply <WP>` when every gate is green: `gh pr merge <n> --repo <origin>
-   --<merge_method> [--delete-branch]` (never `--admin`), status `MERGED`, the merge queue row, a row in
+   --<merge_method> --match-head-commit <accepted SHA> [--delete-branch]` (never `--admin`, never
+   auto-merge); only an actually merged PR with its merge commit gives status `MERGED`, the merge queue row, a row in
    `release/deliveries.md`, the journal. With `stand: orchestrator`: waits for the deploy run of the
-   merge SHA (`deploy_workflows`, `gh run watch`, `run_timeout`) or runs `deploy_test`, then
+   merge SHA by `deploy_test_mode`: `workflow` waits for the run (`deploy_workflows`, `gh run watch`,
+   `run_timeout`), `command` runs `deploy_test`, `automatic` checks the served SHA, `owner` stops
+   after the merge with the owner's step; an ambiguous configuration refuses before the merge. Then
    `orch.py verify <WP> --env test`; automatic PASS stays VERIFYING. Run the live scenario and `verify finalize` before VERIFIED_TEST.
    A deploy run still in progress at verification ends with exit code 2: the package stays `MERGED`,
    no hold, no rollback; run `verify` again later. When GitHub has not reported the merge commit yet,
@@ -55,7 +59,9 @@ The deploy command must be non-interactive: a script that asks for a TTY confirm
 5. **Refusals and failures.** A red gate refuses and journals the reason. GitHub refusing the merge
    (an approval needed, a red required check) becomes an owner item with the owner's command, never a
    bypass. A failed run or verification puts delivery **on hold** (`delivery.hold`), writes a defect,
-   runs `rollback_test` when configured, and prints the REVISE text for the module session; the queue
+   runs `rollback_test` only after a completed stand deployment whose verification failed (never
+   when the deploy did not start or its outcome is unknown: read the facts, then `delivery reconcile
+   <WP> --decision D-n` as [delivery-safety](../delivery-safety.md) describes), and prints the REVISE text for the module session; the queue
    stands until `orch.py unhold "<reason>"` after the analysis (the orchestrator or the owner). The
    owner stops everything at any time with `orch.py hold "<reason>"` or `delivery.<level>: owner`.
 
