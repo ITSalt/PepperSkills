@@ -1,4 +1,4 @@
-# Codex CLI adapter and common runtime (0.11 preview)
+# Codex CLI adapter and common runtime (0.12 preview)
 
 The owner launches independent module sessions. One coordinator writes `status.md`
 and decisions; module sessions implement WPs in their own Git worktrees. Preserve

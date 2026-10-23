@@ -1,8 +1,8 @@
 # Pepper Orchestrator
 
-> Локальный кандидат: **0.12.0, не опубликован**. Добавлены доверенная доставка Codex CLI и явная живая приёмка. Инструкции опубликованного релиза 0.11.0 ниже относятся к предыдущей версии.
+> Новое в 0.12.0: доверенная доставка Codex CLI и явная живая приёмка. Подробности — в [CHANGELOG](CHANGELOG.md).
 
-> **Preview (0.11.0).** Режимы `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
+> **Preview (0.12.0).** Режимы `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > потоки в одном репозитории с worktree и замками; облачные сессии; сгенерированные настройки сессий.
 > Форматы и команды могут измениться до 1.0.0.
@@ -22,7 +22,7 @@ PROD и запись в БД остаются за владельцем — в �
 
 ## Codex CLI в Windows
 
-[Релиз 0.11.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.11.0).
+[Релиз 0.12.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.12.0).
 Нужны Python 3.12+, Git, GitHub CLI (`gh`) и Codex CLI (проверена версия 0.154.0).
 Установка из PowerShell:
 
@@ -40,7 +40,7 @@ codex plugin list --json
 
 Для обновления: `codex plugin marketplace upgrade pepperskills`, затем
 `codex plugin add pepper-orchestrator@pepperskills`. Перезапустите Codex и проверьте
-версию 0.11.0. Пользовательские настройки сохраняйте. Установка из ZIP и сценарий
+версию 0.12.0. Пользовательские настройки сохраняйте. Установка из ZIP и сценарий
 проверки на вашей машине описаны в [Windows guide](WINDOWS.md).
 
 ## Использование
@@ -63,7 +63,7 @@ codex plugin list --json
 | `/pepper-orchestrator:report [что]` | сообщить о дефекте плагина: обезличенная запись, Issue после вашего «да» |
 | `/pepper-orchestrator:decide <текст>` | решение D-n / допущение A-n / вопрос Q-n или вопрос владельцу P-n |
 
-Версия 0.11.0 — preview (этапы 2a–2e, 3a, 3b, 3e, 3c, 3d). Модуль — весь репозиторий либо раздел или домен одного
+Версия 0.12.0 — preview (этапы 2a–2e, 3a, 3b, 3e, 3c, 3d). Модуль — весь репозиторий либо раздел или домен одного
 репозитория: каждый поток работает в своём worktree (`claude -w`), общие пути и ресурсы держатся
 замками, слияния в один репозиторий идут очередью. `review` на первой сдаче запускает агента-рецензента
 (только чтение, одноразовый клон), на пересдачах читает дифф ревизии. `verify` проверяет стенд и прод по

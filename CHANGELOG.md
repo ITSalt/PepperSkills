@@ -1,5 +1,18 @@
 # Changelog
 
+## pepper-orchestrator 0.12.0 — 2026-10-23, public preview
+
+- Fail-closed CI gate: a failure to read checks is never "no checks"; optional provider checks are
+  excluded only by exact name, source and owner decision D-n.
+- Explicit stand transport (`deploy_test_mode`) checked before merge, merges bound to the reviewed
+  head, recoverable delivery phases without blind rollback, `delivery reconcile`.
+- Explicit live acceptance (`verify finalize`) before VERIFIED_TEST/PROD.
+- Codex CLI deliver/release on the common runtime; a client switch returns delivery to the owner.
+- Advisory instruction files, `lock cancel`, planned glob diagnostics, private-template-safe
+  reports, full-SHA review clones, one supply per work package.
+- Claude Code settings deny `deploy_prod` whenever it is set. See the
+  [plugin changelog](plugins/pepper-orchestrator/CHANGELOG.md).
+
 ## 0.11.0 — 2026-10-01, public preview
 
 - Dedicated Codex CLI skill, native scout/reviewer/verifier roles, prepared ordinary

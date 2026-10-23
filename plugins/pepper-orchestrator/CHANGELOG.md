@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.12.0 — unreleased, reliability and Codex CLI delivery
+## 0.12.0 — 2026-10-23, public preview: reliability and Codex CLI delivery
 
 - Shared fail-closed CI gates, exact provider exceptions by owner decision, SHA-bound merges,
   explicit stand transport and recoverable delivery phases. No blind rollback of unknown outcomes.
