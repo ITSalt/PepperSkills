@@ -35,6 +35,13 @@
 
 {{WORKTREE_SETUP}}
 
+When reusing an existing Codex session under an assignment ID, preserve a short
+handover and run the TASK-supplied `session transition` from your current worktree.
+Do not create another worktree/session or repeat implementation for the same ID.
+Read the whole package and project instructions; echo the returned STARTED marker.
+If preparation/context cannot be verified, stop and report the concrete blocker.
+
+
 ## 1. Facts
 
 Why the package is needed: verified facts with `file:line`, SELECT results and report

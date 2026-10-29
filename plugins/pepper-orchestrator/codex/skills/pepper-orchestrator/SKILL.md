@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Coordinate owner-launched Codex CLI module sessions, work packages, independent review and verification, and the owner queue across repositories or Git worktrees. Keep state in files; preserve Claude programs and project instructions.
 metadata:
-  version: 0.12.0
+  version: 0.13.0
 ---
 
 # Pepper Orchestrator for Codex CLI
@@ -19,7 +19,9 @@ references inside this skill directory; no separate editable core exists.
 
 Modes: `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
 `close`, `reopen`, `report`, `deliver`, `release`. Select the mode from the user's intent or arguments.
-Create Codex programs with `init --client codex --sessions local`. Missing `client`
+Create Codex programs with `init --client codex --sessions local`. For opt-in reuse, automatic dispatch, observation and recovery, follow the autonomy
+section of the Codex workflow; never ask the owner to type /dispatch when enabled.
+Missing `client`
 in existing programs means Claude: use explicit sequential client switching.
 
 Do not use Claude model aliases, `claude` flags, Claude settings files or SendMessage

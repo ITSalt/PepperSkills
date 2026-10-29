@@ -1,5 +1,9 @@
 # Mode: resume
 
+Codex opt-in autonomous continuation follows [autonomy](../autonomy.md): use
+`next --json`, current coordinator ownership and stable assignment IDs. Pause/close
+prevents new assignments; a queued signal must recheck current state.
+
 Follow [the shared delivery and final acceptance contract](../delivery-safety.md).
 Automatic PASS alone never grants VERIFIED_TEST/PROD; complete `verify finalize`.
 

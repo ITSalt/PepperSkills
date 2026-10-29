@@ -1,5 +1,9 @@
 # Mode: dispatch
 
+Codex opt-in autonomous continuation follows [autonomy](../autonomy.md): use
+`next --json`, current coordinator ownership and stable assignment IDs. Pause/close
+prevents new assignments; a queued signal must recheck current state.
+
 Hand a READY work package to a module session: checks, locks, the start command for the owner (or
 a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.
 

@@ -1,5 +1,7 @@
 # Pepper Orchestrator
 
+> Кандидат 0.13, ещё не опубликован: локальное переиспользование Codex-сессий и автоматический dispatch. См. [автономность](skills/pepper-orchestrator/references/autonomy.md). Публичные загрузки ниже — 0.12.0.
+
 > Новое в 0.12.0: доверенная доставка Codex CLI и явная живая приёмка. Подробности — в [CHANGELOG](CHANGELOG.md).
 
 > **Preview (0.12.0).** Режимы `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,

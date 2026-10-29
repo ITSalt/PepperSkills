@@ -2153,6 +2153,16 @@ def dispatch_problems(ws, wp):
 def cmd_dispatch(args):
     ws = Workspace(find_workspace(args.workspace))
     state_version = runtime_commands.state_version(ws)
+    if ws.config.get('client') == 'codex':
+        import autonomy
+        _, routing = autonomy.registry(ws)
+        if args.json or (routing['autonomy']['enabled'] and not args.owner_launch):
+            return autonomy.cmd_dispatch(args)
+        if routing['autonomy']['enabled']:
+            autonomy.owner(routing, args.coordinator, args.generation)
+            plan = autonomy.next_actions(ws)
+            if not any(a.get('wp') == args.wp and a['kind'] == 'owner' for a in plan['actions']):
+                raise OrchError('owner launch is blocked or an existing session is available; inspect next --json')
     ws.require_open('dispatch')
     wp = args.wp
     problems, wanted, busy, r, module = dispatch_problems(ws, wp)
@@ -2251,6 +2261,8 @@ def cmd_dispatch(args):
     with state_io.transaction(ws.root):
         if runtime_commands.state_version(ws) != state_version:
             raise OrchError("program state changed during external checks; retry from current files")
+        if is_codex and routing['autonomy']['enabled']:
+            autonomy.owner(autonomy.registry(ws)[1], args.coordinator, args.generation)
         for name in wanted:
             if acquire(ws, module.repo, name, wp, 'dispatch'):
                 raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
@@ -4723,6 +4735,9 @@ def build_parser():
                    help='cloud module: append the whole package text to the prompt')
     p.add_argument('--no-settings', action='store_true',
                    help='local module: start command without --settings (the pre-0.6.0 form)')
+    p.add_argument('--json', action='store_true', help='structured Codex assignment/delivery result')
+    p.add_argument('--owner-launch', action='store_true', help='reserve a slot and print a new owner-launched terminal command')
+    p.add_argument('--coordinator'); p.add_argument('--generation', type=int)
     p.set_defaults(func=cmd_dispatch)
 
     p = sub.add_parser('verify', parents=[common], help='verify a package, or verify finalize WP after the live scenario')
@@ -4873,7 +4888,7 @@ def main(argv=None):
         return runtime_commands.invoke(args)
     except (OrchError, delivery.DeliveryError, safe_edit.EditError, streams.StreamError, state_io.StateError,
             id_allocator.AllocationError, project_instructions.InstructionError,
-            codex_transport.TransportError) as error:
+            codex_transport.TransportError, OSError, subprocess.TimeoutExpired) as error:
         print(f'orch: {error}', file=sys.stderr)
         return 1
 

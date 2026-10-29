@@ -1,5 +1,7 @@
 # Pepper Orchestrator
 
+> Unreleased 0.13 candidate: opt-in local Codex session reuse and autonomous dispatch. See [autonomy](skills/pepper-orchestrator/references/autonomy.md). Public downloads below remain 0.12.0.
+
 > New in 0.12.0: Codex CLI trusted delivery and explicit live acceptance. See the [changelog](CHANGELOG.md).
 
 > **Preview (0.12.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,

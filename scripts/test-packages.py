@@ -89,13 +89,18 @@ def main():
             for document in [root / 'LICENSE', root / 'NOTICE.md', skill_root / 'SKILL.md']:
                 if document.is_file():
                     check_document_paths(document, root)
-            for script_name in ('selftest.py', 'test_modernization.py', 'test_report_quality.py', 'test_network_evidence.py', 'run_evals.py'):
+            for script_name in ('selftest.py', 'runtime_selftest.py', 'reliability_selftest.py', 'autonomy_selftest.py',
+                                'test_modernization.py', 'test_report_quality.py', 'test_network_evidence.py', 'run_evals.py'):
                 script = skill_root / 'scripts' / script_name
                 if script.is_file():
                     command = [sys.executable, str(script)]
                     if script.name == 'run_evals.py':
                         command.append('--check-only')
                     subprocess.run(command, cwd=skill_root, check=True, stdout=subprocess.DEVNULL)
+            codex_script = root / 'codex/skills/pepper-orchestrator/scripts/autonomy_selftest.py'
+            if is_plugin and codex_script.is_file():
+                subprocess.run([sys.executable, str(codex_script)], cwd=codex_script.parent,
+                               check=True, stdout=subprocess.DEVNULL)
             print(f'PASS package {archive.relative_to(ROOT)}')
 
     # Recreate identical source files in different orders, modes, timestamps, umasks, and TZ.

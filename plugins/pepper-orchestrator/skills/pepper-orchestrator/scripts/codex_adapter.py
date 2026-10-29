@@ -182,6 +182,38 @@ def launch(ws, module, wp, meta):
     return shlex.join(prepare) + ' && ' + shlex.join(argv)
 
 
+def native_rules():
+    return ('# Pepper Orchestrator: ordinary command forms; branch protection remains required.\n'
+            'prefix_rule(pattern=["gh", "pr", "merge"], decision="forbidden")\n'
+            'prefix_rule(pattern=["gh", "workflow", "run"], decision="forbidden")\n'
+            'prefix_rule(pattern=["gh", "release"], decision="forbidden")\n'
+            'prefix_rule(pattern=["git", "push", "--force"], decision="forbidden")\n'
+            'prefix_rule(pattern=["git", "push", "-f"], decision="forbidden")\n')
+
+
+def reuse_rules_ok(directory):
+    rules = Path(directory) / '.codex/rules/pepper-orchestrator.rules'
+    return rules.is_file() and rules.read_text(encoding='utf-8') == native_rules()
+
+
+def prepare_reuse(ws, wp, directory):
+    """Module-owned environment setup; native client config stays protected.
+
+    Initial owner preparation installed the rules. Reuse never rewrites .codex,
+    even for identical bytes: native workspace-write protects this directory.
+    The caller's runtime receipt records setup progress/unknown effects.
+    """
+    import runtime_commands
+    _, module, meta = runtime_commands.api().wp_context(ws, wp)
+    if streams.common_dir(directory) != streams.common_dir(module.repo.local) or streams.current_branch(directory) != meta['branch']:
+        raise streams.StreamError('reuse preparation requires the assigned repository/branch')
+    if not reuse_rules_ok(directory):
+        raise streams.StreamError('native rules missing/changed; owner preparation and reconfirmation required')
+    for command in module.repo.worktree_setup:
+        subprocess.run(command, cwd=directory, shell=True, check=True)
+    return str(directory)
+
+
 def prepare(ws, wp):
     r = ws.wp_rows().get(wp)
     if not r:
@@ -211,12 +243,7 @@ def prepare(ws, wp):
         state_io.atomic(marker, setup.encode())
     # Native Codex rules are additive and generated before the agent starts.
     rules = directory / '.codex/rules/pepper-orchestrator.rules'
-    content = ('# Pepper Orchestrator: ordinary command forms; branch protection remains required.\n'
-               'prefix_rule(pattern=["gh", "pr", "merge"], decision="forbidden")\n'
-               'prefix_rule(pattern=["gh", "workflow", "run"], decision="forbidden")\n'
-               'prefix_rule(pattern=["gh", "release"], decision="forbidden")\n'
-               'prefix_rule(pattern=["git", "push", "--force"], decision="forbidden")\n'
-               'prefix_rule(pattern=["git", "push", "-f"], decision="forbidden")\n')
+    content = native_rules()
     if rules.exists() and rules.read_text(encoding='utf-8') != content:
         raise streams.StreamError(f'preserve changed rules: {rules}')
     state_io.atomic(rules, content.encode())
