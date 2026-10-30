@@ -9,7 +9,11 @@ implementation direction, not the evidence or rejection, in the
 [Linux live follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.md)
 verifies API, caller binding, fixture host integrity, pending approvals and
 same-thread persisted tools on CLI 0.165.0. RPC/FD remains INCONCLUSIVE, Git
-preparation BLOCKED. This is no permission to implement privileged operations.
+preparation BLOCKED for that unchanged-profile run.
+The [selected Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.md)
+now passes six native grant/Git/lifetime/isolation checks and adds actual tool
+inventory/default queue evidence. The common gate still requires macOS and final
+boundary review; no privileged implementation is accepted by this diagnostic result.
 
 ## Why this changes the trust boundary
 

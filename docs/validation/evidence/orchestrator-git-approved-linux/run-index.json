@@ -1,0 +1,26 @@
+{
+  "source_base": "d964453",
+  "partial_probe_ref": "780cf09",
+  "final_probe_ref": "50552a30cf299ce9ed6bcbac4a37c9c6d207fd21",
+  "cli": "0.165.0",
+  "model": "gpt-6.1-sol",
+  "reasoning_effort": "high",
+  "explicit_turn_start_requests": 8,
+  "partial_turns": 3,
+  "final_turns": 5,
+  "native_turns_started": 8,
+  "provider_internal_request_count": "not instrumented",
+  "native_fixture_permission_grants": 2,
+  "native_manual_UI_clicks": 0,
+  "authorization": "Human explicitly selected sandbox + Git permissions for a disposable fixture; a bounded test owner answered the exact native permission request once per fixture.",
+  "scope": "turn; no session grant, acceptForSession, execpolicy amendment or unsandboxed command acceptance",
+  "production_runtime_changes": false,
+  "autonomy_E2E": "NOT_RUN",
+  "environment": {
+    "os": "Linux",
+    "kernel": "6.8.0-147-generic",
+    "python": "3.12.3",
+    "git": "2.43.0",
+    "distribution": "Ubuntu 24.04.5 LTS"
+  }
+}

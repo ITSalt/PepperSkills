@@ -1,12 +1,16 @@
 # Codex Linux autonomy and macOS acceptance plan
 
-30 October 2026. **Step 2 remains BLOCKED: live private-channel checks are partial.**
+30 October 2026 plan, with follow-up evidence. **Step 2 still requires macOS and final boundary review.**
 [Russian detailed plan](2026-10-30-orchestrator-codex-linux-acceptance.ru.md).
 [Design ADR](../adr/2026-10-30-codex-private-stdio-tools.md).
 [Linux agent prompt](2026-10-30-orchestrator-linux-agent.md).
 [Linux follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.md):
 API/caller/host/approval/same-thread recovery checks PASS, RPC/FD INCONCLUSIVE,
 Git preparation BLOCKED at unchanged worktree roots. No scheduler integration.
+[Selected Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.md):
+all six grant/Git/boundary/expiry/sibling/restart checks PASS on Linux 0.165.0.
+Actual code-mode inventory and default CLI queue observations now supplement the
+earlier RPC/FD coverage. This is not autonomy E2E or authorization to ship host operations.
 
 ## Scope and existing evidence
 
@@ -86,17 +90,18 @@ delta. A broader-permission run does not satisfy unchanged-profile acceptance.
 Without a compliant preparation path retain BLOCKED_GIT_PREPARATION even after
 security PASS. The plan is not advance authorization to grant permissions.
 
-## 2a. Recommended alternative: sandbox with explicit Git grants
+## 2a. Selected fixture profile: sandbox with explicit Git grants
 
-Following the owner's question about relaxing permissions, propose a separate
-`Git-approved` acceptance profile. The original unchanged-profile evidence stays
-BLOCKED_GIT_PREPARATION; do not relabel it. This plan changes no live permissions
-and is not itself approval of a command or grant.
+The owner selected the separate `Git-approved` profile for a disposable Linux
+fixture. Its bounded native grant and actual Git preparation now pass; see the
+linked evidence above. The original unchanged-profile evidence stays
+BLOCKED_GIT_PREPARATION. No production profile or global config was changed.
+This selection does not authorize grants for an unrelated program.
 
-Keep workspace-write/on-request and the private owner channel. First test the
-native additional-filesystem-permission mechanism for the required worktree Git
-metadata, recording the exact requested/resolved paths, command, grant lifetime
-and owner decision. Prefer command/turn scope; a persistent session grant needs
+Keep workspace-write/on-request and the private owner channel. The tested native
+mechanism uses `request_permissions_tool=true` in isolated config and grants six
+Git metadata directories for one turn. Integration must record exact requested/
+resolved paths, command, lifetime and owner decision. Prefer command/turn scope; a persistent session grant needs
 an explicit separate owner choice. No blanket `git` allow-rule, automatic approval,
 full home/root write access, generic host runner or host-side project setup.
 If the CLI cannot enforce a narrow grant, report that limitation; do not silently
@@ -115,6 +120,12 @@ with normal approval pauses; it is not a zero-approval/unattended claim or a PAS
 of the old unchanged-profile gate. The caller/RPC isolation gate still applies.
 Full unsandboxed trust would be a different explicitly selected mode, preferably
 inside a dedicated disposable environment; it is not enabled by this proposal.
+
+The finite helper ended before the grant turn ended. New-command expiry is not
+a claim that a surviving background terminal loses its launch permissions. Before
+production reuse, require preparation completion and check retained terminals/
+processes. Treat granted Git metadata as mutable: pin host observer paths/common
+dir, disable project hooks/filters and never execute setup on the host.
 
 API basis: official [command approvals](https://learn.chatgpt.com/docs/app-server#command-execution-approvals)
 describe experimental additionalPermissions. Version-pinned 0.165.0

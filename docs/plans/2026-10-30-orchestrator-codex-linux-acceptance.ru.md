@@ -3,11 +3,15 @@
 Дата: 30 октября 2026 года. Обновление после проверки блокера §2.
 [English canonical plan](2026-10-30-orchestrator-codex-linux-acceptance.md).
 
-Статус: прежний MCP-вариант отклонён; §2 остаётся BLOCKED.
+Статус: прежний MCP-вариант отклонён; §2 ещё требует macOS и итоговой проверки границы.
 [Живой Linux follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.ru.md):
 API/caller/host/approval/same-thread recovery PASS, RPC/FD INCONCLUSIVE,
 Git preparation BLOCKED с неизменёнными worktree roots. Это ещё не security PASS
 и не Linux autonomy PASS; scheduler не интегрирован.
+[Выбранный Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.ru.md):
+шесть grant/Git/boundary/expiry/sibling/restart проверок PASS на Linux 0.165.0.
+Фактический code-mode inventory и default CLI queue дополнили прежнее покрытие
+RPC/FD. Это не autonomy E2E и не разрешение поставить host-операции.
 [Новый ADR](../adr/2026-10-30-codex-private-stdio-tools.md),
 [исторический отказ](../adr/2026-10-30-codex-stdio-bridge.ru.md),
 [промпт Linux-агенту](2026-10-30-orchestrator-linux-agent.ru.md).
@@ -139,17 +143,17 @@ host fetch/setup, legacy Landlock или расширением профиля.
 исходного неизменённого профиля. Без допустимого пути оставить
 BLOCKED_GIT_PREPARATION даже после security PASS; это ещё не Linux autonomy PASS.
 
-### 2.5. Рекомендуемая альтернатива: песочница с явными Git-разрешениями
+### 2.5. Выбранный тестовый профиль: песочница с явными Git-разрешениями
 
-После вопроса владельца об ослаблении прав предлагается отдельный профиль
-приёмки `Git-approved`. Исторический неизменённый профиль остаётся
-BLOCKED_GIT_PREPARATION. Этот план не меняет действующие права и сам по себе
-не является одобрением команды или grant.
+Владелец выбрал `Git-approved` для одноразового Linux-fixture. Ограниченный
+native grant и реальная Git-подготовка теперь PASS; evidence по ссылке выше.
+Исторический неизменённый профиль остаётся BLOCKED_GIT_PREPARATION. Production-
+профиль и глобальные config не менялись; выбор не разрешает grants другой программе.
 
-Сохранить workspace-write/on-request и закрытый канал владельца. Сначала проверить
-штатные дополнительные файловые разрешения на необходимую Git metadata данного
-worktree. Записать точные requested/resolved paths, команду, срок grant и решение
-владельца. Предпочитать command/turn scope; постоянный session grant требует
+Сохранить workspace-write/on-request и закрытый канал владельца. Проверен native
+механизм `request_permissions_tool=true` в изолированном config с grant шести
+Git-каталогов на один ход. При интеграции записывать точные requested/resolved
+paths, команду, срок grant и решение владельца. Предпочитать command/turn scope; постоянный session grant требует
 отдельного явного выбора владельца. Без общего allow-rule на `git`, автоодобрения,
 полного доступа к home/root, общего host runner и запуска setup на хосте.
 Если CLI не умеет ограниченный grant — указать предел; не заменять его молча
@@ -169,6 +173,12 @@ Fetch, создание ветки и setup по-прежнему выполня
 Gate привязки роли и изоляции RPC остаётся обязательным. Полностью доверенный
 режим без песочницы — другой явный выбор, предпочтительно в отдельной одноразовой
 среде; этим предложением он не включается.
+
+Конечный helper завершился до конца хода. Истечение прав у новых команд не
+доказывает отзыв launch permissions уже работающего фонового terminal. Перед
+production reuse проверять завершение подготовки и активные terminals/processes.
+Git metadata с grant изменяема: host-наблюдения должны закреплять common dir/пути,
+исключать project hooks/filters и не исполнять setup на хосте.
 
 Основание API: [native approvals](https://learn.chatgpt.com/docs/app-server#command-execution-approvals),
 исходники 0.165 `request_permissions` и policy merging из English-плана.

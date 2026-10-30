@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline checks of bounded native-grant decisions and provenance; no model/auth."""
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -113,6 +114,85 @@ class GitGrantsTests(unittest.TestCase):
         self.assertEqual(p.git(Path(f['root']) / 'module', 'show-ref')['returncode'], 0)
         self.assertNotIn(str(Path(f['common']) / 'config'), f['grant_roots'])
         self.assertNotIn(f['sibling'], f['grant_roots'])
+
+
+    def evidence(self):
+        root = Path(__file__).resolve().parent.parent / 'docs/validation/evidence/orchestrator-git-approved-linux'
+        return root, json.loads((root / 'git-approved-final.json').read_text(encoding='utf-8'))
+
+    def test_recorded_fixture_proves_native_results_and_executed_source(self):
+        root, r = self.evidence()
+        canonical = lambda path: Path(path).read_bytes().replace(b'\r\n', b'\n')
+        self.assertEqual(r['source_sha256'], hashlib.sha256(canonical(p.__file__)).hexdigest())
+        self.assertEqual(r['library_sha256'], hashlib.sha256(canonical(p.LIB)).hexdigest())
+        self.assertEqual(r['overall'], 'GIT_APPROVED_FIXTURE_PASS')
+        self.assertEqual(p.assess(r), r['verdicts'])
+        self.assertTrue(all(v == 'PASS' for v in r['verdicts'].values()))
+        self.assertEqual(r['model_turns_requested'], 5)
+        self.assertEqual(r['native_turns_started'], 5)
+        self.assertTrue(all(p.native_result_matches(r, t) for t in r['turns']))
+        for role, thread in r['threads'].items():
+            self.assertEqual(thread['sandbox']['type'], 'workspaceWrite')
+            self.assertTrue(thread['sandbox']['networkAccess'])
+            self.assertEqual(thread['sandbox']['writableRoots'], [])
+            self.assertEqual(thread['runtimeWorkspaceRoots'], [thread['cwd']])
+            self.assertEqual(thread['approvalPolicy'], 'on-request')
+            self.assertEqual(thread['approvalsReviewer'], 'user')
+        self.assertEqual(r['protected_hashes_before'], r['protected_hashes_after'])
+
+    def test_exact_grant_has_native_request_response_and_sibling_overlap(self):
+        _, r = self.evidence()
+        phases = {t['phase']: t for t in r['turns']}
+        g = phases['granted']; request = g['approval_requests'][0]; decision = g['approval_decisions'][0]
+        self.assertEqual(len(g['approval_requests']), 1)
+        self.assertEqual(request['method'], 'item/permissions/requestApproval')
+        self.assertEqual(request['params']['threadId'], g['thread'])
+        self.assertEqual(request['params']['turnId'], g['turn'])
+        roots = r['fixture']['grant_roots']
+        self.assertEqual(len(roots), 6)
+        self.assertEqual(set(request['params']['permissions']['fileSystem']['write']), set(roots))
+        self.assertEqual(set(decision['result']['permissions']['fileSystem']['write']), set(roots))
+        self.assertEqual(decision['result']['scope'], 'turn')
+        replies = [e for e in r['events'] if e['direction'] == 'owner_to_native'
+            and 'permissions' in e['message'].get('result', {})]
+        self.assertEqual(len(replies), 1)
+        self.assertEqual(replies[0]['message'], {'id': request['id'], 'result': decision['result']})
+        self.assertTrue(p.sibling_overlaps_grant(r, phases))
+        for phase in ('baseline', 'sibling', 'expired', 'recovered'):
+            self.assertFalse(phases[phase]['approval_decisions'])
+            access = phases[phase]['shell_result']['grant_access']
+            self.assertEqual(set(access), set(roots))
+            self.assertTrue(all(not a['ok'] and a['errno'] == 30 for a in access.values()))
+        self.assertEqual(r['resume']['thread']['id'], r['threads']['module']['thread']['id'])
+        self.assertTrue(r['before_restart_stop']['waited'])
+
+    def test_surface_cleanup_and_checksums_match_owner_records(self):
+        root, r = self.evidence()
+        surface = json.loads((root / 'surface-summary.json').read_text(encoding='utf-8'))
+        self.assertTrue(all(v == 'undefined' for v in surface['types'].values()))
+        self.assertEqual(len(surface['tool_names']), 13)
+        self.assertIn('request_permissions', surface['tool_names'])
+        self.assertIn('Object.getOwnPropertyNames(globalThis)', surface['native_source'])
+        self.assertEqual(surface['observed_values'].count('unsupported import in exec'), 2)
+        calls = [e['message']['params']['item'] for e in r['events']
+            if e['message'].get('method') == 'rawResponseItem/completed'
+            and e['message']['params'].get('threadId') == surface['threadId']
+            and e['message']['params'].get('turnId') == surface['turnId']]
+        self.assertTrue(any(i.get('type') == 'custom_tool_call' and i.get('call_id') == surface['native_call_id']
+            and i.get('input') == surface['native_source'] for i in calls))
+        self.assertTrue(any(i.get('type') == 'custom_tool_call_output' and i.get('call_id') == surface['native_call_id']
+            and any(json.dumps(surface['tool_names'], separators=(',', ':')) == c.get('text') for c in i.get('output', [])) for i in calls))
+        cleanup = json.loads((root / 'cleanup.json').read_text(encoding='utf-8'))
+        self.assertEqual(cleanup['owned_fixture_cwd_processes'], [])
+        for owner in cleanup['owners']:
+            self.assertTrue(owner['auth_copy_absent'])
+            self.assertTrue(all(not v for v in owner['known_pids_exist'].values()))
+        self.assertTrue(r['cleanup']['auth_removed'])
+        self.assertTrue(r['cleanup']['runtime_stopped'])
+        self.assertTrue(all('result' in a['response'] for a in r['archived_threads']))
+        for line in (root / 'SHA256SUMS').read_text(encoding='utf-8').splitlines():
+            expected, name = line.split(None, 1)
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), expected, name)
 
 
 if __name__ == '__main__':

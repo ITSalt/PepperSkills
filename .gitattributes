@@ -13,3 +13,8 @@ plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md linguist-generat
 plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/references/checklist.md linguist-generated
 plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/rules.json linguist-generated
 plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/signatures.json linguist-generated
+
+# Preserve canonical evidence and executed-probe hashes across native CI hosts.
+scripts/probe-orchestrator-git-grants.py text eol=lf
+scripts/test-orchestrator-git-grants.py text eol=lf
+docs/validation/evidence/orchestrator-git-approved-linux/* text eol=lf
