@@ -219,13 +219,25 @@ def cmd_instructions(args):
     return 0
 
 
+def reuse_setup(ws, wp, directory, precheck=None):
+    """Environment setup of a reused worktree on the assigned branch (both clients)."""
+    _, module, meta = api().wp_context(ws, wp)
+    if streams.common_dir(directory) != streams.common_dir(module.repo.local) or streams.current_branch(directory) != meta['branch']:
+        raise streams.StreamError('reuse preparation requires the assigned repository/branch')
+    if precheck:
+        precheck()
+    for command in module.repo.worktree_setup:
+        subprocess.run(command, cwd=directory, shell=True, check=True)
+    return str(directory)
+
+
 def registry(ws):
     import autonomy
     return autonomy.registry(ws)
 
 
 def cmd_session(args):
-    if args.action in ('attach', 'assign', 'sent', 'started', 'reconcile', 'transition', 'cancel', 'recover-transition', 'discover', 'compact', 'reconcile-send') or (
+    if args.action in ('attach', 'assign', 'sent', 'started', 'reconcile', 'transition', 'cancel', 'recover-transition', 'discover', 'compact', 'compacted', 'reconcile-send') or (
             args.action == 'send' and args.assignment):
         import autonomy
         return autonomy.cmd_session(args)
@@ -422,7 +434,7 @@ def add_parsers(sub, common):
     p.set_defaults(func=cmd_instructions)
     p = sub.add_parser('session', parents=[common], help='independent owner-launched session registry and transport')
     p.add_argument('action', choices=('capabilities', 'list', 'register', 'read', 'send', 'stopped',
-                                    'attach', 'assign', 'sent', 'started', 'reconcile', 'transition', 'cancel', 'recover-transition', 'discover', 'compact', 'reconcile-send'))
+                                    'attach', 'assign', 'sent', 'started', 'reconcile', 'transition', 'cancel', 'recover-transition', 'discover', 'compact', 'compacted', 'reconcile-send'))
     p.add_argument('--wp')
     p.add_argument('--thread')
     p.add_argument('--worktree')
@@ -430,7 +442,9 @@ def add_parsers(sub, common):
     p.add_argument('--message-file')
     p.add_argument('--request-id')
     p.add_argument('--assignment'); p.add_argument('--coordinator'); p.add_argument('--generation', type=int)
-    p.add_argument('--pid', type=int); p.add_argument('--outcome', choices=('queued', 'outcome_unknown'))
+    p.add_argument('--pid', type=int); p.add_argument('--outcome', choices=('queued', 'outcome_unknown', 'not_sent'))
+    p.add_argument('--model', help='attach (Claude): owner-confirmed launch model of the session')
+    p.add_argument('--effort', help='attach (Claude): owner-confirmed launch effort of the session')
     p.set_defaults(func=cmd_session)
     p = sub.add_parser('client', parents=[common], help='sequential client switch, never a mixed writer program')
     p.add_argument('action', choices=('status', 'switch'))

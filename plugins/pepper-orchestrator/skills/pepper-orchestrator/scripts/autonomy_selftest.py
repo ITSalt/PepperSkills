@@ -372,5 +372,227 @@ class AutonomyTests(unittest.TestCase):
         self.assertTrue(any('work packages complete' in x.get('reason', '') for x in plan['actions']))
 
 
+class ClaudeAutonomyTests(unittest.TestCase):
+    """Claude transport: `claude agents --json` observation, SendMessage outside the CLI."""
+
+    def setUp(self):
+        self.h = runtime_selftest.RuntimeTests(); self.h.setUp(); self.addCleanup(self.h.tearDown)
+        self.repo, self.root = self.h.fixture('claude')
+        self.h.cli('--workspace', self.root, 'new-wp', 'a', 'first')
+        self.h.cli('--workspace', self.root, 'new-wp', 'a', 'second')
+        self.ws = orch.Workspace(self.root)
+        _, module, meta = orch.wp_context(self.ws, 'WP-A-01')
+        self.wt = self.h.root / 'writer'
+        self.h.git(self.repo, 'worktree', 'add', '-b', meta['branch'], self.wt, 'main')
+        self.sha = self.h.git(self.wt, 'rev-parse', 'HEAD')
+        self.h.cli('--workspace', self.root, 'set', 'WP-A-01', 'status', 'DONE')
+        self.h.cli('--workspace', self.root, 'set', 'WP-A-01', 'pr', 'https://github.com/example/repo/pull/1')
+        self.h.cli('--workspace', self.root, 'set', 'WP-A-02', 'status', 'READY')
+        self.ws = orch.Workspace(self.root)
+        self.ws.journal('WP-A-01: accepted at ' + self.sha, wp='WP-A-01', evidence='report fixture')
+        # The module session process is an ancestor of every command it runs (here: the test's parent).
+        self.module = {'sessionId': 'sess-a-0001', 'name': 'test-a', 'cwd': str(self.wt), 'pid': os.getppid(),
+                       'startedAt': 1, 'kind': 'interactive', 'status': 'idle'}
+        self.coord = {'sessionId': 'coord-0001', 'name': 'test-coord', 'cwd': str(self.root), 'pid': os.getpid(),
+                      'startedAt': 1, 'kind': 'interactive', 'status': 'idle'}
+        self.rows = [self.module, self.coord]
+        self.patches = [patch.object(a.claude_adapter, 'agents', side_effect=lambda: json.loads(json.dumps(self.rows))),
+                        patch.object(a.claude_adapter, 'version', return_value=(2, 1, 312)),
+                        patch.object(a, 'pr_observation', return_value={'state': 'MERGED', 'headRefOid': self.sha,
+                                                                      'mergeCommit': {'oid': self.sha}})]
+        for p in self.patches:
+            p.start(); self.addCleanup(p.stop)
+        env = patch.dict(os.environ, {'CLAUDE_CODE_SESSION_ID': 'sess-a-0001', 'CLAUDE_PID': str(os.getppid()),
+                                      'ORCH_RUNTIME_DIR': str(self.h.root / 'runtime')})
+        env.start(); self.addCleanup(env.stop)
+        a.attach(self.ws, argparse.Namespace(wp='WP-A-01', thread='sess-a-0001', worktree=str(self.wt),
+                                             pid=os.getppid(), evidence='fixture binding', model=None, effort=None))
+        _, data = a.registry(self.ws)
+        data['autonomy']['enabled'] = True
+        data['coordinator'] = {'thread_id': 'coord-0001', 'generation': 1, 'process': a.process_identity(os.getpid()), 'released': False}
+        data['generation'] = 1
+        a.persist(self.ws, data)
+
+    def run_json(self, func, **values):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = func(argparse.Namespace(workspace=str(self.root), **values))
+        return code, json.loads(output.getvalue())
+
+    def session(self, action, **values):
+        base = dict(action=action, assignment=None, coordinator='coord-0001', generation=1, evidence=None,
+                    outcome=None, thread=None, wp=None)
+        return self.run_json(a.cmd_session, **{**base, **values})
+
+    def dispatched(self):
+        code, result = self.run_json(a.cmd_dispatch, wp='WP-A-02', dry_run=False, coordinator='coord-0001', generation=1)
+        self.assertEqual((code, result['result']), (0, 'send_required'))
+        return result
+
+    def in_worktree(self, func, *args):
+        old = Path.cwd(); os.chdir(self.wt)
+        try:
+            return func(*args)
+        finally:
+            os.chdir(old)
+
+    def test_full_reuse_cycle_send_message_receipt_and_start(self):
+        self.assertEqual(a.next_actions(self.ws)['actions'][0]['kind'], 'dispatch')
+        sent = self.dispatched()
+        aid = sent['assignment_id']
+        self.assertEqual((sent['to'], sent['session_id']), ('test-a', 'sess-a-0001'))
+        self.assertIn('STARTED', sent['message']); self.assertIn('session transition', sent['message'])
+        self.assertIn("'test-coord'", sent['message']); self.assertNotIn('OWNER HANDOVER', json.dumps(sent))
+        self.assertEqual(a.registry(self.ws)[1]['assignments'][aid]['state'], 'sending')
+        self.assertEqual(self.session('sent', assignment=aid, outcome='queued', evidence='in inbox')[1]['state'], 'queued')
+        self.module['status'] = 'busy'  # the recipient runs the transition command
+        result = self.in_worktree(a.transition, self.ws, aid, 'sess-a-0001')
+        self.assertEqual(result['acknowledgement'], 'STARTED assignment_id=' + aid)
+        receipt = json.loads(a.transition_path(self.ws, aid).read_text())
+        self.assertEqual(receipt['executor']['session_id'], 'sess-a-0001')
+        code, started = self.session('started', assignment=aid, evidence='<cross-session-message> STARTED assignment_id=' + aid)
+        self.assertEqual((code, started['result']), (0, 'started'))
+        self.assertEqual(orch.Workspace(self.root).wp_rows()['WP-A-02']['status'], 'IN_PROGRESS')
+        self.assertEqual(self.h.git(self.wt, 'branch', '--show-current'), orch.wp_context(self.ws, 'WP-A-02')[2]['branch'])
+        self.assertIn('ack_evidence', a.registry(self.ws)[1]['assignments'][aid])
+
+    def test_waiting_busy_dirty_and_held_message_block_reuse(self):
+        for status, waiting in (('waiting', 'permission prompt'), ('busy', None), ('waiting', 'input needed')):
+            self.module.update(status=status, waitingFor=waiting)
+            self.assertNotIn('dispatch', [x['kind'] for x in a.next_actions(self.ws)['actions']])
+        self.module.update(status='idle', waitingFor=None)
+        (self.wt / 'dirty').write_text('unsaved')
+        self.assertNotIn('dispatch', [x['kind'] for x in a.next_actions(self.ws)['actions']])
+
+    def test_crash_between_send_message_and_sent_is_unknown_not_handover(self):
+        aid = self.dispatched()['assignment_id']
+        with self.assertRaisesRegex(a.AutonomyError, 'outcome unknown'):
+            a.send_assignment(self.ws, aid, 'coord-0001', 1)
+        code, result = self.session('reconcile', assignment=aid)
+        self.assertEqual((code, result['result']), (2, 'outcome_unknown'))
+        self.assertEqual(orch.Workspace(self.root).wp_rows()['WP-A-02']['status'], 'DISPATCHING')
+
+    def test_explicit_not_sent_clears_intent_for_a_checked_retry(self):
+        aid = self.dispatched()['assignment_id']
+        self.assertEqual(self.session('sent', assignment=aid, outcome='not_sent', evidence='Not sent: refused')[1]['state'], 'reserved')
+        again = a.send_assignment(self.ws, aid, 'coord-0001', 1)
+        self.assertEqual(again['result'], 'send_required')
+        with self.assertRaisesRegex(a.AutonomyError, 'pending send only'):
+            self.session('sent', assignment=aid, outcome='queued', evidence='in inbox')
+            self.session('sent', assignment=aid, outcome='not_sent', evidence='late refusal')
+
+    def test_transition_requires_the_attached_session_and_process(self):
+        aid = self.dispatched()['assignment_id']
+        self.session('sent', assignment=aid, outcome='queued', evidence='in inbox')
+        with patch.dict(os.environ, {'CLAUDE_CODE_SESSION_ID': 'other-session'}):
+            with self.assertRaisesRegex(a.AutonomyError, 'another Claude session'):
+                self.in_worktree(a.transition, self.ws, aid, 'sess-a-0001')
+        child = self.h.child('import time; time.sleep(10)')
+        with patch.dict(os.environ, {'CLAUDE_PID': str(child.pid)}):
+            with self.assertRaisesRegex(a.AutonomyError, 'another Claude process'):
+                self.in_worktree(a.transition, self.ws, aid, 'sess-a-0001')
+        child.kill(); child.communicate()
+        with patch.object(a, 'ancestors', return_value=[]):  # forged CLAUDE_* variables outside the session
+            with self.assertRaisesRegex(a.AutonomyError, 'not a child'):
+                self.in_worktree(a.transition, self.ws, aid, 'sess-a-0001')
+        self.assertEqual(self.session('reconcile', assignment=aid)[1]['result'], 'outcome_unknown')
+
+    def test_restarted_session_pid_and_name_ambiguity(self):
+        self.module['startedAt'] = 2  # same session ID resumed in a new process
+        self.assertNotIn('dispatch', [x['kind'] for x in a.next_actions(self.ws)['actions']])
+        self.module['startedAt'] = 1
+        self.rows.append({**self.module, 'sessionId': 'sess-other-01'})
+        aid = a.reserve(orch.Workspace(self.root), 'WP-A-02', 'coord-0001', 1)['assignment_id']
+        with self.assertRaisesRegex(a.claude_adapter.ClaudeError, 'does not resolve'):
+            a.send_assignment(self.ws, aid, 'coord-0001', 1)
+        self.assertEqual(a.registry(self.ws)[1]['assignments'][aid]['state'], 'reserved')
+
+    def test_required_model_needs_owner_confirmed_launch_values(self):
+        path = self.ws.wp_path(self.ws.wp_rows()['WP-A-02']['wp']); text = path.read_text()
+        line = next(x for x in text.splitlines() if x.startswith('| Model |'))
+        path.write_text(text.replace(line, '| Model | opus |'))
+        self.assertEqual(a.next_actions(orch.Workspace(self.root))['actions'][0]['kind'], 'owner')
+        _, data = a.registry(self.ws)
+        data['instances']['claude:sess-a-0001']['confirmation']['claimed']['model'] = 'opus'
+        a.persist(self.ws, data)
+        self.assertEqual(a.next_actions(orch.Workspace(self.root))['actions'][0]['kind'], 'dispatch')
+
+    def test_owner_compaction_needs_post_compact_receipt(self):
+        code, asked = self.session('compact', thread='sess-a-0001')
+        self.assertEqual(asked['result'], 'owner_action'); self.assertIn('/compact', asked['instruction'])
+        self.assertNotIn('dispatch', [x['kind'] for x in a.next_actions(self.ws)['actions']])
+        self.assertEqual(self.session('compact', thread='sess-a-0001')[1]['result'], 'outcome_unknown')
+        hook = {'hook_event_name': 'PostCompact', 'session_id': 'sess-a-0001', 'cwd': str(self.wt), 'trigger': 'manual'}
+        with patch('sys.stdin', io.StringIO(json.dumps(hook))):
+            self.assertEqual(a.cmd_session(argparse.Namespace(workspace=str(self.root), action='compacted')), 0)
+        self.assertEqual(self.session('compact', thread='sess-a-0001')[1]['result'], 'compacted')
+        self.assertEqual(a.next_actions(orch.Workspace(self.root))['actions'][0]['kind'], 'dispatch')
+
+    def test_monitor_watcher_prints_single_lines_and_refuses_a_second_process(self):
+        started = a.start_watcher(self.ws)
+        self.assertEqual(started['result'], 'monitor_required'); self.assertIn('--stdout', started['command'])
+        self.coord['status'] = 'busy'  # a session with a running Monitor reports busy at an empty prompt
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), patch.object(a.time, 'sleep', side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                a.run_watcher(self.ws, started['token'], stdout=True)
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 2); self.assertIn('signal_id=', lines[1]); self.assertIn('autonomy consume', lines[1])
+        state = a.read_watch(self.ws); self.assertEqual(state['pending']['state'], 'queued')
+        self.assertEqual(a.start_watcher(self.ws)['result'], 'watching')
+        child = self.h.child('import time; time.sleep(10)')
+        state['process'] = a.process_identity(child.pid); a.write_watch(self.ws, state)
+        with self.assertRaisesRegex(a.AutonomyError, 'another watcher'):
+            a.run_watcher(self.ws, state['token'], stdout=True)
+        child.kill(); child.communicate()
+
+    def test_exited_session_is_a_reason_not_a_crash(self):
+        self.rows.remove(self.module)
+        plan = a.next_actions(self.ws)
+        self.assertNotIn('dispatch', [x['kind'] for x in plan['actions']])
+        self.assertIn('not live', json.dumps(plan))
+
+    def test_watcher_of_an_old_generation_is_replaced(self):
+        first = a.start_watcher(self.ws)
+        state = a.read_watch(self.ws); state['process'] = a.process_identity(os.getpid()); a.write_watch(self.ws, state)
+        self.assertEqual(a.start_watcher(self.ws)['result'], 'watching')
+        _, data = a.registry(self.ws); data['coordinator']['generation'] = 2; a.persist(self.ws, data)
+        second = a.start_watcher(self.ws)
+        self.assertEqual(second['result'], 'monitor_required'); self.assertNotEqual(first['token'], second['token'])
+
+    def test_new_base_mcp_servers_require_owner_preparation(self):
+        (self.repo / '.mcp.json').write_text('{"mcpServers": {"x": {"command": "x"}}}\n')
+        self.h.git(self.repo, 'add', '.mcp.json'); self.h.git(self.repo, 'commit', '-m', 'new base MCP server')
+        aid = self.dispatched()['assignment_id']
+        self.session('sent', assignment=aid, outcome='queued', evidence='in inbox')
+        with self.assertRaisesRegex(a.AutonomyError, 'new base changes native'):
+            self.in_worktree(a.transition, self.ws, aid, 'sess-a-0001')
+
+    def test_observation_failure_is_reported_not_silent(self):
+        with patch.object(a.claude_adapter, 'agents', side_effect=a.claude_adapter.ClaudeError('agents offline')):
+            plan = a.next_actions(self.ws)
+        self.assertEqual(plan['situation'], 'observation_error')
+
+    def test_claim_binds_the_live_coordinator_pid(self):
+        _, data = a.registry(self.ws); data['coordinator']['released'] = True; a.persist(self.ws, data)
+        args = dict(action='claim', coordinator='coord-0001', evidence='fixture', previous_stopped=None)
+        with self.assertRaisesRegex(a.AutonomyError, 'PID does not belong'):
+            self.run_json(a.cmd_autonomy, pid=1, **args)
+        code, claimed = self.run_json(a.cmd_autonomy, pid=os.getpid(), **args)
+        self.assertEqual(claimed['generation'], 2)
+
+    def test_module_settings_allow_transition_and_compaction_hook(self):
+        import session_settings
+        _, module, _ = orch.wp_context(self.ws, 'WP-A-01')
+        data, _ = session_settings.module_settings(self.ws.config, self.ws.root, module, skill_dir=orch.SKILL_DIR)
+        self.assertEqual(session_settings.settings_errors(data), [])
+        rule = next(r for r in data['permissions']['allow'] if 'session transition' in r)
+        message = self.dispatched()['message']
+        command = next(line.split('run: ', 1)[1] for line in message.splitlines() if 'session transition' in line)
+        self.assertTrue(session_settings.bash_rule_matches(rule, command), (rule, command))
+        self.assertIn('session compacted', data['hooks']['PostCompact'][0]['hooks'][0]['command'])
+        self.assertIn('Bash(gh pr merge *)', data['permissions']['deny'])
+
+
 if __name__ == '__main__':
     unittest.main()

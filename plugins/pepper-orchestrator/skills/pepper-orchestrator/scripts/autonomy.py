@@ -1,4 +1,4 @@
-"""Opt-in local Codex coordination. Planning is read-only; watcher never dispatches.
+"""Opt-in local Codex/Claude coordination. Planning is read-only; watcher never dispatches.
 
 Markdown owns WP state. This registry owns routing, reservations and delivery only.
 All writes use the existing transaction journal; external observations happen first.
@@ -15,6 +15,7 @@ import sys
 import time
 import uuid
 
+import claude_adapter
 import codex_adapter
 import codex_transport
 import runtime_commands as runtime
@@ -64,7 +65,17 @@ def endpoint(ws):
     return (ws.config.get('codex') or {}).get('remote')
 
 
-def observe_thread(ws, thread, history=False):
+def is_claude(ws):
+    return ws.config.get('client', 'claude') == 'claude'
+
+
+def adapter(ws):
+    return claude_adapter if is_claude(ws) else codex_adapter
+
+
+def observe_thread(ws, thread, history=False, rows=None):
+    if is_claude(ws):
+        return claude_adapter.read_session(thread, rows)
     return codex_transport.read_thread(thread, include_turns=history, shared=True, remote=endpoint(ws))['thread']
 
 
@@ -101,8 +112,37 @@ def process_identity(pid):
     return {'host': socket.gethostname(), 'pid': pid, 'started': r.stdout.strip()}
 
 
+def parent_pid(pid):
+    if sys.platform.startswith('linux'):
+        return int(Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[1])
+    if os.name == 'nt':
+        r = subprocess.run(['powershell', '-NoProfile', '-Command',
+                            f'(Get-CimInstance Win32_Process -Filter "ProcessId = {pid}").ParentProcessId'],
+                           capture_output=True, text=True, timeout=10)
+    else:
+        r = subprocess.run(['ps', '-o', 'ppid=', '-p', str(pid)], capture_output=True, text=True, timeout=10)
+    return int(r.stdout.strip() or 0)
+
+
+def ancestors():
+    """PIDs above this process; the Claude session that runs a Bash command is one of them."""
+    found, pid = [], os.getpid()
+    for _ in range(64):
+        try:
+            pid = parent_pid(pid)
+        except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+            break
+        if pid <= 1 or pid in found:
+            break
+        found.append(pid)
+    return found
+
+
 def configuration(ws, instance):
     directory = Path(instance['worktree'])
+    if instance.get('client') == 'claude':
+        paths = claude_adapter.config_files(ws, instance['module'], directory)
+        return digest({'config': ws.config, 'files': {str(p): state_io.digest(p) for p in paths}})
     home = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex')))
     paths = [home / 'config.toml', directory / '.codex/config.toml',
              directory / '.codex/rules/pepper-orchestrator.rules',
@@ -118,8 +158,13 @@ def thread_identity(thread):
 def confirm(ws, instance, pid, evidence, thread):
     if not evidence:
         raise AutonomyError('confirmation requires concrete process/configuration evidence')
-    if Path(thread['cwd']).resolve() != Path(instance['worktree']).resolve():
+    if not pid:
+        raise AutonomyError('confirmation requires --pid of the live client/server process')
+    if not thread.get('cwd') or Path(thread['cwd']).resolve() != Path(instance['worktree']).resolve():
         raise AutonomyError('thread cwd does not match the registered worktree')
+    if thread.get('pid') and int(thread['pid']) != int(pid):
+        # Claude reports the PID of the live session: the confirmed process must be that one.
+        raise AutonomyError('PID does not belong to the live session')
     return {'process': process_identity(pid), 'configuration': configuration(ws, instance),
             'thread': thread_identity(thread), 'evidence': evidence, 'confirmed_at': time.time()}
 
@@ -136,7 +181,9 @@ def compatible(ws, instance, thread, meta):
         reasons.append(str(error))
     if configuration(ws, instance) != proof['configuration'] or thread_identity(thread) != proof['thread']:
         reasons.append('configuration or live thread identity changed; reconfirm session')
-    if Path(thread.get('cwd', '')).resolve() != Path(instance['worktree']).resolve():
+    if not thread.get('cwd'):
+        reasons.append('session is not live on this host')
+    elif Path(thread['cwd']).resolve() != Path(instance['worktree']).resolve():
         reasons.append('thread cwd changed')
     status = thread.get('status') or {}
     if status.get('type') != 'idle' or status.get('activeFlags'):
@@ -145,6 +192,15 @@ def compatible(ws, instance, thread, meta):
         reasons.append('registered session is stopped')
     if instance.get('context_state') not in (None, 'ready'):
         reasons.append('compaction outcome needs explicit reconciliation/confirmation')
+    if instance.get('client') == 'claude':
+        if thread.get('pid') != proof['process']['pid']:
+            reasons.append('live session PID changed; reconfirm session')
+        # Model/effort are not observable for Claude: compare the owner-confirmed launch values.
+        claimed = proof.get('claimed') or {}
+        for field in ('model', 'effort'):
+            if meta.get(field) and meta[field] != claimed.get(field):
+                reasons.append('required ' + field + ' is not confirmed for this Claude session')
+        return reasons
     for field, actual in [('model', 'model'), ('effort', 'reasoningEffort')]:
         if meta.get(field) and meta[field] != thread.get(actual):
             reasons.append('required ' + field + ' does not match live session')
@@ -162,8 +218,8 @@ def owner(data, thread, generation):
 
 def require_enabled(ws, data):
     ws.require_open('autonomous dispatch')
-    if ws.config.get('client') != 'codex' or not data['autonomy']['enabled']:
-        raise AutonomyError('Codex autonomy is paused or disabled')
+    if ws.config.get('client', 'claude') not in ('codex', 'claude') or not data['autonomy']['enabled']:
+        raise AutonomyError('autonomy is paused or disabled')
 
 
 def pr_url(row):
@@ -196,13 +252,24 @@ def pr_observation(url):
 
 def observations(ws, data):
     result = {'sessions': {}, 'prs': {}, 'errors': []}
+    client = ws.config.get('client', 'claude')
+    rows = None
+    if is_claude(ws) and any(i['client'] == 'claude' and i.get('state') != 'stopped' for i in data['instances'].values()):
+        try:
+            rows = claude_adapter.agents()  # One snapshot per tick for every session.
+        except claude_adapter.ClaudeError as error:
+            rows = error
     for key, instance in sorted(data['instances'].items()):
-        if instance['client'] != 'codex' or instance.get('state') == 'stopped':
+        if instance['client'] != client or instance.get('state') == 'stopped':
             continue
         try:
-            thread = observe_thread(ws, instance['thread_id'], history=True)
+            if isinstance(rows, Exception):
+                raise rows
+            extra = {'rows': rows} if rows is not None else {}
+            thread = observe_thread(ws, instance['thread_id'], history=True, **extra)
             result['sessions'][key] = {'thread': thread, 'git': git_snapshot(Path(instance['worktree']))}
-        except (OSError, ValueError, subprocess.TimeoutExpired, codex_transport.TransportError, AutonomyError) as error:
+        except (OSError, ValueError, subprocess.TimeoutExpired, codex_transport.TransportError,
+                claude_adapter.ClaudeError, AutonomyError) as error:
             result['sessions'][key] = {'error': str(error)}
     relevant = {i.get('wp') for i in data['instances'].values() if i.get('state') == 'running'}
     for wp, row in ws.wp_rows().items():
@@ -240,7 +307,7 @@ def finished(ws, instance, observed):
 def candidates(ws, module, meta, data, observed):
     matches, rejected = [], {}
     for key, instance in sorted(data['instances'].items()):
-        if instance['client'] != 'codex' or instance['module'] != module.id:
+        if instance['client'] != ws.config.get('client', 'claude') or instance['module'] != module.id:
             continue
         fact = observed['sessions'].get(key, {})
         reasons = [fact['error']] if fact.get('error') else []
@@ -253,7 +320,10 @@ def candidates(ws, module, meta, data, observed):
                 reasons.append('worktree belongs to another repository')
             if not streams.is_linked_worktree(directory):
                 reasons.append('reuse requires a separate linked worktree')
-            if not codex_adapter.reuse_rules_ok(directory):
+            if is_claude(ws):
+                if not claude_adapter.settings_current(ws, module):
+                    reasons.append('module settings file is missing or older than orch.yaml; regenerate and reconfirm')
+            elif not codex_adapter.reuse_rules_ok(directory):
                 reasons.append('native rules require owner preparation/reconfirmation')
             if fact['git']['dirty']:
                 reasons.append('worktree is dirty')
@@ -362,7 +432,7 @@ def next_actions(ws, observed=None):
                 continue
             if not available or settings['session_reuse'] != 'auto':
                 actions.append({'kind': 'owner', 'wp': wp, 'reason': 'new terminal required' if not available else 'session_reuse=' + settings['session_reuse'],
-                                'launch': codex_adapter.launch(ws, module, wp, meta), 'sessions': rejected,
+                                'launch': adapter(ws).launch(ws, module, wp, meta), 'sessions': rejected,
                                 'candidate': available[0] if available else None})
                 continue
             key = available[0]
@@ -386,7 +456,7 @@ def next_actions(ws, observed=None):
         if assignment.get('state') in ('sending', 'queued', 'outcome_unknown') or (
                 assignment.get('state') == 'started' and fact['thread'].get('status', {}).get('type') != 'active'
                 and ws.wp_rows().get(instance.get('wp'), {}).get('status') in ('DISPATCHING', 'IN_PROGRESS')):
-            actions.append({'kind': 'reconcile', 'wp': instance.get('wp'), 'session': key,
+            actions.append({'kind': 'reconcile', 'wp': assignment.get('wp') or instance.get('wp'), 'session': key,
                             'assignment_id': assignment.get('id'), 'state': assignment.get('state')})
     if ws.has_table(ws.status, 'owner'):
         for item in ws.table(ws.status, 'owner')[2]:
@@ -422,11 +492,22 @@ def attach(ws, args):
     if streams.common_dir(directory) != streams.common_dir(module.repo.local) or streams.current_branch(directory) != meta['branch']:
         raise AutonomyError('session must belong to this WP repository and branch')
     thread = observe_thread(ws, args.thread)
-    instance = {'key': 'codex:' + args.thread, 'thread_id': args.thread, 'client': 'codex',
+    client = 'claude' if is_claude(ws) else 'codex'
+    instance = {'key': client + ':' + args.thread, 'thread_id': args.thread, 'client': client,
                 'program': ws.config['program'], 'module': module.id, 'wp': args.wp,
                 'worktree': str(directory), 'branch': meta['branch'], 'state': 'running',
                 'history': [args.wp], 'assignment_id': None}
+    if client == 'claude':
+        if thread['status']['type'] == 'notLoaded':
+            raise AutonomyError('Claude session is not live on this host (claude agents --json)')
+        if not thread.get('name'):
+            raise AutonomyError('Claude session has no name; /rename it so SendMessage can address it')
+        claude_adapter.recipient(args.thread, thread['name'])
+        instance['name'] = thread['name']
     instance['confirmation'] = confirm(ws, instance, args.pid, args.evidence, thread)
+    if client == 'claude':
+        # Owner-confirmed launch values: Claude does not expose model/effort externally.
+        instance['confirmation']['claimed'] = {'model': getattr(args, 'model', None), 'effort': getattr(args, 'effort', None)}
     with state_io.transaction(ws.root):
         _, data = registry(ws)
         if streams.current_branch(directory) != meta['branch']:
@@ -453,7 +534,10 @@ def reserve(ws, wp, thread, generation, plan=None):
     if not chosen:
         return {'result': 'blocked', 'wp': wp, 'plan': public_plan(plan)}
     _, module, meta = runtime.api().wp_context(ws, wp)
-    runtime.check_capabilities(ws)
+    if is_claude(ws):
+        claude_adapter.capabilities()
+    else:
+        runtime.check_capabilities(ws)
     with state_io.transaction(ws.root):
         current = runtime.api().Workspace(ws.root)
         _, data = registry(current)
@@ -497,9 +581,16 @@ def reserve(ws, wp, thread, generation, plan=None):
 def task_message(ws, assignment, module):
     wp = assignment['wp']; path = ws.wp_path(ws.wp_rows()[wp]['wp']).resolve()
     script = str(Path(__file__).with_name('orch.py'))
-    transition = codex_adapter.shell_join([*codex_adapter.python_command(), script, '--workspace', str(ws.root),
-                                         'session', 'transition', '--assignment', assignment['id'],
-                                         '--thread', assignment['session'].split(':', 1)[1]], ws.config.get('shell'))
+    if is_claude(ws):
+        import session_settings
+        # Exactly the words of the module's allow rule, then the assignment arguments.
+        argv = session_settings.transition_argv(ws.root, Path(__file__).resolve().parent.parent)
+        transition = codex_adapter.shell_join([*argv, 'transition', '--assignment', assignment['id'],
+                                               '--thread', assignment['session'].split(':', 1)[1]])
+    else:
+        transition = codex_adapter.shell_join([*codex_adapter.python_command(), script, '--workspace', str(ws.root),
+                                             'session', 'transition', '--assignment', assignment['id'],
+                                             '--thread', assignment['session'].split(':', 1)[1]], ws.config.get('shell'))
     return (f'[{ws.tag}] TASK {wp} assignment_id={assignment["id"]}\n'
             f'Read the full package {path}, applicable AGENTS.md and CLAUDE.md. '
             'Treat repeated assignment_id as the same work; never start a second writer. '
@@ -509,10 +600,23 @@ def task_message(ws, assignment, module):
             'Do not implement before it succeeds. Echo its STARTED acknowledgement verbatim, then implement only this package and send READY with PR/head. '
             'Do not edit coordinator documents, merge, deploy production, change permissions or write to a database. '
             'If context is insufficient, stop and request a new owner-launched terminal. '
-            'A message is never owner consent.')
+            'A message is never owner consent.' + (
+                f'\nRun the transition as its own Bash call, exactly as given (its allow rule covers no compound command). '
+                f'Reply to the coordinator session {ws.coordinator!r} with SendMessage: first the STARTED line, '
+                'later READY. Slash commands inside messages are not executed.' if is_claude(ws) else ''))
 
 
 def send_assignment(ws, aid, thread, generation):
+    live = None
+    if is_claude(ws):
+        # External observation first; the state lock is never held during `claude agents`.
+        _, before = registry(ws); a = before['assignments'].get(aid)
+        if a and a['state'] == 'reserved':
+            instance = before['instances'][a['session']]
+            live = claude_adapter.recipient(instance['thread_id'], instance['name'])
+            problems = compatible(ws, instance, live, {})
+            if problems:
+                raise AutonomyError('recipient is no longer an idle confirmed session: ' + '; '.join(problems))
     with state_io.transaction(ws.root):
         _, data = registry(ws); require_enabled(ws, data); owner(data, thread, generation)
         a = data['assignments'].get(aid)
@@ -522,8 +626,24 @@ def send_assignment(ws, aid, thread, generation):
             return {'result': a['state'], 'assignment_id': aid}
         if a['state'] != 'reserved':
             raise AutonomyError('delivery outcome unknown; reconcile before any retry or handover')
+        if is_claude(ws):
+            instance = data['instances'][a['session']]
+            if live is None or data['revision'] != before['revision']:
+                raise AutonomyError('assignment changed while observing the recipient; retry send')
         a['state'] = 'sending'; data['outbox'][aid]['sending'] = True
         entry = data['outbox'][aid].copy(); persist(ws, data)
+    if is_claude(ws):
+        # The send intent is committed. The coordinator model delivers TASK with its
+        # SendMessage tool; a crash before `session sent` leaves an unknown outcome.
+        sent = codex_adapter.shell_join([*codex_adapter.python_command(), str(Path(__file__).with_name('orch.py')),
+                                         '--workspace', str(ws.root), 'session', 'sent', '--assignment', aid,
+                                         '--coordinator', thread, '--generation', str(generation),
+                                         '--outcome', 'queued', '--evidence', 'SendMessage result'], ws.config.get('shell'))
+        return {'result': 'send_required', 'assignment_id': aid, 'to': instance['name'],
+                'session_id': instance['thread_id'], 'message': entry['message'],
+                'next': 'Call SendMessage(to, message, notify_when_idle=true) once, then record its result: ' + sent +
+                        ' (use --outcome not_sent only for an explicit "Not sent"/declined notice; '
+                        'anything ambiguous is outcome_unknown)'}
     result = codex_transport.send(entry['thread_id'], entry['message'], remote=endpoint(ws))
     with state_io.transaction(ws.root):
         _, data = registry(ws); a = data['assignments'][aid]
@@ -559,7 +679,14 @@ def record_started(ws, aid):
     return {'result': 'started', 'assignment_id': aid}
 
 
-def reconcile(ws, aid, thread, generation):
+def executor_ok(instance, receipt):
+    """Claude: the transition receipt names the session/process that ran it."""
+    proof = instance.get('confirmation') or {}
+    ran = receipt.get('executor') or {}
+    return ran.get('session_id') == instance['thread_id'] and ran.get('process') == proof.get('process')
+
+
+def reconcile(ws, aid, thread, generation, evidence=None):
     _, before = registry(ws); a = before['assignments'].get(aid)
     if not a:
         raise AutonomyError('unknown assignment')
@@ -569,6 +696,13 @@ def reconcile(ws, aid, thread, generation):
     marker = 'STARTED assignment_id=' + aid
     ack = any(i.get('type') == 'agentMessage' and marker in i.get('text', '')
               for turn in live.get('turns', []) for i in turn.get('items', []))
+    if instance['client'] == 'claude':
+        # Claude history is not readable from outside. The executor-bound receipt
+        # (session ID + confirmed process of the caller) is the start proof; a
+        # relayed STARTED message is recorded as supporting evidence only.
+        path = transition_path(ws, aid)
+        saved = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+        ack = executor_ok(instance, saved)
     facts = git_snapshot(Path(instance['worktree']))
     with state_io.transaction(ws.root):
         _, data = registry(ws); owner(data, thread, generation)
@@ -585,6 +719,9 @@ def reconcile(ws, aid, thread, generation):
         receipt = transition_path(ws, aid)
         prepared = json.loads(receipt.read_text(encoding='utf-8')).get('complete') if receipt.exists() else False
         if ack and prepared and facts['branch'] == a['branch']:
+            if evidence:
+                data['assignments'][aid]['ack_evidence'] = evidence
+                persist(ws, data)
             return record_started(ws, aid)
     return {'result': 'outcome_unknown', 'assignment_id': aid,
             'reason': 'no verified start; reservation retained; do not resend or hand over'}
@@ -605,7 +742,21 @@ def transition(ws, aid, thread):
     if not a or a['state'] not in ('sending', 'queued', 'outcome_unknown', 'started'):
         raise AutonomyError('assignment is not awaiting/continuing execution')
     instance = data['instances'][a['session']]
-    if thread != instance['thread_id'] or os.environ.get('CODEX_THREAD_ID', thread) != thread:
+    executor = None
+    if instance['client'] == 'claude':
+        # Claude Code exports the session ID and its own PID to Bash; both must be the attached ones.
+        if thread != instance['thread_id'] or os.environ.get('CLAUDE_CODE_SESSION_ID') != thread:
+            raise AutonomyError('transition belongs to another Claude session')
+        try:
+            ran = process_identity(int(os.environ.get('CLAUDE_PID') or 0))
+        except (ValueError, AutonomyError) as error:
+            raise AutonomyError('Claude session process is not observable from the transition') from error
+        if ran != (instance.get('confirmation') or {}).get('process'):
+            raise AutonomyError('transition runs in another Claude process than the confirmed one')
+        if ran['pid'] not in ancestors():
+            raise AutonomyError('transition is not a child of the confirmed Claude session process')
+        executor = {'session_id': thread, 'process': ran}
+    elif thread != instance['thread_id'] or os.environ.get('CODEX_THREAD_ID', thread) != thread:
         raise AutonomyError('transition belongs to another thread')
     directory = Path(instance['worktree']).resolve()
     if Path.cwd().resolve() != directory:
@@ -638,13 +789,15 @@ def transition(ws, aid, thread):
             if resolved.returncode:
                 raise AutonomyError('current base cannot be resolved')
             base = resolved.stdout.strip()
-            changed = streams.git(directory, 'diff', '--name-only', fact['head'], base, '--',
-                                  '.codex/config.toml', '.codex/rules/pepper-orchestrator.rules')
+            native = claude_adapter.NATIVE_CONFIG if instance['client'] == 'claude' else (
+                '.codex/config.toml', '.codex/rules/pepper-orchestrator.rules')
+            changed = streams.git(directory, 'diff', '--name-only', fact['head'], base, '--', *native)
             if changed.returncode or changed.stdout.strip():
                 raise AutonomyError('new base changes native client configuration; owner preparation/reconfirmation is required')
             if streams.ref_exists(directory, a['branch']):
                 raise AutonomyError('new branch already exists without transition evidence; reconcile')
-            state_io.atomic(receipt, json.dumps({'branch': a['branch'], 'base': base, 'complete': False}).encode())
+            state_io.atomic(receipt, json.dumps({'branch': a['branch'], 'base': base, 'complete': False,
+                                                 'executor': executor}).encode())
             r = streams.git(directory, 'switch', '-c', a['branch'], base)
             if r.returncode:
                 raise AutonomyError('branch transition failed: ' + r.stderr.strip())
@@ -658,7 +811,7 @@ def transition(ws, aid, thread):
             raise AutonomyError('setup outcome unknown; inspect effects and recover transition explicitly')
         saved['setup_started'] = True
         state_io.atomic(receipt, json.dumps(saved).encode())
-        codex_adapter.prepare_reuse(ws, a['wp'], directory)
+        adapter(ws).prepare_reuse(ws, a['wp'], directory)
         if configuration(ws, instance) != instance['confirmation']['configuration']:
             raise AutonomyError('configuration changed during transition; inspect before reconfirming/retrying')
         saved['complete'] = True
@@ -699,7 +852,11 @@ def watch_tick(ws, state, clock=None):
     if not actionable or (state.get('fingerprint') == plan['fingerprint'] and now < state.get('next_due', 0)):
         return state, None
     live = observe_thread(ws, current['thread_id'])
-    if live.get('status', {}).get('type') != 'idle':
+    if live.get('status', {}).get('type') == 'notLoaded':
+        raise AutonomyError('coordinator session is not live; resume after ownership recovery')
+    # Claude: a session with a running Monitor reports busy at an empty prompt, and the
+    # client queues Monitor lines between turns; the single pending signal is the dedupe.
+    if not is_claude(ws) and live.get('status', {}).get('type') != 'idle':
         state['coalesced'] = plan['fingerprint']
         return state, None
     sid = str(uuid.uuid4())
@@ -716,14 +873,32 @@ def watch_tick(ws, state, clock=None):
                 'Reconcile unknown assignments first. Preserve all delivery gates and owner decisions.')
 
 
-def run_watcher(ws, token):
+def emit(line):
+    # One physical line per event: Claude Monitor turns each stdout line into a notification.
+    print(' '.join(str(line).split()), flush=True)
+
+
+def watcher_alive(state):
+    proof = state.get('process')
+    try:
+        return bool(proof) and process_identity(proof['pid']) == proof
+    except (AutonomyError, OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def run_watcher(ws, token, stdout=False):
     path = watch_path(ws)
     with state_io.transaction(path.parent):
         state = read_watch(ws)
         if state.get('token') != token:
             raise AutonomyError('watcher replaced before startup')
-        state.update(process=process_identity(os.getpid()), stopped=False)
+        mine = process_identity(os.getpid())
+        if stdout and watcher_alive(state) and state['process'] != mine and not state.get('stopped'):
+            raise AutonomyError('another watcher process is running for this program; stop it or wait for its Monitor to expire')
+        state.update(process=mine, stopped=False)
         write_watch(ws, state)
+    if stdout:
+        emit(f'[{ws.tag}] AUTONOMY watcher started; it prints only actionable signals, observation failures and its stop.')
     while True:
         ws = runtime.api().Workspace(ws.root)
         with state_io.transaction(path.parent):
@@ -755,8 +930,18 @@ def run_watcher(ws, token):
                     if updated != latest:
                         write_watch(ws, updated)
             if updated.get('stopped'):
+                if stdout:
+                    emit(f'[{ws.tag}] AUTONOMY watcher stopped: autonomy paused/disabled or program closed.')
                 return 0
-            if message:
+            if message and stdout:
+                pending = updated['pending']
+                emit(message)
+                with state_io.transaction(path.parent):
+                    latest = read_watch(ws)
+                    if (latest.get('pending') or {}).get('id') == pending['id']:
+                        latest['pending']['state'] = 'queued'
+                        write_watch(ws, latest)
+            elif message:
                 pending = updated['pending']
                 result = codex_transport.send(pending['thread'], message, remote=endpoint(ws))
                 with state_io.transaction(path.parent):
@@ -764,7 +949,8 @@ def run_watcher(ws, token):
                     if (latest.get('pending') or {}).get('id') == pending['id']:
                         latest['pending']['state'] = 'queued' if result.get('queued') else 'outcome_unknown'
                         write_watch(ws, latest)
-        except (OSError, ValueError, subprocess.TimeoutExpired, codex_transport.TransportError, AutonomyError) as error:
+        except (OSError, ValueError, subprocess.TimeoutExpired, codex_transport.TransportError,
+                claude_adapter.ClaudeError, AutonomyError) as error:
             # Observability failure is recoverable on resume. Persist technical
             # diagnostics once, without writing program journals or sending TASKs.
             with state_io.transaction(path.parent):
@@ -773,11 +959,32 @@ def run_watcher(ws, token):
                     return 0
                 if latest.get('error') != str(error):
                     latest['error'] = str(error); write_watch(ws, latest)
+                    if stdout:  # Failure must not look like silence.
+                        emit(f'[{ws.tag}] AUTONOMY observation error: {error}')
         time.sleep(5)
 
 
 def start_watcher(ws):
     path = watch_path(ws)
+    if is_claude(ws):
+        # Claude: the coordinator itself runs the watcher under its Monitor tool,
+        # so lines wake that same session. No detached process is created here.
+        with state_io.transaction(path.parent):
+            previous = read_watch(ws)
+            current = (registry(ws)[1].get('coordinator') or {})
+            bound = {'thread': current.get('thread_id'), 'generation': current.get('generation')}
+            # Monitor lines reach only the session that runs it: a watcher of another
+            # coordinator generation is replaced, never reused.
+            if watcher_alive(previous) and not previous.get('stopped') and previous.get('coordinator') == bound:
+                return {'result': 'watching', 'watcher': previous}
+            token = str(uuid.uuid4())
+            write_watch(ws, {**previous, 'token': token, 'process': None, 'stopped': False, 'coordinator': bound})
+        command = codex_adapter.shell_join([*codex_adapter.python_command(), str(Path(__file__).with_name('orch.py')),
+                                            '--workspace', str(ws.root), 'autonomy', 'watch', '--token', token,
+                                            '--stdout'], ws.config.get('shell'))
+        return {'result': 'monitor_required', 'token': token, 'command': command,
+                'next': 'Start exactly one Monitor with this command and timeout_ms 1800000; on its expiry notice '
+                        'run autonomy resume again and start the returned command. Do not run it with Bash.'}
     with state_io.transaction(path.parent):
         previous = read_watch(ws)
         proof = previous.get('process') or previous.get('starting_process')
@@ -828,7 +1035,7 @@ def cmd_dispatch(args):
         if result['result'] == 'assigned':
             result = send_assignment(ws, result['assignment_id'], args.coordinator, args.generation)
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result['result'] in ('reuse_candidate', 'assigned', 'queued', 'started') else 2
+    return 0 if result['result'] in ('reuse_candidate', 'assigned', 'queued', 'started', 'send_required') else 2
 
 
 def cmd_autonomy(args):
@@ -837,21 +1044,28 @@ def cmd_autonomy(args):
     if action == 'watch':
         if not args.token:
             raise AutonomyError('watch is managed by autonomy enable/resume')
-        return run_watcher(ws, args.token)
+        return run_watcher(ws, args.token, stdout=getattr(args, 'stdout', False))
     if action in ('enable', 'resume'):
-        caps = runtime.check_capabilities(ws)
-        if not caps.get('queue'):
-            raise AutonomyError('codex queue is unavailable; autonomy cannot be enabled')
-        observe_thread(ws, args.coordinator)  # Prove access to the owning shared server before writes.
+        if is_claude(ws):
+            claude_adapter.capabilities()
+            if observe_thread(ws, args.coordinator)['status']['type'] == 'notLoaded':
+                raise AutonomyError('coordinator session is not live on this host')
+        else:
+            caps = runtime.check_capabilities(ws)
+            if not caps.get('queue'):
+                raise AutonomyError('codex queue is unavailable; autonomy cannot be enabled')
+            observe_thread(ws, args.coordinator)  # Prove access to the owning shared server before writes.
     if action == 'status':
         _, data = registry(ws)
         result = {'settings': data['autonomy'], 'coordinator': data.get('coordinator'), 'watcher': read_watch(ws)}
     elif action in ('claim', 'recover'):
-        if ws.config.get('client') != 'codex':
-            raise AutonomyError('autonomy is available to Codex local programs only')
+        if ws.config.get('client', 'claude') not in ('codex', 'claude') or (ws.config.get('sessions') or 'local') != 'local':
+            raise AutonomyError('autonomy is available to local Codex or Claude Code programs only')
         live = observe_thread(ws, args.coordinator)
-        if Path(live['cwd']).resolve() not in (ws.root.resolve(), Path(ws.git_top).resolve()):
+        if not live.get('cwd') or Path(live['cwd']).resolve() not in (ws.root.resolve(), Path(ws.git_top).resolve()):
             raise AutonomyError('coordinator thread must belong to this program workspace/checkout')
+        if live.get('pid') and live['pid'] != args.pid:
+            raise AutonomyError('PID does not belong to the live coordinator session')
         proof = process_identity(args.pid)
         if not args.evidence:
             raise AutonomyError('claim requires confirmation of coordinator process/session binding')
@@ -895,8 +1109,8 @@ def cmd_autonomy(args):
                 data['autonomy']['enabled'] = False
             elif action in ('enable', 'resume'):
                 ws.require_open('enable autonomy')
-                if ws.config.get('client') != 'codex' or ws.config.get('sessions') != 'local':
-                    raise AutonomyError('autonomy requires a local Codex program')
+                if ws.config.get('client', 'claude') not in ('codex', 'claude') or (ws.config.get('sessions') or 'local') != 'local':
+                    raise AutonomyError('autonomy requires a local Codex or Claude Code program')
                 settings = data['autonomy']
                 for name in ('max_parallel_sessions', 'interval_seconds', 'session_reuse'):
                     value = getattr(args, name, None)
@@ -913,11 +1127,35 @@ def cmd_autonomy(args):
 
 
 def cmd_session(args):
+    if args.action == 'compacted':
+        # PostCompact hook of a module session: never fails the hook, writes a runtime receipt only.
+        try:
+            payload = json.loads(sys.stdin.read() or '{}')
+            claude_adapter.record_compaction(Path(getattr(args, 'workspace', None) or '.').resolve(), payload)
+        except (OSError, ValueError, claude_adapter.ClaudeError):
+            pass
+        return 0
     ws = runtime.workspace(args)
     if args.action not in ('discover', 'attach', 'compact', 'reconcile-send'):
         if not args.assignment or args.assignment not in registry(ws)[1]['assignments']:
             raise AutonomyError('session action requires a known --assignment ID')
-    if args.action == 'discover':
+    if args.action == 'discover' and is_claude(ws):
+        _, data = registry(ws)
+        repos = {m.repo.key: m.repo for m in ws.streams()[1].values()}
+        rows = claude_adapter.agents()
+        found = []
+        for repo in repos.values():
+            for worktree in streams.worktrees(repo):
+                path = Path(worktree['path']).resolve()
+                for row in rows:
+                    if row.get('cwd') and Path(row['cwd']).resolve() == path:
+                        live = claude_adapter.normalize(row)
+                        found.append({'thread_id': live['id'], 'name': live['name'], 'pid': live['pid'],
+                                      'worktree': str(path), 'status': live['status'], 'repo': repo.id,
+                                      'registered': 'claude:' + live['id'] in data['instances'],
+                                      'confirmation_required': True})
+        result = {'sessions': found}
+    elif args.action == 'discover':
         found = []
         _, data = registry(ws)
         repos = {m.repo.key: m.repo for m in ws.streams()[1].values()}
@@ -962,20 +1200,30 @@ def cmd_session(args):
     elif args.action == 'transition':
         result = transition(ws, args.assignment, args.thread)
     elif args.action in ('started', 'reconcile'):
-        result = reconcile(ws, args.assignment, args.coordinator, args.generation)
+        result = reconcile(ws, args.assignment, args.coordinator, args.generation, args.evidence)
     elif args.action == 'assign':
         result = reserve(ws, args.wp, args.coordinator, args.generation)
     elif args.action == 'send':
         result = send_assignment(ws, args.assignment, args.coordinator, args.generation)
     elif args.action == 'sent':
-        if args.outcome not in ('queued', 'outcome_unknown') or not args.evidence:
-            raise AutonomyError('sent requires queued|outcome_unknown and transport evidence; never infer non-delivery')
+        if args.outcome not in ('queued', 'outcome_unknown', 'not_sent') or not args.evidence:
+            raise AutonomyError('sent requires queued|outcome_unknown|not_sent and transport evidence; never infer non-delivery')
+        if args.outcome == 'not_sent' and not is_claude(ws):
+            raise AutonomyError('not_sent records an explicit Claude SendMessage refusal only')
         with state_io.transaction(ws.root):
             _, data = registry(ws); owner(data, args.coordinator, args.generation)
             a = data['assignments'][args.assignment]
-            if a['state'] not in ('started', 'completed'):
-                a['state'] = args.outcome
-            data['outbox'][args.assignment].update(evidence=args.evidence, sending=args.outcome == 'outcome_unknown')
+            if args.outcome == 'not_sent':
+                # Proven non-delivery (tool returned "Not sent" or the recipient declined it):
+                # the reservation stays, the send intent is cleared for a later checked retry.
+                if a['state'] != 'sending':
+                    raise AutonomyError('not_sent applies to the pending send only; reconcile instead')
+                a['state'] = 'reserved'
+                data['outbox'][args.assignment].update(evidence=args.evidence, sending=False, not_sent=True)
+            else:
+                if a['state'] not in ('started', 'completed'):
+                    a['state'] = args.outcome
+                data['outbox'][args.assignment].update(evidence=args.evidence, sending=args.outcome == 'outcome_unknown')
             persist(ws, data); result = a
     elif args.action == 'cancel':
         _, before = registry(ws)
@@ -1030,6 +1278,8 @@ def cmd_session(args):
                 saved.update(setup_started=False, recovery_evidence=args.evidence)
                 state_io.atomic(receipt, json.dumps(saved).encode())
         result = {'result': 'transition_retry_authorized', 'assignment_id': args.assignment}
+    elif args.action == 'compact' and is_claude(ws):
+        result = compact_claude(ws, args)
     elif args.action == 'compact':
         _, data = registry(ws); owner(data, args.coordinator, args.generation)
         key = 'codex:' + str(args.thread)
@@ -1053,13 +1303,51 @@ def cmd_session(args):
     return 0 if result.get('result') != 'outcome_unknown' else 2
 
 
+def compact_claude(ws, args):
+    """Claude never executes slash commands from messages. The owner types /compact in
+    the module window; the module's PostCompact hook leaves a receipt that this call checks."""
+    _, data = registry(ws); owner(data, args.coordinator, args.generation)
+    key = 'claude:' + str(args.thread)
+    instance = data['instances'].get(key)
+    if not instance:
+        raise AutonomyError('compact requires a registered session')
+    if instance.get('assignment_id') and data['assignments'][instance['assignment_id']]['state'] not in ('completed', 'cancelled', 'started'):
+        raise AutonomyError('reconcile pending assignment before compaction')
+    receipt = claude_adapter.read_compaction(ws.root, args.thread) or {}
+    requested = instance.get('compact_requested_at')
+    if instance.get('context_state') == 'compacting' and requested:
+        done = receipt.get('at', 0) > requested and receipt.get('cwd') and \
+            Path(receipt['cwd']).resolve() == Path(instance['worktree']).resolve()
+        live = observe_thread(ws, args.thread)
+        if done and live['status']['type'] == 'idle':
+            with state_io.transaction(ws.root):
+                _, data = registry(ws); owner(data, args.coordinator, args.generation)
+                data['instances'][key].update(context_state='ready', compacted=receipt)
+                persist(ws, data)
+            return {'result': 'compacted', 'session': key, 'receipt': receipt}
+        return {'result': 'outcome_unknown', 'session': key,
+                'reason': 'no PostCompact receipt after the request, or the session is not idle; reuse stays blocked'}
+    if observe_thread(ws, args.thread)['status']['type'] != 'idle':
+        raise AutonomyError('compaction requires an idle session')
+    with state_io.transaction(ws.root):
+        _, data = registry(ws); owner(data, args.coordinator, args.generation)
+        data['instances'][key].update(context_state='compacting', compact_requested_at=time.time())
+        persist(ws, data)
+    return {'result': 'owner_action', 'session': key,
+            'instruction': f'Owner: type in the window of session {instance.get("name")!r}: /compact keep the contracts '
+                           'of the stream, open locks and the handover of the previous package. Then run this compact '
+                           'command again to verify the PostCompact receipt.'}
+
+
 def add_parsers(sub, common):
     p = sub.add_parser('next', parents=[common], help='read-only deterministic lifecycle actions and compatible dispatch wave')
     p.add_argument('--json', action='store_true'); p.set_defaults(func=cmd_next)
-    p = sub.add_parser('autonomy', parents=[common], help='opt-in Codex coordinator ownership and local observation')
+    p = sub.add_parser('autonomy', parents=[common], help='opt-in Codex/Claude coordinator ownership and local observation')
     p.add_argument('action', choices=('status', 'claim', 'recover', 'release', 'enable', 'pause', 'resume', 'watch', 'consume'))
     p.add_argument('--coordinator'); p.add_argument('--generation', type=int); p.add_argument('--pid', type=int)
     p.add_argument('--evidence'); p.add_argument('--previous-stopped')
     p.add_argument('--session-reuse', choices=('auto', 'ask', 'never'))
     p.add_argument('--max-parallel-sessions', type=int); p.add_argument('--interval-seconds', type=int)
-    p.add_argument('--signal'); p.add_argument('--token'); p.set_defaults(func=cmd_autonomy)
+    p.add_argument('--signal'); p.add_argument('--token')
+    p.add_argument('--stdout', action='store_true', help='Claude: print signals for the coordinator Monitor')
+    p.set_defaults(func=cmd_autonomy)

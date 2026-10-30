@@ -204,14 +204,10 @@ def prepare_reuse(ws, wp, directory):
     The caller's runtime receipt records setup progress/unknown effects.
     """
     import runtime_commands
-    _, module, meta = runtime_commands.api().wp_context(ws, wp)
-    if streams.common_dir(directory) != streams.common_dir(module.repo.local) or streams.current_branch(directory) != meta['branch']:
-        raise streams.StreamError('reuse preparation requires the assigned repository/branch')
-    if not reuse_rules_ok(directory):
-        raise streams.StreamError('native rules missing/changed; owner preparation and reconfirmation required')
-    for command in module.repo.worktree_setup:
-        subprocess.run(command, cwd=directory, shell=True, check=True)
-    return str(directory)
+    def rules():
+        if not reuse_rules_ok(directory):
+            raise streams.StreamError('native rules missing/changed; owner preparation and reconfirmation required')
+    return runtime_commands.reuse_setup(ws, wp, directory, rules)
 
 
 def prepare(ws, wp):
