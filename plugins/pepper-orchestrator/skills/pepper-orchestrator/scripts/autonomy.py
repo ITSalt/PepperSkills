@@ -250,6 +250,7 @@ def compatible(ws, instance, thread, meta):
 
 
 def owner(data, thread, generation):
+    codex_transport.check_native_operation()
     current = data.get('coordinator') or {}
     if not thread or current.get('thread_id') != thread or current.get('generation') != generation or current.get('released'):
         raise AutonomyError('coordinator ownership/generation mismatch; claim or recover ownership first')
@@ -622,6 +623,16 @@ def reserve(ws, wp, thread, generation, plan=None):
 
 def task_message(ws, assignment, module):
     wp = assignment['wp']; path = ws.wp_path(ws.wp_rows()[wp]['wp']).resolve()
+    if not is_claude(ws) and codex_transport.private_mode():
+        return (f'[{ws.tag}] TASK {wp} assignment_id={assignment["id"]}\n'
+            f'Read the full package {path}. This is private owner mode. '
+            'Call pepper_orchestrator with operation=prepare and assignment=' + assignment['id'] + '. '
+            'Request the exact native filesystem permissions it returns; wait for the owner decision. '
+            'After a grant, run its finite command exactly once, then call operation=prepared with the same assignment. '
+            'Echo the returned STARTED acknowledgement before implementing. Never run the legacy shell transition. '
+            'Implement only this package in your current worktree; commit and return READY with full HEAD. '
+            'A repeated assignment is the same work. Never retry unknown setup, spawn another executor, '
+            'edit coordinator files, merge, deploy, change permissions or write to a database.')
     script = str(Path(__file__).with_name('orch.py'))
     if is_claude(ws):
         import session_settings
@@ -1009,6 +1020,15 @@ def run_watcher(ws, token, stdout=False):
 
 def start_watcher(ws):
     path = watch_path(ws)
+    if not is_claude(ws) and codex_transport.private_mode():
+        # Private STDIO cannot be shared with a detached CLI. The explicit owner
+        # drives watch_tick in-process; no new endpoint or model poll is created.
+        with state_io.transaction(path.parent):
+            previous = read_watch(ws)
+            state = {**previous, 'mode': 'private-owner', 'stopped': False}
+            if state != previous:
+                write_watch(ws, state)
+        return {'watcher': 'private-owner', 'mode': 'in-process'}
     if is_claude(ws):
         # Claude: the coordinator itself runs the watcher under its Monitor tool,
         # so lines wake that same session. No detached process is created here.
@@ -1081,6 +1101,25 @@ def cmd_dispatch(args):
     return 0 if result['result'] in ('reuse_candidate', 'assigned', 'queued', 'started', 'send_required') else 2
 
 
+def consume(ws, signal, coordinator, generation, evidence=None):
+    """Consume once, then recompute; shared by CLI and private native tools."""
+    with state_io.transaction(ws.root):
+        _, data = registry(ws); owner(data, coordinator, generation)
+        with state_io.transaction(watch_path(ws).parent):
+            state = read_watch(ws)
+            pending = state.get('pending') or {}
+            if pending.get('id') != signal:
+                raise AutonomyError('signal is missing, consumed or belongs to an old coordinator')
+            if pending.get('generation') != generation and not evidence:
+                raise AutonomyError('old-coordinator signal requires explicit reconciliation evidence')
+            state.update(pending=None, last_consumed=signal)
+            if evidence:
+                state['signal_reconciliation'] = evidence
+            write_watch(ws, state)
+    fresh = runtime.api().Workspace(ws.root)
+    return public_plan(next_actions(fresh)) if data['autonomy']['enabled'] and not fresh.closed else {'enabled': False, 'actions': []}
+
+
 def cmd_autonomy(args):
     ws = runtime.workspace(args)
     action = args.action
@@ -1105,7 +1144,10 @@ def cmd_autonomy(args):
         if ws.config.get('client', 'claude') not in ('codex', 'claude') or (ws.config.get('sessions') or 'local') != 'local':
             raise AutonomyError('autonomy is available to local Codex or Claude Code programs only')
         live = observe_thread(ws, args.coordinator)
-        if not live.get('cwd') or Path(live['cwd']).resolve() not in (ws.root.resolve(), Path(ws.git_top).resolve()):
+        private_binding = codex_transport.private_coordinator(args.coordinator, live.get('cwd'), args.pid)
+        if codex_transport.private_mode() and not private_binding:
+            raise AutonomyError('coordinator does not match protected private-owner registration')
+        if not private_binding and (not live.get('cwd') or Path(live['cwd']).resolve() not in (ws.root.resolve(), Path(ws.git_top).resolve())):
             raise AutonomyError('coordinator thread must belong to this program workspace/checkout')
         if live.get('pid') and live['pid'] != args.pid:
             raise AutonomyError('PID does not belong to the live coordinator session')
@@ -1126,21 +1168,7 @@ def cmd_autonomy(args):
                       'lease_until': time.time() + 1800}
             data['coordinator'] = result; persist(ws, data)
     elif action == 'consume':
-        with state_io.transaction(ws.root):
-            _, data = registry(ws); owner(data, args.coordinator, args.generation)
-            with state_io.transaction(watch_path(ws).parent):
-                state = read_watch(ws)
-                pending = state.get('pending') or {}
-                if pending.get('id') != args.signal:
-                    raise AutonomyError('signal is missing, consumed or belongs to an old coordinator')
-                if pending.get('generation') != args.generation and not args.evidence:
-                    raise AutonomyError('old-coordinator signal requires explicit reconciliation evidence')
-                state.update(pending=None, last_consumed=args.signal)
-                if args.evidence:
-                    state['signal_reconciliation'] = args.evidence
-                write_watch(ws, state)
-        fresh = runtime.api().Workspace(ws.root)
-        result = public_plan(next_actions(fresh)) if data['autonomy']['enabled'] and not fresh.closed else {'enabled': False, 'actions': []}
+        result = consume(ws, args.signal, args.coordinator, args.generation, args.evidence)
     else:
         with state_io.transaction(ws.root):
             _, data = registry(ws)
