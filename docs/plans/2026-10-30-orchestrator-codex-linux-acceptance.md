@@ -86,6 +86,43 @@ delta. A broader-permission run does not satisfy unchanged-profile acceptance.
 Without a compliant preparation path retain BLOCKED_GIT_PREPARATION even after
 security PASS. The plan is not advance authorization to grant permissions.
 
+## 2a. Recommended alternative: sandbox with explicit Git grants
+
+Following the owner's question about relaxing permissions, propose a separate
+`Git-approved` acceptance profile. The original unchanged-profile evidence stays
+BLOCKED_GIT_PREPARATION; do not relabel it. This plan changes no live permissions
+and is not itself approval of a command or grant.
+
+Keep workspace-write/on-request and the private owner channel. First test the
+native additional-filesystem-permission mechanism for the required worktree Git
+metadata, recording the exact requested/resolved paths, command, grant lifetime
+and owner decision. Prefer command/turn scope; a persistent session grant needs
+an explicit separate owner choice. No blanket `git` allow-rule, automatic approval,
+full home/root write access, generic host runner or host-side project setup.
+If the CLI cannot enforce a narrow grant, report that limitation; do not silently
+substitute unsandboxed execution.
+
+Git fetch, branch creation and setup still run through the module's native command
+path. Preserve WAIT until a real owner decision. Recheck negative owner-code/state
+and RPC/FD probes while the grant is active; ensure another module, program or
+restarted runtime cannot inherit it. Record approved scope in protected owner
+state and reconcile configuration/permission drift before resuming assignments.
+Restart must not silently regrant authority or retry unknown work.
+
+After a successful live cycle, report `PASS (Git-approved, on-request)` with every
+permission delta and owner-interaction count. This accepts autonomous scheduling
+with normal approval pauses; it is not a zero-approval/unattended claim or a PASS
+of the old unchanged-profile gate. The caller/RPC isolation gate still applies.
+Full unsandboxed trust would be a different explicitly selected mode, preferably
+inside a dedicated disposable environment; it is not enabled by this proposal.
+
+API basis: official [command approvals](https://learn.chatgpt.com/docs/app-server#command-execution-approvals)
+describe experimental additionalPermissions. Version-pinned 0.165.0
+[request_permissions](https://github.com/openai/codex/blob/rust-v0.165.0/codex-rs/core/src/tools/handlers/request_permissions.rs)
+and [policy merging](https://github.com/openai/codex/blob/rust-v0.165.0/codex-rs/sandboxing/src/policy_transforms.rs)
+provide a candidate mechanism, not proof that a particular protected gitdir grant
+works. Require an actual native request, decision and enforcement test.
+
 ## 3. Implement the narrow owner client and tools
 
 Only after step 2 PASS, adapt `autonomy.py`, `codex_transport.py`,
