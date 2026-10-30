@@ -1,0 +1,126 @@
+Exit code: 1
+PASS offline guard denies and records DNS attempts in child Python processes
+private trace: docs/a.md:2: absolute home-directory path
+Use repository-relative paths and neutral examples (example.com); see CONTRIBUTING.md.
+private trace: docs/a.md:2: absolute home-directory path
+Use repository-relative paths and neutral examples (example.com); see CONTRIBUTING.md.
+private trace: docs/a.md:2: absolute home-directory path
+Use repository-relative paths and neutral examples (example.com); see CONTRIBUTING.md.
+No private traces in tracked files
+PASS private traces: home paths (macOS, Linux, Windows), archives, local terms, tracked only
+No private traces in tracked files
+PASS GitHub templates: 3 issue forms, config, CODEOWNERS, PR template
+current: pepper-creative-mode 2.0.1
+current: pepper-orchestrator 0.13.1
+current: pepper-prompt-engineer 2.5.1
+current: pepper-ru-web-compliance 2.4.0
+valid + synchronized: pepper-creative-mode
+valid + synchronized: pepper-orchestrator
+valid + synchronized: pepper-prompt-engineer
+valid + synchronized: pepper-ru-web-compliance
+PASS OpenAI final listing limits, including Cyrillic and overlong package-valid text
+PASS checkpoint chat golden: plugins/pepper-creative-mode/adapters/chat/custom-instructions.md
+PASS checkpoint chat golden: plugins/pepper-creative-mode/adapters/chat/system-prompt.md
+PASS checkpoint chat golden: plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md
+PASS explicit template languages and localized missing references
+совпадения по реестру
+  ok   «вот так» не срабатывает на «вот такой результат»
+  ok   «Вот Так» в кавычках находится
+  ok   «Вот Так» после слова «издание» находится
+  ok   «Действие» не срабатывает на «действия»
+  ok   «Действие» в кавычках находится
+  ok   «СИЧ-С14» находится без кавычек
+  ok   многословное название находится в тексте
+  ok   исключённая запись не даёт совпадения
+  ok   weak_phrase отличает обиходную фразу от короткого названия
+признаки авторизации
+  ok   «вход» не находится внутри «входные»
+  ok   «вход» находится отдельным словом
+  ok   подписи ссылок извлекаются из разметки
+  ok   текст абзаца не попадает в подписи ссылок
+полнота отчёта
+  ok   статус есть у каждого правила
+  ok   все статусы из допустимого набора
+  ok   без признаков входа AUTH-004 — не применимо
+авторизация без страницы входа
+  ok   ссылка «Войти» без страницы входа даёт UNKNOWN, а не нарушение
+границы сайта
+  ok   поддомен считается тем же сайтом
+  ok   похожий чужой домен не считается тем же сайтом
+  ok   составной суффикс разбирается правильно
+  ok   поддомен — не сторонний приёмник данных
+доступ к политике
+  ok   страница политики не нарушает требование ссылкой на саму себя
+форма плашки иноагента
+  ok   без загруженного реестра форма плашки остаётся без вывода
+  ok   у INF-004 есть инструкция ручной проверки
+подвал и ссылки отчёта
+  ok   название скилла есть в записке
+  ok   автор есть в записке
+  ok   репозиторий есть в записке
+  ok   канал есть в записке
+  ok   почта есть в записке
+  ok   ссылка из инструкции кликабельна в HTML
+  ok   служебное обоснование не попадает в отчёт
+типографика сумм
+  ok   разряды числа склеены неразрывным пробелом
+  ok   в строке таблицы знака рубля нет — он в заголовке колонки
+  ok   раскладка wide: валюта в заголовке
+  ok   раскладка wide: сумма не рвётся
+  ok   раскладка stacked: валюта в заголовке
+  ok   раскладка stacked: сумма не рвётся
+  ok   раскладка twoline: валюта в заголовке
+  ok   раскладка twoline: сумма не рвётся
+контрольные суммы реквизитов
+  ok   валидный ИНН юрлица принят
+  ok   испорченный ИНН отклонён
+  ok   телефон не проходит как ИНН
+JSON-двойники данных
+  ok   rules.json совпадает с rules.yaml
+  ok   signatures.json совпадает с signatures.yaml
+основание обработки аналитики
+  ok   заявленный законный интерес распознан
+  ok   упоминание возражения не подтверждает основание или работающий отказ
+  ok   аналитический запрос отличён от отсутствия трекеров
+квалификация cookie и трекеров
+  ok   техническая страница без аналитики не требует баннер автоматически
+  ok   отсутствие баннера при аналитике требует квалификации, а не FAIL
+  ok   аналитика без баннера требует проверки основания
+  ok   иностранный домен фиксируется как факт для правовой проверки
+
+все проверки пройдены
+............
+----------------------------------------------------------------------
+Ran 12 tests in 2.475s
+
+OK
+.....................
+----------------------------------------------------------------------
+Ran 21 tests in 31.088s
+
+OK
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 5.117s
+
+OK
+..E.Подготовка не пройдена (ImportError); квота не списана. Установите зависимости и Chromium.
+....[1/3] Разведка инфраструктуры https://example.com
+.....
+======================================================================
+ERROR: test_default_gateway_failure_does_not_fallback (__main__.PolicyTests.test_default_gateway_failure_does_not_fallback)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<REPO>/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/test_audit_transport.py", line 78, in test_default_gateway_failure_does_not_fallback
+    with net.NetworkSession('https://example.com'):
+  File "<REPO>/plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/audit_transport.py", line 502, in __enter__
+    import h11
+ModuleNotFoundError: No module named 'h11'
+
+----------------------------------------------------------------------
+Ran 13 tests in 1.167s
+
+FAILED (errors=1)

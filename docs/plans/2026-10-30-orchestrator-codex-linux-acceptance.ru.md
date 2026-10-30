@@ -3,9 +3,11 @@
 Дата: 30 октября 2026 года. Обновление после проверки блокера §2.
 [English canonical plan](2026-10-30-orchestrator-codex-linux-acceptance.md).
 
-Статус: прежний MCP-вариант отклонён; §2 остаётся BLOCKED до живой проверки
-нового закрытого STDIO-канала. Выполнен локальный API preflight, но ещё не
-security PASS и не Linux autonomy PASS.
+Статус: прежний MCP-вариант отклонён; §2 остаётся BLOCKED.
+[Живой Linux follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.ru.md):
+API/caller/host/approval/same-thread recovery PASS, RPC/FD INCONCLUSIVE,
+Git preparation BLOCKED с неизменёнными worktree roots. Это ещё не security PASS
+и не Linux autonomy PASS; scheduler не интегрирован.
 [Новый ADR](../adr/2026-10-30-codex-private-stdio-tools.md),
 [исторический отказ](../adr/2026-10-30-codex-stdio-bridge.ru.md),
 [промпт Linux-агенту](2026-10-30-orchestrator-linux-agent.ru.md).

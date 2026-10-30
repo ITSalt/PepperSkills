@@ -1,9 +1,12 @@
 # Codex Linux autonomy and macOS acceptance plan
 
-30 October 2026. **Step 2 remains BLOCKED pending live private-channel tests.**
+30 October 2026. **Step 2 remains BLOCKED: live private-channel checks are partial.**
 [Russian detailed plan](2026-10-30-orchestrator-codex-linux-acceptance.ru.md).
 [Design ADR](../adr/2026-10-30-codex-private-stdio-tools.md).
 [Linux agent prompt](2026-10-30-orchestrator-linux-agent.md).
+[Linux follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.md):
+API/caller/host/approval/same-thread recovery checks PASS, RPC/FD INCONCLUSIVE,
+Git preparation BLOCKED at unchanged worktree roots. No scheduler integration.
 
 ## Scope and existing evidence
 

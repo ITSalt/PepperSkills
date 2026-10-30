@@ -6,9 +6,10 @@ fix. No privileged MCP bridge is shipped. No public release, user-program activa
 permission relaxation or PROD/database/deployment operation was performed.
 [Russian translation](pepper-orchestrator-0.13.1-linux-gate.ru.md).
 
-Follow-up planning: [private STDIO proposal](../adr/2026-10-30-codex-private-stdio-tools.md)
-has only a zero-turn API preflight. Live security/Git/E2E gates remain open;
-the results and candidate archive hashes in this report are unchanged.
+Follow-up: [private STDIO proposal](../adr/2026-10-30-codex-private-stdio-tools.md)
+now has [partial live Linux evidence](pepper-orchestrator-private-stdio-linux-2026-10-30.md):
+RPC/FD remains INCONCLUSIVE and Git preparation BLOCKED. Security/E2E gates remain
+open; the historical results and candidate archive hashes below are unchanged.
 
 ## Reproduced blocker
 

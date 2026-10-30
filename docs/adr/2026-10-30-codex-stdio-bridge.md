@@ -4,7 +4,8 @@
 [Russian translation](2026-10-30-codex-stdio-bridge.ru.md).
 
 Follow-up: [private owner STDIO and native dynamic tools](2026-10-30-codex-private-stdio-tools.md)
-is a new proposal with a structural preflight, pending live isolation tests. It
+is a new proposal with [partial live Linux evidence](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.md);
+RPC/FD remains INCONCLUSIVE and Git preparation BLOCKED. It
 does not reverse this rejection or establish Linux autonomy PASS.
 
 The mandatory step 2 gate requires a supported, reliable caller/session/role binding

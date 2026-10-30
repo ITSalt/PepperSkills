@@ -1,10 +1,15 @@
 # Proposal: owner-held App Server STDIO and native dynamic tools
 
-30 October 2026. **PROPOSED; live security gate pending.** This supersedes the
+30 October 2026. **PROPOSED; live security gate incomplete.** This supersedes the
 implementation direction, not the evidence or rejection, in the
 [MCP metadata ADR](2026-10-30-codex-stdio-bridge.md). See the
 [execution plan](../plans/2026-10-30-orchestrator-codex-linux-acceptance.md) and
 [Linux agent handoff](../plans/2026-10-30-orchestrator-linux-agent.md).
+
+[Linux live follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.md)
+verifies API, caller binding, fixture host integrity, pending approvals and
+same-thread persisted tools on CLI 0.165.0. RPC/FD remains INCONCLUSIVE, Git
+preparation BLOCKED. This is no permission to implement privileged operations.
 
 ## Why this changes the trust boundary
 
@@ -57,7 +62,8 @@ the pipes or another owner API connection, this proposal also fails the gate.
   `codex app-server generate-json-schema --experimental --out SCHEMA_DIR`.
   In the tested 0.154 schema, `thread/start` has `dynamicTools`, while
   `thread/resume` has no field for attaching them. Persisted-tool resume still
-  needs a real test. No support claim is made for Linux 0.165 until it is run.
+  needed a real test. The follow-up above now verifies persisted-tool resume on
+  Linux 0.165.0; it does not close the overall security gate.
 
 ## Required security gate before privileged operations
 

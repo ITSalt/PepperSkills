@@ -1,0 +1,87 @@
+{
+  "scope": "Only disposable owner/native/observed descendant PIDs; no signals to unrelated processes",
+  "runs": [
+    {
+      "run": "result",
+      "auth_copy_exists": false,
+      "owned_pid_checks": {
+        "75050": {
+          "proc_entry_exists": false
+        }
+      },
+      "recorded_cleanup": {
+        "auth_copy_removed": true,
+        "no_runtime_left": true
+      }
+    },
+    {
+      "run": "live-result",
+      "auth_copy_exists": false,
+      "owned_pid_checks": {
+        "76958": {
+          "proc_entry_exists": false
+        },
+        "77105": {
+          "proc_entry_exists": false
+        }
+      },
+      "recorded_cleanup": {
+        "auth_copy_removed": true,
+        "no_runtime_left": true
+      }
+    },
+    {
+      "run": "live-b-result",
+      "auth_copy_exists": false,
+      "owned_pid_checks": {
+        "89554": {
+          "proc_entry_exists": false
+        },
+        "90392": {
+          "proc_entry_exists": false
+        },
+        "90725": {
+          "proc_entry_exists": false
+        },
+        "91426": {
+          "proc_entry_exists": false
+        },
+        "93947": {
+          "proc_entry_exists": false
+        }
+      },
+      "recorded_cleanup": {
+        "auth_copy_removed": true,
+        "no_runtime_left": true
+      }
+    },
+    {
+      "run": "live-c-result",
+      "auth_copy_exists": false,
+      "owned_pid_checks": {
+        "466815": {
+          "proc_entry_exists": false
+        },
+        "467619": {
+          "proc_entry_exists": false
+        },
+        "467817": {
+          "proc_entry_exists": false
+        },
+        "468938": {
+          "proc_entry_exists": false
+        },
+        "471997": {
+          "proc_entry_exists": false
+        },
+        "472473": {
+          "proc_entry_exists": false
+        }
+      },
+      "recorded_cleanup": {
+        "auth_copy_removed": true,
+        "no_runtime_left": true
+      }
+    }
+  ]
+}

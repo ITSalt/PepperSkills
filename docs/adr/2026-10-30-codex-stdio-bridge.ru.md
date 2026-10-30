@@ -3,7 +3,8 @@
 [English canonical ADR](2026-10-30-codex-stdio-bridge.md).
 
 Продолжение: [закрытый owner STDIO и native dynamic tools](2026-10-30-codex-private-stdio-tools.md)
-— новый вариант с API preflight, ещё без живой проверки изоляции. Он не отменяет
+— новый вариант с [частичными Linux evidence](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.ru.md);
+RPC/FD INCONCLUSIVE, Git preparation BLOCKED. Он не отменяет
 этот отказ и не означает Linux autonomy PASS.
 
 Дата: 30 октября 2026 года. Статус: **BLOCKED / проект моста отклонён в заданной форме**.

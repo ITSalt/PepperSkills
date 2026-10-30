@@ -3,8 +3,9 @@
 [English canonical report](pepper-orchestrator-0.13.1-linux-gate.md).
 
 Продолжение: [новый private STDIO вариант](../adr/2026-10-30-codex-private-stdio-tools.md)
-имеет только API preflight без модели. Живые security/Git/E2E gate ещё открыты;
-результаты и хэши архивов ниже не изменены.
+имеет [частичные живые Linux evidence](pepper-orchestrator-private-stdio-linux-2026-10-30.ru.md):
+RPC/FD INCONCLUSIVE, Git preparation BLOCKED. Security/E2E gate ещё открыты;
+исторические результаты и хэши архивов ниже не изменены.
 
 **Итог плана: BLOCKED на обязательном §2. Автономность Linux не принята.**
 Кандидат 0.13.1 содержит независимые исправления безопасной отмены/диагностики;

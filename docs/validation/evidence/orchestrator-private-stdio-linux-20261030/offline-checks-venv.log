@@ -1,0 +1,218 @@
+Exit code: 1
+PASS offline guard denies and records DNS attempts in child Python processes
+private trace: docs/a.md:2: absolute home-directory path
+Use repository-relative paths and neutral examples (example.com); see CONTRIBUTING.md.
+private trace: docs/a.md:2: absolute home-directory path
+Use repository-relative paths and neutral examples (example.com); see CONTRIBUTING.md.
+private trace: docs/a.md:2: absolute home-directory path
+Use repository-relative paths and neutral examples (example.com); see CONTRIBUTING.md.
+No private traces in tracked files
+PASS private traces: home paths (macOS, Linux, Windows), archives, local terms, tracked only
+No private traces in tracked files
+PASS GitHub templates: 3 issue forms, config, CODEOWNERS, PR template
+current: pepper-creative-mode 2.0.1
+current: pepper-orchestrator 0.13.1
+current: pepper-prompt-engineer 2.5.1
+current: pepper-ru-web-compliance 2.4.0
+valid + synchronized: pepper-creative-mode
+valid + synchronized: pepper-orchestrator
+valid + synchronized: pepper-prompt-engineer
+valid + synchronized: pepper-ru-web-compliance
+PASS OpenAI final listing limits, including Cyrillic and overlong package-valid text
+PASS checkpoint chat golden: plugins/pepper-creative-mode/adapters/chat/custom-instructions.md
+PASS checkpoint chat golden: plugins/pepper-creative-mode/adapters/chat/system-prompt.md
+PASS checkpoint chat golden: plugins/pepper-prompt-engineer/adapters/chat/chat-prompt.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/custom-instructions.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/manual-checklist.md
+PASS checkpoint chat golden: plugins/pepper-ru-web-compliance/adapters/chat/system-prompt.md
+PASS explicit template languages and localized missing references
+совпадения по реестру
+  ok   «вот так» не срабатывает на «вот такой результат»
+  ok   «Вот Так» в кавычках находится
+  ok   «Вот Так» после слова «издание» находится
+  ok   «Действие» не срабатывает на «действия»
+  ok   «Действие» в кавычках находится
+  ok   «СИЧ-С14» находится без кавычек
+  ok   многословное название находится в тексте
+  ok   исключённая запись не даёт совпадения
+  ok   weak_phrase отличает обиходную фразу от короткого названия
+признаки авторизации
+  ok   «вход» не находится внутри «входные»
+  ok   «вход» находится отдельным словом
+  ok   подписи ссылок извлекаются из разметки
+  ok   текст абзаца не попадает в подписи ссылок
+полнота отчёта
+  ok   статус есть у каждого правила
+  ok   все статусы из допустимого набора
+  ok   без признаков входа AUTH-004 — не применимо
+авторизация без страницы входа
+  ok   ссылка «Войти» без страницы входа даёт UNKNOWN, а не нарушение
+границы сайта
+  ok   поддомен считается тем же сайтом
+  ok   похожий чужой домен не считается тем же сайтом
+  ok   составной суффикс разбирается правильно
+  ok   поддомен — не сторонний приёмник данных
+доступ к политике
+  ok   страница политики не нарушает требование ссылкой на саму себя
+форма плашки иноагента
+  ok   без загруженного реестра форма плашки остаётся без вывода
+  ok   у INF-004 есть инструкция ручной проверки
+подвал и ссылки отчёта
+  ok   название скилла есть в записке
+  ok   автор есть в записке
+  ok   репозиторий есть в записке
+  ok   канал есть в записке
+  ok   почта есть в записке
+  ok   ссылка из инструкции кликабельна в HTML
+  ok   служебное обоснование не попадает в отчёт
+типографика сумм
+  ok   разряды числа склеены неразрывным пробелом
+  ok   в строке таблицы знака рубля нет — он в заголовке колонки
+  ok   раскладка wide: валюта в заголовке
+  ok   раскладка wide: сумма не рвётся
+  ok   раскладка stacked: валюта в заголовке
+  ok   раскладка stacked: сумма не рвётся
+  ok   раскладка twoline: валюта в заголовке
+  ok   раскладка twoline: сумма не рвётся
+контрольные суммы реквизитов
+  ok   валидный ИНН юрлица принят
+  ok   испорченный ИНН отклонён
+  ok   телефон не проходит как ИНН
+JSON-двойники данных
+  ok   rules.json совпадает с rules.yaml
+  ok   signatures.json совпадает с signatures.yaml
+основание обработки аналитики
+  ok   заявленный законный интерес распознан
+  ok   упоминание возражения не подтверждает основание или работающий отказ
+  ok   аналитический запрос отличён от отсутствия трекеров
+квалификация cookie и трекеров
+  ok   техническая страница без аналитики не требует баннер автоматически
+  ok   отсутствие баннера при аналитике требует квалификации, а не FAIL
+  ok   аналитика без баннера требует проверки основания
+  ok   иностранный домен фиксируется как факт для правовой проверки
+
+все проверки пройдены
+............
+----------------------------------------------------------------------
+Ran 12 tests in 4.438s
+
+OK
+.....................
+----------------------------------------------------------------------
+Ran 21 tests in 44.994s
+
+OK
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 6.789s
+
+OK
+....Подготовка не пройдена (ImportError); квота не списана. Установите зависимости и Chromium.
+....[1/3] Разведка инфраструктуры https://example.com
+.....
+----------------------------------------------------------------------
+Ran 13 tests in 1.134s
+
+OK
+Schema OK — 11 scenarios well-formed.
+
+release: mono: WP-APP-05: prod verification failed; every delivery is on hold (orch.py unhold "<reason>" after the analysis); not run: the batch has migrations: the orchestrator never rolls back a database; owner item R-7
+PASS safe_edit: single match, backup, refusal, create-only, CLI
+PASS orch.yaml subset parser matches PyYAML
+PASS orch.yaml subset parser
+PASS workflow (en): init, new-wp, set, owner, decide, journal, commit, push
+PASS workflow (ru): init, new-wp, set, owner, decide, journal, commit, push
+PASS lint catches orphans, empties, secrets, placeholders, duplicates, order
+PASS workspace discovery: upward search, features/*, ambiguity, --workspace
+PASS safe_edit: stdin block, create from stdin, backup fallback
+PASS 0.1.0 workspace: lint, read-only commands unchanged, all commands work, upgrade
+PASS monorepo: init areas/domain, worktree start commands, overlap, locks, dispatch, merge queue, P4
+PASS P4: common dir + origin (worktree on orch/ ok, base worktree and clone refused), L7 warning
+PASS streams edges: braces, hyphen ids, push=deploy slot, glob locks, unknown lock, queue after merge
+PASS 0.1.0 modules sharing a path: warning not error, own base, serialized dispatch
+PASS cloud in-repo: init on orch/ under paths-ignore, cloud prompt, push to orch/, READY by branch, base refused
+PASS deploy check: pushed ref, unknown forms refused, hidden dirs skipped, docs first, D-n override, URLs
+PASS cloud dispatch safety: dry-run read-only, package on origin first, stand slot, existing branch, detached
+PASS review: automatic findings (outside paths, unlocked/undeclared shared, stale merge-base), report, rounds, disposable clone
+PASS close: facts and evidence, carry, atomic apply and finish, archive pushed, refusals, reopen, root
+PASS close in-repo: archive commands tied to the closeout commit, printed not run; no re-push
+PASS models: per-package model and effort, flags, orch.py model, lint, cloud block and prefill link
+PASS local/cloud matrix: 5 fixtures x with/without models, outputs separated
+PASS settings: files per session, rules, dispatch flags and refusal, permission mode, .worktreeinclude, on-demand locks, cloud unchanged
+PASS deploy override: positive paths behind a branch filter, first candidate, --dir only without one
+PASS verify: stub gh, merge commit, deploy run, WAIT, ACCEPTED->MERGED, served version, commands, report, VERIFIED_TEST, defect, owner item, timeout, dry run, redaction, lint, RU texts, prod tip
+PASS windows paths: //c/... rules, UNC refused, python/py forms, PowerShell commands, POSIX as in 0.7.0
+PASS report: anonymized record and Issue text, guard clean, owner yes required, stub gh create/comment, auto by decision, no-gh instructions, update line
+PASS deliver: owner default, delivery set by D-n, lint, gates G1/G2/G5/G10, merge with the configured method, ledger, run watch, verify, hold on failure, unhold, GitHub refusal -> owner item, settings
+PASS encoding and PR cell: UTF-8 through a pipe under cp1252/C, unreadable workflow refused, #87 expanded
+PASS release: sheet, P1-P7 by facts, promote PR with checks, merge commit, prod run, verify prod, PROD, ledger, FYI; failure -> hold, defect, owner item; rollback_prod; per_package; lint; settings
+PASS release ff and ledger: fast-forward from a clean clone, Russian sheet and ledger, 0.9 ledger upgraded, window parser
+PASS pepper-orchestrator selftest
+test_allocator_crash_and_busy (__main__.RuntimeTests.test_allocator_crash_and_busy) ... ok
+test_codex_worktrees_switch_models_and_scopes (__main__.RuntimeTests.test_codex_worktrees_switch_models_and_scopes) ... ok
+test_concrete_files_shared_file_and_stand_serialization (__main__.RuntimeTests.test_concrete_files_shared_file_and_stand_serialization) ... ok
+test_crlf_point_edits_preserve_bytes_and_reject_ambiguity (__main__.RuntimeTests.test_crlf_point_edits_preserve_bytes_and_reject_ambiguity) ... ok
+test_explicit_migration_and_numbering_lock (__main__.RuntimeTests.test_explicit_migration_and_numbering_lock) ... ok
+test_instruction_pairs_case_nested_cas_and_preservation (__main__.RuntimeTests.test_instruction_pairs_case_nested_cas_and_preservation) ... ok
+test_interrupted_init_recovers_without_overwriting (__main__.RuntimeTests.test_interrupted_init_recovers_without_overwriting) ... ok
+test_multi_file_recovery_and_foreign_conflict (__main__.RuntimeTests.test_multi_file_recovery_and_foreign_conflict) ... ok
+test_parallel_state_and_exclusive_create (__main__.RuntimeTests.test_parallel_state_and_exclusive_create) ... ok
+test_reservations_processes_replay_loss_and_corruption (__main__.RuntimeTests.test_reservations_processes_replay_loss_and_corruption) ... ok
+test_transport_fallback_and_switch_running_session (__main__.RuntimeTests.test_transport_fallback_and_switch_running_session) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 85.861s
+
+OK
+test_automatic_pass_does_not_unlock_release (__main__.ReliabilityTests.test_automatic_pass_does_not_unlock_release) ... ok
+test_automatic_report_tampering_and_missing_criterion (__main__.ReliabilityTests.test_automatic_report_tampering_and_missing_criterion) ... ok
+test_bash_command_and_unknown_outcome (__main__.ReliabilityTests.test_bash_command_and_unknown_outcome) ... ok
+test_cancel_waiter_preserves_holder_and_terminal_cleanup (__main__.ReliabilityTests.test_cancel_waiter_preserves_holder_and_terminal_cleanup) ... ok
+test_check_read_errors_are_never_absence (__main__.ReliabilityTests.test_check_read_errors_are_never_absence) ... ok
+test_claude_settings_deny_any_prod_command_and_follow_stand_mode (__main__.ReliabilityTests.test_claude_settings_deny_any_prod_command_and_follow_stand_mode) ... ok
+test_client_switch_revokes_delegation (__main__.ReliabilityTests.test_client_switch_revokes_delegation) ... ok
+test_delivery_modes_before_side_effects (__main__.ReliabilityTests.test_delivery_modes_before_side_effects) ... ok
+test_delivery_mutex_does_not_block_hold_and_releases_after_crash (__main__.ReliabilityTests.test_delivery_mutex_does_not_block_hold_and_releases_after_crash) ... ok
+test_instruction_prompts_are_read_only_by_default (__main__.ReliabilityTests.test_instruction_prompts_are_read_only_by_default) ... ok
+test_merge_is_bound_to_reviewed_head (__main__.ReliabilityTests.test_merge_is_bound_to_reviewed_head) ... ok
+test_new_merge_of_delivered_wp_is_refused_early (__main__.ReliabilityTests.test_new_merge_of_delivered_wp_is_refused_early) ... ok
+test_queued_pr_never_becomes_merged_or_starts_deploy (__main__.ReliabilityTests.test_queued_pr_never_becomes_merged_or_starts_deploy) ... deliver: WP-A-01 merge not confirmed; the merge commit is unknown yet: inspect (gh pr view https://github.com/example/repo/pull/1 --json state,mergeCommit). Keep the current status; reconcile actual merge, workflow and served version before verification or retry.
+ok
+test_reconciliation_requires_authoritative_queue_absence (__main__.ReliabilityTests.test_reconciliation_requires_authoritative_queue_absence) ... ok
+test_report_template_does_not_leak_origin_owner (__main__.ReliabilityTests.test_report_template_does_not_leak_origin_owner) ... ok
+test_review_clones_are_unique_and_checkout_drift_is_fatal (__main__.ReliabilityTests.test_review_clones_are_unique_and_checkout_drift_is_fatal) ... ok
+test_strict_checks_and_explicit_provider_exception (__main__.ReliabilityTests.test_strict_checks_and_explicit_provider_exception) ... ok
+test_unknown_sha_refused_without_state_writes (__main__.ReliabilityTests.test_unknown_sha_refused_without_state_writes) ... ok
+test_wrong_report_revision_and_failed_tools_never_unlock (__main__.ReliabilityTests.test_wrong_report_revision_and_failed_tools_never_unlock) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 73.805s
+
+OK
+| Gate | Verdict | Fact |
+|------|---------|------|
+| G1 | green | fixture |
+.........................................
+----------------------------------------------------------------------
+Ran 41 tests in 280.398s
+
+OK
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.286s
+
+OK
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.267s
+
+OK
+PASS positive-cookie-no-optional-tracking
+PASS positive-consent-gating
+PASS positive-legitimate-interest
+PASS positive-remediation
+PASS positive-manual-mode
+PASS negative-no-banner-fail
+PASS negative-foreign-domain-is-violation
+PASS negative-legitimate-interest-is-consent
+missing shell: zsh
