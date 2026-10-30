@@ -69,6 +69,21 @@ class GitGrantsTests(unittest.TestCase):
         req['params']['permissions']['fileSystem']['unrestricted'] = True
         with self.assertRaises(ValueError): self.decide(req)
 
+    def test_resolved_approval_history_is_not_a_new_request_for_later_turn(self):
+        from types import SimpleNamespace
+        old = copy.deepcopy(self.request)
+        current = copy.deepcopy(self.request); current['id'] = 4; current['params']['turnId'] = 'next'
+        other = copy.deepcopy(current); other['id'] = 5; other['params']['threadId'] = 'coordinator'
+        api = SimpleNamespace(approvals=[old, current, other])
+        self.assertEqual(p.approvals_for_turn(api, 'module', 'next', set()), [current])
+        self.assertEqual(p.approvals_for_turn(api, 'module', 'next', {4}), [])
+        self.assertEqual(p.approvals_for_turn(api, 'module', 'expired', set()), [])
+
+    def test_missing_overlap_events_cannot_prove_active_sibling_isolation(self):
+        self.assertFalse(p.sibling_overlaps_grant({'events': []}, {}))
+        self.assertFalse(p.sibling_overlaps_grant({'events': []}, {
+            'granted': {'shell_result': {'sibling_barrier_released': True}}, 'sibling': {}}))
+
     def test_empty_mutable_json_errors_and_timeout_cannot_pass(self):
         for report in ({}, {'error': 'TimeoutError'}, {'turns': [{'phase': 'granted',
                 'native_command_matches': 1, 'shell_result': {'grant_access': {'x': {'ok': True}}},
