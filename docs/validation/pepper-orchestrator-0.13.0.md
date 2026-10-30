@@ -88,7 +88,7 @@ Codex-часть проверена на macOS (живой цикл) и в CI; C
 | Живой цикл из итогового Codex ZIP | Тот же сценарий, фактическое перекрытие исполнения, компактизация — PASS (снимок Codex-части) |
 | Живой цикл Claude Code из итогового ZIP | Linux, Claude Code 2.1.312: параллельные A-02/B-02, reuse A-сессии для A-03, PostCompact — PASS |
 | Повтор живого цикла Codex на Linux после Claude-изменений | **Не принят**: Codex CLI 0.165.0, профиль workspace-write; координатор в песочнице получает `Permission denied` к App Server и `/proc` → `observation_error`, ни одного назначения, повторов нет (безопасный отказ). [Репозиторий](https://github.com/ITSalt/pepper-orchestrator-autonomy-20261030-a8fe51) архивирован |
-CI_ROW
+| CI релизного PR #41 | [Все 7 jobs PASS](https://github.com/ITSalt/PepperSkills/actions/runs/40984396889) на `8899fcb`: Linux Python 3.10/3.12, macOS Python 3.12, runtime Linux/macOS/Windows с нативным Windows Codex, сверка архивов между платформами |
 
 [Финальная CI](https://github.com/ITSalt/pepper-orchestrator-autonomy-validation-20261029-90334b/actions/runs/40902670870)
 проверяла снимок `fda68b2c2bc4e5a9e05fc8859f29add621d51015`.
@@ -193,13 +193,16 @@ TASK теперь требует отдельного вызова. Отладо
 
 ## Артефакты и границы
 
-Путь: `dist/pepper-orchestrator/0.13.0/`. Итоговые архивы побайтово совпали с архивами полного
-локального check; эти же хеши зафиксированы нативным Windows CI:
+Путь: `dist/pepper-orchestrator/0.13.0/`. Хеши итоговых архивов совпали во всех CI-сборках
+релизного PR ([CI](https://github.com/ITSalt/PepperSkills/actions/runs/40984396889)), включая архив нативного Windows smoke; ими подписан `SHA256SUMS` релиза:
 
 ```text
-ce732841a8e260f78ec4e6a0c39a8dd6e8057393ffda24fbde0de508ff1f9d9b  pepper-orchestrator.plugin.zip
-936ac843379c442f3c42f063ba8a836733bc674db37f3d5ea7f79c317ed10086  pepper-orchestrator.zip
+4c1e9ace0e0f528df998cadef090ddab17dd091da83aefdc9ed01d9480d37e68  pepper-orchestrator.plugin.zip
+b72ade91dae2b05a43ff76b1e48c180783ee05d89985ba2e45af7bf02afcf0d4  pepper-orchestrator.zip
 ```
+
+Живая приёмка Claude Code шла на архиве той же ревизии кода; последующие коммиты изменили только
+документацию внутри архива (CHANGELOG/README/references), runtime не менялся.
 
 Живое исполнение модулей Codex проверено на macOS (снимок Codex-части), Claude Code — на Linux.
 Codex на Linux в песочнице workspace-write не видит App Server и процессы: автономность Codex там
