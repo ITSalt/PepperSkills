@@ -3,6 +3,10 @@
 30 October 2026. **BLOCKED: reject the privileged bridge as proposed.**
 [Russian translation](2026-10-30-codex-stdio-bridge.ru.md).
 
+Follow-up: [private owner STDIO and native dynamic tools](2026-10-30-codex-private-stdio-tools.md)
+is a new proposal with a structural preflight, pending live isolation tests. It
+does not reverse this rejection or establish Linux autonomy PASS.
+
 The mandatory step 2 gate requires a supported, reliable caller/session/role binding
 before moving coordinator operations outside the shell sandbox. A thread selected
 by an RPC parameter cannot serve as that authentication.

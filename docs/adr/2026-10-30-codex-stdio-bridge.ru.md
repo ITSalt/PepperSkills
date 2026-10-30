@@ -2,6 +2,10 @@
 
 [English canonical ADR](2026-10-30-codex-stdio-bridge.md).
 
+Продолжение: [закрытый owner STDIO и native dynamic tools](2026-10-30-codex-private-stdio-tools.md)
+— новый вариант с API preflight, ещё без живой проверки изоляции. Он не отменяет
+этот отказ и не означает Linux autonomy PASS.
+
 Дата: 30 октября 2026 года. Статус: **BLOCKED / проект моста отклонён в заданной форме**.
 Основание: §2 плана Linux/macOS acceptance. Привилегированный мост не поставляется.
 
