@@ -1,4 +1,4 @@
-# Codex CLI adapter and common runtime (0.13 candidate)
+# Codex CLI adapter and common runtime (0.13.0)
 
 The owner launches independent module sessions. One coordinator writes `status.md`
 and decisions; module sessions implement WPs in their own Git worktrees. Preserve
@@ -18,7 +18,7 @@ See [portable plugin component discovery](https://developers.openai.com/plugins/
 
 ## Autonomous continuation
 
-Follow [local Codex autonomy](autonomy.md) for ownership, discovery/attachment,
+Follow [local autonomy](autonomy.md) (Codex transport) for ownership, discovery/attachment,
 reuse, automatic dispatch, observation, start acknowledgements and recovery.
 Existing programs remain opt-out until the owner enables autonomy. When enabled,
 resume and lifecycle events run `next --json`; dispatch eligible packages yourself.

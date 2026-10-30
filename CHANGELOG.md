@@ -1,5 +1,15 @@
 # Changelog
 
+## pepper-orchestrator 0.13.0 — 2026-10-30, public preview
+
+- Opt-in local autonomy for Codex CLI and Claude Code: the coordinator itself dispatches READY
+  packages to attached idle sessions of a stream (reuse after a verified merge, new branch in the
+  same worktree), runs compatible waves in parallel within a slot limit and is woken by a local
+  watcher (Codex App Server queue; Claude Code Monitor). Disabled until enabled per program.
+- Stable assignment IDs, coordinator generations, atomic reservations, recipient start proof and
+  recovery without blind retries or handover. Merge, deploy, permissions and new terminals stay
+  with the owner. See the [plugin changelog](plugins/pepper-orchestrator/CHANGELOG.md).
+
 ## pepper-orchestrator 0.12.0 — 2026-10-23, public preview
 
 - Fail-closed CI gate: a failure to read checks is never "no checks"; optional provider checks are

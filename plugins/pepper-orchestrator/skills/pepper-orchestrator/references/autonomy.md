@@ -1,9 +1,10 @@
-# Opt-in local Codex autonomy (0.13 candidate)
+# Opt-in local autonomy: Codex CLI and Claude Code (0.13.0)
 
 One coordinator chooses work; independent module sessions implement it. `next` is
 read-only. A local watcher observes facts and wakes the existing coordinator; it
-never dispatches, creates an executor, merges or deploys. Claude transport autonomy
-is not part of this candidate. Existing programs remain disabled after upgrade.
+never dispatches, creates an executor, merges or deploys. Both clients share this
+core; the transport differs and is described per client below. Existing programs
+remain disabled after upgrade. One client per program, one host, local sessions only.
 
 ## Enable and resume
 
@@ -24,6 +25,8 @@ Review/scout/verifier subagents do not occupy module slots. Ordinary observation
 samples every five seconds without model calls. A repeated actionable condition
 may wake the coordinator again after the recheck deadline; empty ticks stay quiet.
 
+### Codex transport
+
 The transport must observe the same live runtime that owns the thread. By default
 it connects to the running Codex CLI daemon with `codex app-server proxy`; it does
 not start a replacement daemon. If sessions use an explicit local App Server,
@@ -31,6 +34,56 @@ set `codex.remote: unix:///absolute/server.sock` (macOS/Linux) or loopback
 `ws://127.0.0.1:PORT` in orch.yaml. Queue and observation use that same endpoint.
 Only local endpoints are supported. A separate stdio server reading stored history
 cannot prove that another server's thread is idle and is not used for autonomy.
+Accepted live on macOS. On Linux the workspace-write sandbox of the coordinator denies the App
+Server socket and `/proc`: `next` reports observation errors and nothing is dispatched. Do not
+relax the sandbox for it; use the owner-launch path there.
+
+### Claude Code transport
+
+Requires Claude Code 2.1.236+ (cross-session messaging with `notify_when_idle`).
+`THREAD` is the session ID and `PID` the session process: inside the coordinator run
+`echo $CLAUDE_CODE_SESSION_ID $CLAUDE_PID`; `claude agents --json` must list the same
+pair with the program workspace as cwd, or claim is refused.
+
+- **Observation** is model-free: `claude agents --json` (PID, session ID, name, cwd,
+  `idle|busy|waiting`). `waiting` (permission prompt, input, a held peer message) is
+  busy, never idle. Model and effort are not observable: `session attach` records the
+  owner-confirmed launch values with `--model`/`--effort`, and a WP that requires a
+  model is reused only when they match. An invisible in-session `/model` stays a limit.
+- **Delivery** is the coordinator's own `SendMessage` tool, not the CLI. `dispatch --json`
+  (or `session send --assignment`) commits the send intent and returns
+  `send_required` with `to`, `message` and the `session sent` command. Call
+  `SendMessage` once with `notify_when_idle: true`, then record the tool result:
+  `--outcome queued` for "in that session's inbox", `--outcome not_sent` only for an
+  explicit `Not sent` or a declined delivery notice, anything else `outcome_unknown`.
+  "In the inbox" is not a start. A byte-identical repeat is dropped by the client.
+- **Same permission class.** A session in another permission mode class holds peer
+  messages for its human (`waiting` / permission prompt) and may let them expire.
+  Run the coordinator and module sessions with the program's `permission_mode` and
+  the generated settings files (`crossSessionInbound: accept`).
+- **Start proof.** `session transition` checks `CLAUDE_CODE_SESSION_ID`, the identity of the
+  `CLAUDE_PID` process against the attachment and that this process is an ancestor of the
+  transition itself, and stores them in the receipt. Run it as its own Bash call, exactly as
+  given: the module's allow rule matches that command only. A Bash sandbox that hides the
+  session process makes the transition refuse (no false start); the owner then decides.
+  Tracked `.claude/` or `.mcp.json` changes in the new base require owner preparation.
+  `session started --assignment ID --evidence '<the STARTED message>'` accepts that
+  receipt plus the actual branch; the relayed message is stored as supporting evidence.
+- **Watcher** runs inside the coordinator under its Monitor tool: `autonomy enable|resume`
+  returns `monitor_required` with a command; start exactly one Monitor with it and
+  `timeout_ms` 1800000. Silent ticks print nothing; each printed line is one actionable
+  signal, an observation error or the stop. Monitor expires after at most 30 minutes:
+  on the expiry notice run `autonomy resume` again and start the returned command
+  (one model turn per expiry). A second watcher process is refused. Without Monitor,
+  a 10-minute `CronCreate` job that runs `autonomy status`/`next --json` is the fallback;
+  check `CronList` on resume before creating one (recurring jobs expire after 7 days).
+- **Compaction.** Slash commands inside messages are never executed. `session compact`
+  marks the session as compacting and returns an owner instruction to type `/compact`
+  in that window; the module's PostCompact hook (in the generated settings) writes a
+  receipt, and a second `session compact` call confirms it. Until then reuse is blocked.
+  `/clear` is never automated; when context is unsafe, prepare a new owner-launched session.
+
+## Resume and watcher
 
 `autonomy resume --coordinator THREAD --generation N` restores a missing watcher.
 Only one watcher per program runs. After machine reboot, resume is required; no
@@ -40,13 +93,15 @@ Close and client switching also stop autonomous continuation.
 
 ## Discover, attach and reuse
 
-`session discover` reads live thread candidates in repository worktrees. Names
-and cwd help locate candidates but never authorize them. Attach one explicitly:
+`session discover` reads live thread candidates in repository worktrees (Codex: the
+App Server; Claude: `claude agents --json`). Names and cwd help locate candidates but
+never authorize them. Attach one explicitly:
 
 ```bash
 python3 scripts/orch.py --workspace /absolute/program session attach \
   --wp WP-APP-01 --thread MODULE_THREAD --worktree /absolute/worktree \
   --pid CLIENT_OR_SERVER_PID --evidence 'verified launch settings and process binding'
+# Claude: also --model M --effort E as launched; the session needs a unique /rename name.
 ```
 
 The PID confirmation records host and precise process start identity. Thread
@@ -127,7 +182,7 @@ recipient is idle, and send a targeted instruction to retry that same transition
 Do not create a replacement assignment.
 
 `session compact --thread MODULE_THREAD --coordinator THREAD --generation N`
-uses `thread/compact/start` on the owning server and requires a completed
+(Codex) uses `thread/compact/start` on the owning server and requires a completed
 contextCompaction event. It subscribes only to an already-loaded idle runtime,
 without model/permission overrides. Unknown completion blocks reuse until checked
 and explicitly reconfirmed with attach. Never send literal `/compact` as proof,

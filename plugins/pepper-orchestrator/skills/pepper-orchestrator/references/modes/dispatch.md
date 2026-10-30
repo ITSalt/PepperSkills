@@ -1,8 +1,10 @@
 # Mode: dispatch
 
-Codex opt-in autonomous continuation follows [autonomy](../autonomy.md): use
-`next --json`, current coordinator ownership and stable assignment IDs. Pause/close
-prevents new assignments; a queued signal must recheck current state.
+Opt-in autonomous continuation (Codex CLI and Claude Code) follows [autonomy](../autonomy.md):
+use `next --json`, current coordinator ownership and stable assignment IDs. Pause/close
+prevents new assignments; a queued signal must recheck current state. With autonomy
+enabled, do not ask the owner to type `/dispatch`; for Claude, deliver the returned TASK
+with `SendMessage` and record it with `session sent`.
 
 Hand a READY work package to a module session: checks, locks, the start command for the owner (or
 a `TASK` line for a live session), status `DISPATCHING`. Argument: the WP id.

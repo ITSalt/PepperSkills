@@ -1,6 +1,6 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
-For Codex opt-in autonomous continuation, follow [autonomy](autonomy.md). Periodic
+For opt-in autonomous continuation (Codex CLI and Claude Code), follow [autonomy](autonomy.md). Periodic
 fact observation is allowed; empty worker status messages are not.
 
 > Version 1.8 · 2026-09-30 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12; 1.6: verification by facts, section 9; 1.7: plugin defects reported, section 16; 1.8: trusted delivery, sections 1, 2 and 12) · derived from the "Corporate clients (B2B)" program (6 repositories,

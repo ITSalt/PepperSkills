@@ -1,16 +1,26 @@
 # Changelog
 
-## 0.13.0 — unreleased candidate
+## 0.13.0 — 2026-10-30, public preview: opt-in autonomy for Codex CLI and Claude Code
 
-- Opt-in local Codex autonomy: a session registry v2, process/configuration confirmations,
+- Opt-in local autonomy for Codex CLI and Claude Code: a session registry v2, process/configuration confirmations,
   deterministic next actions, compatible dispatch waves and reuse after a verified merge.
 - Coordinator generations and atomic session/slot/lock reservations; stable assignment IDs,
   recipient start acknowledgements and recovery without blind retries or handover.
 - A local watcher wakes the existing coordinator, coalesces signals, restores on resume,
   respects pause/close and stays quiet on empty ticks. Existing programs stay disabled.
 - Explicit branch-transition receipts and supported context compaction; canonical shared
-  runtime and the existing Claude delivery workflow remain compatible. No Claude autonomy.
-- Validation and platform limits are recorded separately; no public release is performed.
+  runtime and the existing Claude delivery workflow remain compatible.
+- Claude Code transport: model-free observation with `claude agents --json` (`waiting` is never idle),
+  delivery by the coordinator's `SendMessage` recorded with `session sent` (`queued`, `not_sent` only
+  for an explicit refusal, otherwise `outcome_unknown`), start proof bound to `CLAUDE_CODE_SESSION_ID`
+  and the confirmed `CLAUDE_PID` process, a watcher run under the coordinator's Monitor, and
+  owner-typed `/compact` confirmed by a PostCompact receipt. Requires Claude Code 2.1.236+.
+- Generated Claude module settings add the narrow `session transition` allow rule and the
+  PostCompact receipt hook (present in every module file, inert until autonomy sends a TASK);
+  after upgrading run `orch.py settings` (dispatch warns until then) and reconfirm attached sessions.
+- Validation and platform limits are recorded separately (live acceptance: Codex on macOS,
+  Claude Code on Linux). Codex on Linux inside the workspace-write sandbox cannot observe the
+  App Server or processes: autonomy reports observation errors and dispatches nothing.
 
 ## 0.12.0 — 2026-10-23, public preview: reliability and Codex CLI delivery
 

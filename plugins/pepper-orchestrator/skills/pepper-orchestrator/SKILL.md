@@ -229,6 +229,11 @@ files and run Python. Client-specific capabilities are adapters:
   and keep only conclusions in context.
 - **Cross-session messaging** (Claude Code `SendMessage` / `ListAgents`): where it is missing, the
   owner relays the one-line pointers and `resume` learns READY from `gh pr list`.
+- **Opt-in autonomy** (Claude Code 2.1.236+, local sessions): after `autonomy claim`/`enable`,
+  the coordinator itself dispatches READY packages to attached idle module sessions of the
+  stream (`next --json`, `dispatch --json`, `SendMessage`, `session sent`/`started`) and wakes on
+  its Monitor watcher instead of asking the owner to type `/dispatch`. New terminals, merge,
+  deploy and permissions stay with the owner. Follow [autonomy](references/autonomy.md).
 - **Session start commands** (`claude --name ...`, `claude -w <name>` for a stream worktree):
   elsewhere, the owner creates the worktree (`git worktree add <dir> -b <branch> origin/<base>`)
   and pastes the start prompt from the work package into a new session there.

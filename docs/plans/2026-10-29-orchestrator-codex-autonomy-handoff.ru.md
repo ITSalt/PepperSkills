@@ -1,5 +1,13 @@
 # Передача контекста: автономность Pepper Orchestrator для Codex
 
+> **Статус на 29 октября 2026 года: выполнено и выпущено в 0.13.0.** Следующая сессия доделала
+> Claude-часть исходного плана (транспорт `SendMessage`, наблюдение `claude agents --json`,
+> наблюдатель под Monitor, PostCompact-квитанция компактизации), прошла живую приёмку Claude Code
+> на Linux и выпустила публичный preview `pepper-orchestrator-v0.13.0`. Итоги и границы — в
+> [отчёте 0.13.0](../validation/pepper-orchestrator-0.13.0.md). Ниже — исторический текст передачи
+> Codex-части; его утверждения «Claude autonomy не реализовывалась» и «публичного релиза нет»
+> относятся к моменту передачи.
+
 Дата: 29 октября 2026 года. Репозиторий: `ITSalt/PepperSkills`.
 Рабочая ветка: `codex/orchestrator-trusted-delivery`. Версия: **0.13.0, unreleased candidate**.
 
