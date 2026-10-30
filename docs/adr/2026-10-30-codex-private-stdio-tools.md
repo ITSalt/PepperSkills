@@ -1,6 +1,7 @@
 # Proposal: owner-held App Server STDIO and native dynamic tools
 
-30 October 2026. **PROPOSED; live security gate incomplete.** This supersedes the
+30 October 2026, updated 31 October. **MEASURED BOUNDARY ACCEPTED FOR IMPLEMENTATION;
+AUTONOMY NOT ACCEPTED.** This supersedes the
 implementation direction, not the evidence or rejection, in the
 [MCP metadata ADR](2026-10-30-codex-stdio-bridge.md). See the
 [execution plan](../plans/2026-10-30-orchestrator-codex-linux-acceptance.md) and
@@ -12,8 +13,10 @@ same-thread persisted tools on CLI 0.165.0. RPC/FD remains INCONCLUSIVE, Git
 preparation BLOCKED for that unchanged-profile run.
 The [selected Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.md)
 now passes six native grant/Git/lifetime/isolation checks and adds actual tool
-inventory/default queue evidence. The common gate still requires macOS and final
-boundary review; no privileged implementation is accepted by this diagnostic result.
+inventory/default queue evidence. The [macOS gate](../validation/pepper-orchestrator-private-stdio-macos.md)
+now passes the measured threat matrix with the closed tool set and CLI 0.165.0.
+Implementation must preserve that boundary and independently test the actual
+integrated tools and Git-granted profile; diagnostic PASS is not E2E acceptance.
 
 ## Why this changes the trust boundary
 

@@ -3,13 +3,16 @@
 Дата: 30 октября 2026 года. Обновление после проверки блокера §2.
 [English canonical plan](2026-10-30-orchestrator-codex-linux-acceptance.md).
 
-Статус: прежний MCP-вариант отклонён; §2 ещё требует macOS и итоговой проверки границы.
+Статус: прежний MCP-вариант отклонён; измеренная граница §2 PASS, интеграция и E2E впереди.
 [Живой Linux follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.ru.md):
 API/caller/host/approval/same-thread recovery PASS, RPC/FD INCONCLUSIVE,
 Git preparation BLOCKED с неизменёнными worktree roots. Это ещё не security PASS
 и не Linux autonomy PASS; scheduler не интегрирован.
 [Выбранный Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.ru.md):
 шесть grant/Git/boundary/expiry/sibling/restart проверок PASS на Linux 0.165.0.
+[macOS gate](../validation/pepper-orchestrator-private-stdio-macos.ru.md) прошёл
+измеренную матрицу угроз. Следующий этап — узкая реализация с повтором negative
+probes её настоящих tools и профиля с Git-grant; автономность ещё не принята.
 Фактический code-mode inventory и default CLI queue дополнили прежнее покрытие
 RPC/FD. Это не autonomy E2E и не разрешение поставить host-операции.
 [Новый ADR](../adr/2026-10-30-codex-private-stdio-tools.md),

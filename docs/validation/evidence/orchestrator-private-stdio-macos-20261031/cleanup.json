@@ -1,0 +1,144 @@
+{
+  "archives": [
+    {
+      "thread": "01a18edd-8784-71a2-8acf-febef651f18f",
+      "response": {
+        "id": "owner-2",
+        "result": {}
+      }
+    },
+    {
+      "thread": "01a18edd-879f-7f03-86bb-d62569823ee6",
+      "response": {
+        "id": "owner-3",
+        "result": {}
+      }
+    }
+  ],
+  "events": [
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "owner_to_native",
+      "message": {
+        "id": "owner-1",
+        "method": "initialize",
+        "params": {
+          "clientInfo": {
+            "name": "pepper_stdio_gate",
+            "version": "1"
+          },
+          "capabilities": {
+            "experimentalApi": true
+          }
+        }
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "native_to_owner",
+      "message": {
+        "id": "owner-1",
+        "result": {
+          "userAgent": "pepper_stdio_gate/0.165.0 (Mac OS 27.0.1; arm64) unknown (pepper_stdio_gate; 1)",
+          "codexHome": "/PROTECTED/OWNER/codex-home",
+          "platformFamily": "unix",
+          "platformOs": "macos"
+        }
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "owner_to_native",
+      "message": {
+        "method": "initialized"
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "owner_to_native",
+      "message": {
+        "id": "owner-2",
+        "method": "thread/archive",
+        "params": {
+          "threadId": "01a18edd-8784-71a2-8acf-febef651f18f"
+        }
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "native_to_owner",
+      "message": {
+        "method": "remoteControl/status/changed",
+        "params": {
+          "status": "disabled",
+          "serverName": "TEST_HOST",
+          "installationId": "TEST_INSTALLATION",
+          "environmentId": null
+        },
+        "emittedAtMs": 1793398420596
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "native_to_owner",
+      "message": {
+        "id": "owner-2",
+        "result": {}
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "owner_to_native",
+      "message": {
+        "id": "owner-3",
+        "method": "thread/archive",
+        "params": {
+          "threadId": "01a18edd-879f-7f03-86bb-d62569823ee6"
+        }
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "native_to_owner",
+      "message": {
+        "method": "thread/archived",
+        "params": {
+          "threadId": "01a18edd-8784-71a2-8acf-febef651f18f"
+        },
+        "emittedAtMs": 1793398420618
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "native_to_owner",
+      "message": {
+        "id": "owner-3",
+        "result": {}
+      }
+    },
+    {
+      "epoch": "7065e8f7be524bf0bb24c43c226f8100",
+      "direction": "native_to_owner",
+      "message": {
+        "method": "thread/archived",
+        "params": {
+          "threadId": "01a18edd-879f-7f03-86bb-d62569823ee6"
+        },
+        "emittedAtMs": 1793398420620
+      }
+    }
+  ],
+  "stop": {
+    "pid": 86792,
+    "returncode": 0,
+    "waited": true,
+    "reader_stopped": true
+  },
+  "auth_absent": true,
+  "known_pids_exist": {
+    "85773": false,
+    "85776": false,
+    "85978": false,
+    "85989": false
+  }
+}

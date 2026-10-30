@@ -1,6 +1,6 @@
 # Codex Linux autonomy and macOS acceptance plan
 
-30 October 2026 plan, with follow-up evidence. **Step 2 still requires macOS and final boundary review.**
+30 October 2026 plan, updated 31 October. **Measured step 2 boundary PASS; integration and E2E outstanding.**
 [Russian detailed plan](2026-10-30-orchestrator-codex-linux-acceptance.ru.md).
 [Design ADR](../adr/2026-10-30-codex-private-stdio-tools.md).
 [Linux agent prompt](2026-10-30-orchestrator-linux-agent.md).
@@ -11,6 +11,9 @@ Git preparation BLOCKED at unchanged worktree roots. No scheduler integration.
 all six grant/Git/boundary/expiry/sibling/restart checks PASS on Linux 0.165.0.
 Actual code-mode inventory and default CLI queue observations now supplement the
 earlier RPC/FD coverage. This is not autonomy E2E or authorization to ship host operations.
+[macOS boundary probes](../validation/pepper-orchestrator-private-stdio-macos.md)
+now pass the measured threat matrix. Proceed to the narrow implementation;
+repeat negative checks against its actual tool set and Git-granted profile.
 
 ## Scope and existing evidence
 

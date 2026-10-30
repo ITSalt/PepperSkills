@@ -45,6 +45,10 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python scripts/test-orchestrator-git-grants.py
+      - name: macOS STDIO provenance and listener controls (offline; no model)
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python scripts/test-orchestrator-macos-stdio.py
       - name: Install native Windows Codex CLI for transport acceptance
         if: runner.os == 'Windows'
         run: npm install --global @openai/codex@0.154.0

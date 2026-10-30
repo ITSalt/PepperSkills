@@ -18,3 +18,6 @@ plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance/scripts/signatu
 scripts/probe-orchestrator-git-grants.py text eol=lf
 scripts/test-orchestrator-git-grants.py text eol=lf
 docs/validation/evidence/orchestrator-git-approved-linux/* text eol=lf
+scripts/probe-orchestrator-macos-stdio.py text eol=lf
+scripts/test-orchestrator-macos-stdio.py text eol=lf
+docs/validation/evidence/orchestrator-private-stdio-macos-20261031/* text eol=lf
