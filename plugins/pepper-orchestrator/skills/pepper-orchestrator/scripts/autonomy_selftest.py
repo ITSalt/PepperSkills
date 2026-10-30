@@ -24,6 +24,8 @@ import streams
 class AutonomyTests(unittest.TestCase):
     def setUp(self):
         self.h = runtime_selftest.RuntimeTests(); self.h.setUp(); self.addCleanup(self.h.tearDown)
+        home = patch.dict(os.environ, {'CODEX_HOME': str(self.h.root / 'codex-home')})
+        home.start(); self.addCleanup(home.stop)
         self.repo, self.root = self.h.fixture('codex')
         self.h.cli('--workspace', self.root, 'new-wp', 'a', 'first')
         self.h.cli('--workspace', self.root, 'new-wp', 'a', 'second')
@@ -301,6 +303,42 @@ class AutonomyTests(unittest.TestCase):
         self.assertEqual(data['assignments'][aid]['state'], 'cancelled')
         self.assertIn(aid, data['outbox'])
         self.assertEqual(orch.Workspace(self.root).wp_rows()['WP-A-02']['status'], 'READY')
+
+    def test_cancel_unobservable_process_retains_all_reservations(self):
+        aid = self.assigned('outcome_unknown')
+        child = self.h.child('import time; time.sleep(60)')
+        _, data = a.registry(self.ws)
+        data['instances']['codex:module-a']['confirmation']['process'] = a.process_identity(child.pid)
+        a.persist(self.ws, data)
+        identity = a.process_identity
+        args = argparse.Namespace(workspace=str(self.root), action='cancel', assignment=aid,
+                                   coordinator='coord', generation=1, evidence='owner stopped recipient')
+        before = {str(p): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        for error in (a.AutonomyError('process is not observable'), PermissionError(13, 'denied'),
+                      subprocess.TimeoutExpired('process observation', 10)):
+            def observe(pid):
+                if pid == child.pid:
+                    raise error
+                return identity(pid)
+            with self.subTest(error=type(error).__name__), patch.object(a, 'process_identity', side_effect=observe):
+                with self.assertRaisesRegex(a.AutonomyError, 'observation unavailable'):
+                    a.cmd_session(args)
+            self.assertEqual(before, {str(p): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+
+    def test_hidden_or_unconfirmed_pid_namespace_is_not_exit_evidence(self):
+        proof = {'host': __import__('socket').gethostname(), 'pid': 123, 'started': 'boot:42', 'pid_namespace': 'pid:[host]'}
+        with patch.object(a.sys, 'platform', 'linux'), patch.object(a.os, 'readlink', return_value='pid:[hidden]'), \
+                patch.object(a, 'process_identity', side_effect=AssertionError('must not infer absence')):
+            self.assertEqual(a.process_observation(proof)['state'], 'unavailable')
+        legacy = {k: v for k, v in proof.items() if k != 'pid_namespace'}
+        with patch.object(a.sys, 'platform', 'linux'), patch.object(a.os, 'readlink', return_value='pid:[host]'), \
+                patch.object(a, 'process_identity', side_effect=AssertionError('legacy identity needs reattachment')):
+            self.assertEqual(a.process_observation(legacy)['state'], 'unavailable')
+        with patch.object(a.sys, 'platform', 'linux'), patch.object(a.os, 'readlink', return_value='pid:[host]'), \
+                patch.object(a.Path, 'read_text', side_effect=PermissionError(13, 'boot_id denied')):
+            self.assertEqual(a.process_observation(proof)['state'], 'unavailable')
+        for malformed in (None, [], {}, {**proof, 'pid': True}, {**proof, 'started': None}):
+            self.assertEqual(a.process_observation(malformed)['state'], 'unavailable')
 
     def test_old_owner_unknown_assignments_block_replacement(self):
         aid = self.assigned('outcome_unknown')

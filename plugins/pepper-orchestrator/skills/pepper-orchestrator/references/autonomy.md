@@ -1,4 +1,4 @@
-# Opt-in local autonomy: Codex CLI and Claude Code (0.13.0)
+# Opt-in local autonomy: Codex CLI and Claude Code (0.13.1 safety-fix candidate)
 
 One coordinator chooses work; independent module sessions implement it. `next` is
 read-only. A local watcher observes facts and wakes the existing coordinator; it
@@ -200,3 +200,23 @@ messages are not. Report owner decisions, permission waits, observation failures
 real deadlocks and completion; ordinary pending CI is a wait, not a deadlock.
 Merge/stand/PROD delegation, database restrictions, sandbox and approvals remain
 unchanged. No new product initiatives or automatic terminal creation are allowed.
+
+
+## Linux observation and the MCP gate (0.13.1 candidate)
+
+Linux autonomy remains unavailable in the tested workspace-write/on-request profile.
+A hidden PID namespace can report ENOENT for a live host process; denied access is
+not evidence of exit. Cancellation now distinguishes live, positively proven exited
+and unavailable observation. The last state retains the assignment, outbox, slot and
+locks. Old Linux confirmations lack PID-namespace evidence: reattach/recover explicitly;
+do not force-cancel or use lease expiry as a substitute for observation.
+
+A maintainer's isolated STDIO prototype found thread/turn metadata in CLI 0.154.0 and
+0.165.0, but that metadata is not a session credential. In the macOS test profile a
+module shell could reach the same App Server and use `mcpServer/tool/call` with forged
+metadata naming the coordinator. The MCP process still had the correct native parent.
+No privileged bridge is shipped. A safe caller-binding API/boundary must be proven
+before host operations are implemented. Do not relax sandbox/approvals, enable legacy
+Landlock, expose raw RPC, or start a second resume process to work around this refusal.
+The explicit paid repository probe is `scripts/probe-orchestrator-codex-mcp.py`;
+it exposes only a read-only metadata tool and never dispatches work.

@@ -1,0 +1,101 @@
+{
+  "root": "<fixture>",
+  "platform": "darwin",
+  "checks": {
+    "completed_packages": [
+      "WP-A-02",
+      "WP-A-03",
+      "WP-B-02"
+    ],
+    "independent_overlap": true,
+    "overlapping_reservations": true,
+    "same_a_thread_reused": true,
+    "no_user_dispatch": true,
+    "compaction": {
+      "completed": true
+    }
+  },
+  "threads": [
+    "01a18bf6-4f20-7043-9341-af33017ec210",
+    "01a18bf6-7775-79b2-9c33-99b0565deeb8",
+    "01a18bf6-8c75-7fb2-9a71-05984055b506"
+  ],
+  "github_repository": "ITSalt/pepper-orchestrator-autonomy-20261030-efd93b",
+  "prs": [
+    {
+      "wp": "WP-A-01",
+      "url": "https://github.com/ITSalt/pepper-orchestrator-autonomy-20261030-efd93b/pull/1",
+      "head": "33746dac6650f3f5b0ab3414c6a53353de81a638"
+    },
+    {
+      "wp": "WP-B-01",
+      "url": "https://github.com/ITSalt/pepper-orchestrator-autonomy-20261030-efd93b/pull/2",
+      "head": "e3daee4222bad8a9e76828e655dfae8a0bae1f5f"
+    },
+    {
+      "wp": "WP-B-02",
+      "url": "https://github.com/ITSalt/pepper-orchestrator-autonomy-20261030-efd93b/pull/3",
+      "head": "96339778b2d42e188590361b72a0c1d5f4c73730"
+    },
+    {
+      "wp": "WP-A-02",
+      "url": "https://github.com/ITSalt/pepper-orchestrator-autonomy-20261030-efd93b/pull/4",
+      "head": "0dddd24e46f77db139a4c0de6fe7a5a91a2f4d15"
+    },
+    {
+      "wp": "WP-A-03",
+      "url": "https://github.com/ITSalt/pepper-orchestrator-autonomy-20261030-efd93b/pull/5",
+      "head": "4de6c01eb2385ae3f256f0e2a9459d0f3376d413"
+    }
+  ],
+  "model": "gpt-6-astra",
+  "codex_version": "codex-cli 0.154.0",
+  "coordinator": "01a18bf6-8c75-7fb2-9a71-05984055b506",
+  "turn_windows": {
+    "a": [
+      {
+        "started": 1793349683,
+        "completed": 1793349711
+      },
+      {
+        "started": 1793349584,
+        "completed": 1793349634
+      }
+    ],
+    "b": [
+      {
+        "started": 1793349591,
+        "completed": 1793349631
+      }
+    ]
+  },
+  "assignments": [
+    {
+      "id": "6da3c126-e3a3-40e4-8ef4-faaa14c4dee6",
+      "wp": "WP-A-02",
+      "session": "codex:01a18bf6-4f20-7043-9341-af33017ec210",
+      "state": "completed"
+    },
+    {
+      "id": "f1b6655d-f4fc-47bf-8da7-d0677e25b66c",
+      "wp": "WP-B-02",
+      "session": "codex:01a18bf6-7775-79b2-9c33-99b0565deeb8",
+      "state": "started"
+    },
+    {
+      "id": "40a036e0-3560-4da7-874c-0d8849d9710e",
+      "wp": "WP-A-03",
+      "session": "codex:01a18bf6-4f20-7043-9341-af33017ec210",
+      "state": "started"
+    }
+  ],
+  "verdict": "PASS",
+  "repository_archived": true,
+  "archive_sha256": "b72ade91dae2b05a43ff76b1e48c180783ee05d89985ba2e45af7bf02afcf0d4",
+  "source_commit": "e1134fdf92346a2911163042b74d8a47b7831b46",
+  "archive": "pepper-orchestrator.zip (release asset, SHA256SUMS verified)",
+  "sandbox": "workspace-write",
+  "approval_policy": "on-request",
+  "network_access": true,
+  "scope": "original immutable release baseline; not candidate acceptance"
+}

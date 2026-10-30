@@ -1,5 +1,8 @@
 # Pepper Orchestrator
 
+> 0.13.1 is an unreleased safety-fix candidate. Linux sandbox autonomy remains blocked; no privileged MCP bridge is shipped.
+
+
 > New in 0.13.0: opt-in local session reuse and autonomous dispatch for Codex CLI and Claude Code. See [autonomy](skills/pepper-orchestrator/references/autonomy.md).
 
 > 0.12.0 added Codex CLI trusted delivery and explicit live acceptance. See the [changelog](CHANGELOG.md).

@@ -4,6 +4,7 @@ Markdown owns WP state. This registry owns routing, reservations and delivery on
 All writes use the existing transaction journal; external observations happen first.
 """
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -90,26 +91,67 @@ def process_identity(pid):
         class BSDInfo(ctypes.Structure):
             _fields_ = [('prefix', ctypes.c_byte * 120), ('seconds', ctypes.c_uint64), ('microseconds', ctypes.c_uint64)]
         info = BSDInfo()
-        lib = ctypes.CDLL('/usr/lib/libproc.dylib')
+        lib = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
         if lib.proc_pidinfo(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info)) != ctypes.sizeof(info):
-            raise AutonomyError(f'process {pid} is not observable; reconfirm after recovery')
+            code = ctypes.get_errno()
+            raise AutonomyError(f'process {pid} is not observable; reconfirm after recovery') from OSError(code, os.strerror(code))
         return {'host': socket.gethostname(), 'pid': pid, 'started': f'{info.seconds}.{info.microseconds:06d}'}
     if sys.platform.startswith('linux'):
         try:
             fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
             boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-            return {'host': socket.gethostname(), 'pid': pid, 'started': boot + ':' + fields[19]}
+            return {'host': socket.gethostname(), 'pid': pid, 'started': boot + ':' + fields[19],
+                    'pid_namespace': os.readlink('/proc/self/ns/pid')}
         except (OSError, IndexError) as error:
             raise AutonomyError(f'process {pid} is not observable; reconfirm after recovery') from error
     if os.name == 'nt':
         r = subprocess.run(['powershell', '-NoProfile', '-Command',
-                            f'(Get-CimInstance Win32_Process -Filter "ProcessId = {pid}").CreationDate.ToUniversalTime().ToString("o")'],
+                            '$ErrorActionPreference = "Stop"; '
+                            f'$p = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}"; '
+                            'if ($null -eq $p) { "ABSENT" } else { $p.CreationDate.ToUniversalTime().ToString("o") }'],
                            capture_output=True, text=True, timeout=10)
     else:
         raise AutonomyError('precise process identity is unsupported on this platform; autonomy is unavailable')
     if r.returncode or not r.stdout.strip():
         raise AutonomyError(f'process {pid} is not observable; reconfirm after recovery')
+    if r.stdout.strip() == 'ABSENT':
+        raise AutonomyError(f'process {pid} has exited') from ProcessLookupError(errno.ESRCH, 'process absent')
     return {'host': socket.gethostname(), 'pid': pid, 'started': r.stdout.strip()}
+
+
+def process_observation(proof):
+    """Only positively observed absence/replacement proves the confirmed writer exited.
+
+    ENOENT in a hidden PID namespace, EACCES and observation failures are unknown.
+    Old Linux confirmations lack the namespace proof and require owner reattachment.
+    """
+    try:
+        if not isinstance(proof, dict) or proof.get('host') != socket.gethostname():
+            raise AutonomyError('missing confirmation or different host')
+        if type(proof.get('pid')) is not int or proof['pid'] <= 0 or not isinstance(proof.get('started'), str):
+            raise AutonomyError('invalid process confirmation')
+        if sys.platform.startswith('linux'):
+            if proof.get('pid_namespace') != os.readlink('/proc/self/ns/pid'):
+                raise AutonomyError('PID namespace is unconfirmed or changed')
+            if proof['started'].split(':', 1)[0] != Path('/proc/sys/kernel/random/boot_id').read_text().strip():
+                raise AutonomyError('host boot changed; reconfirm after recovery')
+        try:
+            current = process_identity(proof['pid'])
+        except AutonomyError as error:
+            cause = error.__cause__
+            if not isinstance(cause, OSError) or cause.errno not in (errno.ENOENT, errno.ESRCH):
+                raise
+            if os.name != 'nt':
+                try:
+                    os.kill(proof['pid'], 0)
+                except ProcessLookupError:
+                    pass
+                else:
+                    raise AutonomyError('PID exists but identity is unavailable')
+            return {'state': 'exited'}
+        return {'state': 'live' if current == proof else 'exited'}
+    except (AutonomyError, OSError, KeyError, ValueError, subprocess.TimeoutExpired) as error:
+        return {'state': 'unavailable', 'reason': str(error)}
 
 
 def parent_pid(pid):
@@ -783,7 +825,8 @@ def transition(ws, aid, thread):
             if streams.has_remote(module.repo):
                 r = streams.git(directory, 'fetch', 'origin', module.repo.base)
                 if r.returncode:
-                    raise AutonomyError('cannot fetch current base; transition retained')
+                    detail = re.sub(r'(https?://)[^/@\s]+@', r'\1<redacted>@', r.stderr.strip())
+                    raise AutonomyError('cannot fetch current base; transition retained: ' + detail)
             base_ref = streams.base_ref(module.repo)
             resolved = streams.git(directory, 'rev-parse', '--verify', base_ref + '^{commit}')
             if resolved.returncode:
@@ -1234,11 +1277,10 @@ def cmd_session(args):
             raise AutonomyError('cancel requires concrete evidence that the recipient writer was stopped')
         instance = before['instances'][assignment['session']]
         proof = instance.get('confirmation') or {}
-        try:
-            still_live = process_identity(proof['process']['pid']) == proof['process']
-        except AutonomyError:
-            still_live = False
-        if still_live:
+        observation = process_observation(proof.get('process'))
+        if observation['state'] == 'unavailable':
+            raise AutonomyError('recipient process observation unavailable; retain reservation: ' + observation['reason'])
+        if observation['state'] == 'live':
             raise AutonomyError('confirmed recipient process still exists; stop/reconcile it before cancellation')
         live = observe_thread(ws, instance['thread_id'])
         if live.get('status', {}).get('type') not in ('idle', 'notLoaded'):

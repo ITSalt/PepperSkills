@@ -128,6 +128,16 @@ def command():
     if not executable:
         raise TransportError('Codex CLI unavailable')
     path = Path(executable)
+    resolved = path.resolve()
+    if os.name != 'nt' and resolved.name == 'codex.js' and resolved.parent.name == 'bin':
+        package = resolved.parent.parent
+        candidates = [*package.glob('vendor/*/bin/codex'),
+                      *package.parent.glob('codex-*/vendor/*/bin/codex'),
+                      *package.glob('node_modules/@openai/codex-*/vendor/*/bin/codex')]
+        candidates = list(dict.fromkeys(p.resolve() for p in candidates if p.is_file()))
+        if len(candidates) != 1:
+            raise TransportError('Cannot resolve one native Codex binary from npm; put the native binary on PATH')
+        path = candidates[0]
     if os.name == 'nt' and path.suffix.lower() in ('.cmd', '.bat'):
         package = path.parent / 'node_modules/@openai/codex'
         candidates = []
@@ -184,7 +194,7 @@ class Server:
                 self.responses.put(None)
         threading.Thread(target=read, daemon=True).start()
         try:
-            self.call('initialize', {'clientInfo': {'name': 'pepper_orchestrator', 'version': '0.13.0'}})
+            self.call('initialize', {'clientInfo': {'name': 'pepper_orchestrator', 'version': '0.13.1'}})
             self.send({'method': 'initialized'})
         except BaseException:
             self.close()

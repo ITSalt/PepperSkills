@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.1 — unreleased safety-fix candidate; Linux autonomy remains blocked
+
+- Cancellation distinguishes live, proven exited and unavailable process observation. Denied access, hidden/unconfirmed Linux PID namespaces, missing boot identity and timeouts cannot release reservations or unknown outbox entries.
+- Resolve the actual native Codex executable from official npm shims on macOS/Linux, so process lifetime/confirmation belongs to the App Server rather than its Node wrapper.
+- Preserve sanitized Git fetch failure diagnostics; isolate live-test configuration from user MCP servers and record archive/commit/profile provenance.
+- Add an explicit paid, read-only MCP protocol/role-impersonation reproducer. Native thread metadata and the correct parent PID do not authenticate a caller when the model can invoke raw App Server RPC.
+- The proposed privileged host bridge is not shipped. Linux acceptance is blocked; 0.13.0 archives and historical refusal remain unchanged. No public release.
+
 ## 0.13.0 — 2026-10-30, public preview: opt-in autonomy for Codex CLI and Claude Code
 
 - Opt-in local autonomy for Codex CLI and Claude Code: a session registry v2, process/configuration confirmations,

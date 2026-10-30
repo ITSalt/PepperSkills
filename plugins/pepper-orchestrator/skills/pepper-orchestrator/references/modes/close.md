@@ -61,3 +61,6 @@ or a one-line result.
    commands (in-repo), and that a new goal starts with `init` of a new program.
 
 Never merge, tag, delete branches or push to a base branch, locally or in the cloud.
+
+
+For Codex observation loss, follow [the autonomy recovery boundary](../autonomy.md). Retain unknown assignments; access denial or a hidden PID is not proof of exit. Do not relax sandbox/approvals or install an unverified host bridge.

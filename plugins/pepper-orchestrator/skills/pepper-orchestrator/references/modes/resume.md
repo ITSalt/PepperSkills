@@ -79,3 +79,6 @@ step. No argument, or the program name when several workspaces exist.
 
 Outcome of reconciliation (what changed since the last journal line), then the next step, then
 owner commands if any. Unverified items are named first.
+
+
+For Codex observation loss, follow [the autonomy recovery boundary](../autonomy.md). Retain unknown assignments; access denial or a hidden PID is not proof of exit. Do not relax sandbox/approvals or install an unverified host bridge.

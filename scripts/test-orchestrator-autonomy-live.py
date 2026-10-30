@@ -7,9 +7,14 @@ The real coordinator is woken by the watcher and dispatches real module threads.
 No deployment, user-project changes, configuration edits or approval bypass.
 """
 import argparse
+import atexit
 from datetime import datetime, timezone
 import json
 import os
+import hashlib
+import platform
+import shutil
+import zipfile
 from pathlib import Path
 import subprocess
 import sys
@@ -40,14 +45,37 @@ def main():
     parser.add_argument('--model', help='test model only; default is model/list isDefault, not a user-config rewrite')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--archive', type=Path, help='immutable archive whose extracted skill is under test')
+    parser.add_argument('--commit', help='exact source commit recorded in the verdict')
     args = parser.parse_args()
+    provenance = {}
+    if args.archive:
+        provenance['archive_sha256'] = hashlib.sha256(args.archive.read_bytes()).hexdigest()
+        with zipfile.ZipFile(args.archive) as archive:
+            roots = [n[:-len('scripts/orch.py')] for n in archive.namelist() if n.endswith('/scripts/orch.py')]
+            # Plugin ZIP also has a generated Codex copy. Select the canonical skill.
+            prefix = next((r for r in roots if '/skills/pepper-orchestrator/' in r and '/codex/' not in r), roots[0])
+            for name in archive.namelist():
+                if name.startswith(prefix) and not name.endswith('/'):
+                    target = args.skill.resolve() / name[len(prefix):]
+                    if not target.is_file() or target.read_bytes() != archive.read(name):
+                        raise RuntimeError('extracted skill differs from the supplied archive: ' + name)
+    source_home = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex')))
+    test_home = Path.home() / '.local/share/pepper-orchestrator/acceptance-homes' / uuid.uuid4().hex
+    test_home.mkdir(parents=True, mode=0o700)
+    if (source_home / 'auth.json').is_file():
+        shutil.copyfile(source_home / 'auth.json', test_home / 'auth.json')
+        (test_home / 'auth.json').chmod(0o600)
+    atexit.register((test_home / 'auth.json').unlink, missing_ok=True)
+    (test_home / 'config.toml').write_text('model_reasoning_effort = "high"\n')
+    os.environ['CODEX_HOME'] = str(test_home)
     sys.path.insert(0, str(args.skill.resolve() / 'scripts'))
     import autonomy
     import codex_adapter
     import codex_transport
     import orch
     root = Path(tempfile.mkdtemp(prefix='pepper-live-', dir='/tmp')).resolve()
-    result = {'root': str(root), 'platform': sys.platform, 'checks': {}, 'threads': []}
+    result = {'root': str(root), 'platform': sys.platform, 'kernel': platform.release(), 'python': platform.python_version(), 'source_commit': args.commit, **provenance, 'checks': {}, 'threads': []}
     os.environ['ORCH_RUNTIME_DIR'] = str(root / 'runtime')
     os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
     repo, bare, home = root / 'app', root / 'remote.git', root / 'home'
@@ -125,7 +153,7 @@ def main():
             time.sleep(.1)
         api = codex_transport.Server(remote=endpoint)
         model = args.model or next(x['model'] for x in api.call('model/list', {})['data'] if x.get('isDefault'))
-        result.update(model=model, codex_version=codex_transport.capabilities()['version'])
+        result.update(model=model, codex_version=codex_transport.capabilities()['version'], launched_cli=codex_transport.command(), sandbox='workspace-write', approval_policy='on-request')
         def start(cwd, instruction):
             response = api.call('thread/start', {'cwd': str(cwd), 'model': model, 'sandbox': 'workspace-write',
                                 'approvalPolicy': 'on-request', 'config': {'sandbox_workspace_write': {
@@ -231,7 +259,7 @@ def main():
             try:
                 result['watcher'] = autonomy.read_watch(orch.Workspace(program))
                 result['thread_summaries'] = [{**{k: t.get(k) for k in ('id', 'status', 'model')},
-                    'tail': json.dumps(codex_transport.turns(api, tid))[-6000:]} for tid in result['threads'] for t in [api.call('thread/read', {'threadId': tid})['thread']]]
+                    'tail': json.dumps(codex_transport.turns(api, tid)[0])[-12000:]} for tid in result['threads'] for t in [api.call('thread/read', {'threadId': tid})['thread']]]
             except Exception:pass
     finally:
         # Also stop observation on interruption, not only the normal/Exception
@@ -256,6 +284,7 @@ def main():
         if created:
             try:run(['gh', 'repo', 'archive', remote_repo, '--yes']); result['repository_archived'] = True
             except Exception as error:result['archive_error'] = str(error)
+        (test_home / 'auth.json').unlink(missing_ok=True)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
         emit(json.dumps({k: v for k, v in result.items() if k not in ('thread_summaries', 'watcher')}, ensure_ascii=False, indent=2))

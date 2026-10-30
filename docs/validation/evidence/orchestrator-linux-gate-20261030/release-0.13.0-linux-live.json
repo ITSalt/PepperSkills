@@ -1,0 +1,69 @@
+{
+  "root": "<fixture>",
+  "platform": "linux",
+  "checks": {
+    "completed_packages": [],
+    "independent_overlap": false,
+    "overlapping_reservations": false,
+    "same_a_thread_reused": false,
+    "no_user_dispatch": true
+  },
+  "threads": [
+    "01a18be1-58cf-7cb2-8ba9-4a87158f3f0f",
+    "01a18be1-70ad-7863-be7a-ab39c483f14c",
+    "01a18be1-855e-7921-b524-fd04b97b4861"
+  ],
+  "github_repository": "ITSalt/pepper-orchestrator-autonomy-20261030-b1c43a",
+  "prs": [
+    {
+      "wp": "WP-A-01",
+      "url": "https://github.com/ITSalt/pepper-orchestrator-autonomy-20261030-b1c43a/pull/1",
+      "head": "3dab3204dda99004dc1874fa0a9a3db12f3fed5a"
+    },
+    {
+      "wp": "WP-B-01",
+      "url": "https://github.com/ITSalt/pepper-orchestrator-autonomy-20261030-b1c43a/pull/2",
+      "head": "bda10933a5e44decf3fad586ef8c7decd71d6254"
+    }
+  ],
+  "model": "gpt-6-astra",
+  "codex_version": "codex-cli 0.165.0",
+  "coordinator": "01a18be1-855e-7921-b524-fd04b97b4861",
+  "turn_windows": {
+    "a": [],
+    "b": []
+  },
+  "verdict": "WAIT",
+  "error": "RuntimeError: live cycle incomplete; inspect retained fixture and watcher diagnostics",
+  "watcher": {
+    "token": "b294659e-47b0-4364-bac5-2879c3ef10c2",
+    "process": {
+      "host": "fixture-host",
+      "pid": 2396990,
+      "started": "4b06542b-d8f6-45aa-b5b9-d42dbdd011e6:67177446"
+    },
+    "starting_process": {
+      "host": "fixture-host",
+      "pid": 2396783,
+      "started": "4b06542b-d8f6-45aa-b5b9-d42dbdd011e6:67177326"
+    },
+    "stopped": false,
+    "fingerprint": "fa83b4bbd175b910c1170c6f2ca05b0ffc2becc2c1180b09aa984d3ea2fd262f",
+    "next_due": 1793348784.05183,
+    "pending": {
+      "id": "0a3857b6-98f7-4db3-93bc-7d2177444a8c",
+      "state": "queued",
+      "generation": 1,
+      "thread": "01a18be1-855e-7921-b524-fd04b97b4861"
+    },
+    "coalesced": "fa83b4bbd175b910c1170c6f2ca05b0ffc2becc2c1180b09aa984d3ea2fd262f"
+  },
+  "repository_archived": true,
+  "archive_sha256": "b72ade91dae2b05a43ff76b1e48c180783ee05d89985ba2e45af7bf02afcf0d4",
+  "source_commit": "e1134fdf92346a2911163042b74d8a47b7831b46",
+  "archive": "pepper-orchestrator.zip (release asset, SHA256SUMS verified)",
+  "sandbox": "workspace-write",
+  "approval_policy": "on-request",
+  "network_access": true,
+  "scope": "original immutable release baseline; not candidate acceptance"
+}

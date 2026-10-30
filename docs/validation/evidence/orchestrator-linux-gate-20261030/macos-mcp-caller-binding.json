@@ -1,0 +1,105 @@
+{
+  "os": "Darwin",
+  "kernel": "27.0.0",
+  "python": "3.14.5",
+  "cli": "codex-cli 0.154.0",
+  "native_binary": "$HOME/.nvm/versions/node/v24.13.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
+  "threads": [
+    "01a18c18-adac-74c3-a03a-85053413c060",
+    "01a18c18-def2-7692-b47c-f70189f075c1"
+  ],
+  "owner_calls": [
+    {
+      "pid": 58800,
+      "parent": 58778,
+      "meta": {
+        "threadId": "01a18c18-adac-74c3-a03a-85053413c060"
+      },
+      "turn": {}
+    },
+    {
+      "pid": 59318,
+      "parent": 58778,
+      "meta": {
+        "threadId": "01a18c18-def2-7692-b47c-f70189f075c1"
+      },
+      "turn": {}
+    }
+  ],
+  "turns": [
+    "01a18c18-ae0d-7202-89c9-a57b0f32bc28",
+    "01a18c18-df41-7592-8a43-501193ba5c71"
+  ],
+  "native_model_calls": [
+    {
+      "pid": 58800,
+      "parent": 58778,
+      "meta": {
+        "threadId": "01a18c18-adac-74c3-a03a-85053413c060",
+        "itemId": "ctc_0238c48055cc4ead016ae46076a9388197906d0ad53f82defb",
+        "callId": "exec-46c38949-7d3d-4a82-9c06-4a0a841dd3c9"
+      },
+      "turn": {
+        "session_id": "01a18c18-adac-74c3-a03a-85053413c060",
+        "thread_id": "01a18c18-adac-74c3-a03a-85053413c060",
+        "turn_id": "01a18c18-ae0d-7202-89c9-a57b0f32bc28",
+        "sandbox": "seatbelt",
+        "sandbox_mode": "workspace-write",
+        "codex_version": "0.154.0",
+        "auto_review_enabled": false,
+        "model": "gpt-6-astra",
+        "reasoning_effort": "high"
+      }
+    },
+    {
+      "pid": 59318,
+      "parent": 58778,
+      "meta": {
+        "threadId": "01a18c18-def2-7692-b47c-f70189f075c1",
+        "itemId": "ctc_06f8e3969e343299016ae4607fe98c81938d99b0290f79b18e",
+        "callId": "exec-3b169986-4d83-4014-9d26-107b4a4237fe"
+      },
+      "turn": {
+        "session_id": "01a18c18-def2-7692-b47c-f70189f075c1",
+        "thread_id": "01a18c18-def2-7692-b47c-f70189f075c1",
+        "turn_id": "01a18c18-df41-7592-8a43-501193ba5c71",
+        "sandbox": "seatbelt",
+        "sandbox_mode": "workspace-write",
+        "codex_version": "0.154.0",
+        "auto_review_enabled": false,
+        "model": "gpt-6-astra",
+        "reasoning_effort": "high"
+      }
+    }
+  ],
+  "checks": {
+    "both_roles": true,
+    "same_native_parent": true,
+    "thread_turn_binding": true,
+    "workspace_write": true,
+    "owner_rpc_is_not_model_identity": true,
+    "native_report_matches_file": true,
+    "shell_cannot_impersonate_coordinator": false
+  },
+  "shell_impersonation_probe": {
+    "caller": "01a18c18-def2-7692-b47c-f70189f075c1",
+    "context": {
+      "pid": 58800,
+      "parent": 58778,
+      "meta": {
+        "threadId": "01a18c18-adac-74c3-a03a-85053413c060",
+        "itemId": "probe-forged-item",
+        "callId": "probe-forged-call"
+      },
+      "turn": {
+        "thread_id": "01a18c18-adac-74c3-a03a-85053413c060",
+        "turn_id": "01a18c18-ae0d-7202-89c9-a57b0f32bc28",
+        "sandbox": "seatbelt",
+        "sandbox_mode": "workspace-write"
+      }
+    },
+    "reachable": true
+  },
+  "verdict": "BLOCKED",
+  "scope": "read-only authentication prototype; no privileged bridge supplied"
+}

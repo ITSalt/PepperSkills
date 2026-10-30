@@ -33,6 +33,7 @@ skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/runtime_selftest.py
 "$PYTHON" plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/reliability_selftest.py
 "$PYTHON" plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/autonomy_selftest.py
+"$PYTHON" scripts/test-orchestrator-mcp-probe.py
 "$PYTHON" plugins/pepper-ru-web-compliance/submission/run_tests.py --out "$qa_dir/submission"
 bash scripts/test-install-links.sh
 "$PYTHON" scripts/test-install-docs.py
