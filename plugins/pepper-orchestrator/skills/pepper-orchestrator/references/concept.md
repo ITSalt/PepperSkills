@@ -1,5 +1,8 @@
 # Single orchestrator (hub-and-spoke): concept and working rules
 
+For opt-in autonomous continuation (Codex CLI and Claude Code), follow [autonomy](autonomy.md). Periodic
+fact observation is allowed; empty worker status messages are not.
+
 > Version 1.8 · 2026-09-30 (1.1: streams in one repository, rules P1-P5, section 19; 1.2: cloud sessions, section 20; 1.3: program completion, section 21; 1.4: session kind and implementer model, section 7; 1.5: session settings, permission mode and message delivery, sections 4 and 12; 1.6: verification by facts, section 9; 1.7: plugin defects reported, section 16; 1.8: trusted delivery, sections 1, 2 and 12) · derived from the "Corporate clients (B2B)" program (6 repositories,
 > 12 days, about 40 work packages, rolled out to production). The document is methodological and
 > stack-independent. Program specifics appear only in examples. Russian original:
@@ -115,7 +118,7 @@ owner request
   -> plan and decisions (owner questions P-n with a recommendation)
   -> WP: DRAFT -> READY
   -> DISPATCH: to the owner - session start command + start prompt; to a live session - TASK message
-  -> IN_PROGRESS (the session works; the orchestrator does not poll it in a loop)
+  -> IN_PROGRESS (the session works; the orchestrator observes facts without empty status messages)
   -> READY from the session (PR + report)
   -> REVIEW: verification (a subagent on the first submission, the orchestrator on resubmissions)
        |- REVISE (specific items) -> the session resubmits -> REVIEW
@@ -148,7 +151,7 @@ push if the owner reads from another device.
 - Messages are ephemeral and get lost (precedent: a PR was opened but READY never reached the
   orchestrator). Therefore every resume starts with reconciliation with reality (section 11), not
   with waiting for messages.
-- Do not poll sessions in a loop: subscribe to "tell me when idle" or wait for their READY.
+- Use opt-in Codex observation for files/Git/PR/CI/runtime facts; do not send empty polling messages. Otherwise subscribe to idle or wait for READY.
 
 ## 7. Work package (WP)
 

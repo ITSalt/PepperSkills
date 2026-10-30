@@ -33,6 +33,10 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/reliability_selftest.py
+      - name: Autonomy, session reuse and coordinator fencing
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/autonomy_selftest.py
       - name: Install native Windows Codex CLI for transport acceptance
         if: runner.os == 'Windows'
         run: npm install --global @openai/codex@0.154.0

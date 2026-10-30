@@ -337,8 +337,9 @@ def module_tests(module):
     return streams.as_list(tests)
 
 
-def module_settings(config, workspace_root, module, in_repo=False):
-    """(settings dict, notes) for a local module session."""
+def module_settings(config, workspace_root, module, in_repo=False, skill_dir=None):
+    """(settings dict, notes) for a local module session. With `skill_dir` (the installed skill),
+    also the narrow opt-in autonomy rules of that installation."""
     repo = module.repo
     notes = []
     points = checkpoints(config, module)
@@ -383,7 +384,32 @@ def module_settings(config, workspace_root, module, in_repo=False):
     perms['allow'] = [r for r in perms['allow'] if r not in perms['ask'] and r not in perms['deny']]
     data['autoMode'] = {'environment': environment([repo])}
     data['crossSessionInbound'] = 'accept'
+    if skill_dir:
+        autonomy_rules(data, workspace_root, skill_dir)
     return data, notes
+
+
+def transition_argv(workspace_root, skill_dir):
+    """The `session transition` command of a Claude autonomy TASK; its allow rule is built from the
+    same words, so the two always match (real paths, forward slashes, POSIX quoting)."""
+    scripts = command_path(real_path(skill_dir)) + '/scripts'
+    python = 'python' if is_windows() else 'python3'
+    return [python, scripts + '/orch.py', '--workspace', command_path(real_path(workspace_root)), 'session']
+
+
+def autonomy_rules(data, workspace_root, skill_dir):
+    """Rules of a reused Claude session under opt-in autonomy: the narrow `session transition`
+    command of its TASK and a PostCompact hook that leaves a technical compaction receipt. Both
+    are present in every generated module file and inert until autonomy sends a TASK; neither
+    changes what the session may merge, deploy or edit."""
+    argv = transition_argv(workspace_root, skill_dir)
+    data['permissions']['allow'].append(f'Bash({shlex.join(argv)} transition *)')
+    hook = (subprocess_list(argv) if is_windows() else shlex.join(argv)) + ' compacted'
+    data['hooks'] = {'PostCompact': [{'hooks': [{'type': 'command', 'command': hook}]}]}
+
+
+def subprocess_list(argv):
+    return ' '.join(f'"{v}"' if ' ' in v else v for v in argv)
 
 
 def orchestrator_settings(config, workspace_root, modules, repos, skill_dir, workspace_branch=None):

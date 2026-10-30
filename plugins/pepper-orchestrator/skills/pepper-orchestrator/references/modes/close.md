@@ -1,5 +1,11 @@
 # Mode: close
 
+Opt-in autonomous continuation (Codex CLI and Claude Code) follows [autonomy](../autonomy.md):
+use `next --json`, current coordinator ownership and stable assignment IDs. Pause/close
+prevents new assignments; a queued signal must recheck current state. With autonomy
+enabled, do not ask the owner to type `/dispatch`; for Claude, deliver the returned TASK
+with `SendMessage` and record it with `session sent`.
+
 Close a program whose goal is reached. One program, one goal: when the completion condition in
 `PLAN.md` holds, the program is closed; the next goal is a new program (`init`). Arguments: none,
 or a one-line result.

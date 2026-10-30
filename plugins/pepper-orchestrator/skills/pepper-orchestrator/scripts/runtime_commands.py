@@ -31,7 +31,8 @@ def workspace(args):
 
 
 def state_version(ws):
-    paths = [ws.status, ws.decisions, ws.root / 'orch.yaml', *sorted(ws.wp_dir.glob('WP-*.md'))]
+    paths = [ws.status, ws.decisions, ws.root / 'orch.yaml', ws.root / 'orchestration/sessions.json',
+             *sorted(ws.wp_dir.glob('WP-*.md'))]
     return {str(p): state_io.digest(p) for p in paths}
 
 
@@ -218,12 +219,28 @@ def cmd_instructions(args):
     return 0
 
 
+def reuse_setup(ws, wp, directory, precheck=None):
+    """Environment setup of a reused worktree on the assigned branch (both clients)."""
+    _, module, meta = api().wp_context(ws, wp)
+    if streams.common_dir(directory) != streams.common_dir(module.repo.local) or streams.current_branch(directory) != meta['branch']:
+        raise streams.StreamError('reuse preparation requires the assigned repository/branch')
+    if precheck:
+        precheck()
+    for command in module.repo.worktree_setup:
+        subprocess.run(command, cwd=directory, shell=True, check=True)
+    return str(directory)
+
+
 def registry(ws):
-    p = ws.root / 'orchestration/sessions.json'
-    return p, json.loads(p.read_text(encoding='utf-8')) if p.exists() else {'version': 1, 'sessions': {}, 'outbox': {}}
+    import autonomy
+    return autonomy.registry(ws)
 
 
 def cmd_session(args):
+    if args.action in ('attach', 'assign', 'sent', 'started', 'reconcile', 'transition', 'cancel', 'recover-transition', 'discover', 'compact', 'compacted', 'reconcile-send') or (
+            args.action == 'send' and args.assignment):
+        import autonomy
+        return autonomy.cmd_session(args)
     if args.action == 'capabilities':
         print(json.dumps(codex_transport.capabilities(), indent=2))
         return 0
@@ -260,6 +277,10 @@ def cmd_session(args):
             if previous and previous['state'] == 'running' and previous['thread_id'] != args.thread:
                 raise streams.StreamError('previous writing session must be stopped before replacement')
             data['sessions'][args.wp] = record
+            key = client + ':' + args.thread
+            if key not in data['instances']:
+                data['instances'][key] = {**record, 'key': key, 'history': [args.wp],
+                                          'assignment_id': None, 'confirmation': None}
             save(p, json.dumps(data, indent=2) + '\n')
         print(json.dumps(record, indent=2))
         return 0
@@ -276,7 +297,12 @@ def cmd_session(args):
             raise streams.StreamError('stopped requires owner evidence that the writing process was stopped')
         with state_io.transaction(ws.root):
             p, data = registry(ws)
+            if data['sessions'][args.wp]['thread_id'] != record['thread_id']:
+                raise streams.StreamError('session changed while recording stop; inspect current registry')
             data['sessions'][args.wp].update(state='stopped', stop_evidence=args.evidence)
+            for instance in data['instances'].values():
+                if instance['thread_id'] == record['thread_id']:
+                    instance.update(state='stopped', stop_evidence=args.evidence)
             save(p, json.dumps(data, indent=2) + '\n')
         return 0
     if record['client'] != 'codex' or record['state'] != 'running':
@@ -286,6 +312,8 @@ def cmd_session(args):
     message = Path(args.message_file).read_text(encoding='utf-8')
     with state_io.transaction(ws.root):
         p, data = registry(ws)
+        if data['sessions'][args.wp]['thread_id'] != record['thread_id'] or data['sessions'][args.wp]['state'] != 'running':
+            raise streams.StreamError('session routing changed before send; inspect current registry')
         old = data['outbox'].get(args.request_id)
         entry = {'wp': args.wp, 'thread_id': record['thread_id'], 'message': message, 'delivered': False}
         if old and any(old[k] != entry[k] for k in ('wp', 'thread_id', 'message')):
@@ -304,7 +332,7 @@ def cmd_session(args):
         data['outbox'][args.request_id].update(result, sending=result.get('outcome_unknown', False))
         save(p, json.dumps(data, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    if not result['delivered']:
+    if not result['delivered'] and not result.get('outcome_unknown'):
         print('OWNER HANDOVER:\n' + message)
     return 0 if result['delivered'] else 2
 
@@ -325,9 +353,16 @@ def cmd_client(args):
         _, sessions = registry(ws)
         if any(s['state'] == 'running' for s in sessions['sessions'].values()):
             raise streams.StreamError('stop and record all old writing sessions before switching')
+        if any(a['state'] not in ('started', 'completed', 'cancelled') for a in sessions['assignments'].values()):
+            raise streams.StreamError('reconcile or explicitly cancel pending assignments before client switch')
         if current == args.target:
             print('client unchanged')
             return 0
+        sessions['autonomy']['enabled'] = False
+        if sessions.get('coordinator'):
+            sessions['coordinator']['released'] = True
+        import autonomy
+        autonomy.persist(ws, sessions)
         import delivery
         previous = delivery.settings(ws.config)
         for level in delivery.LEVELS:
@@ -398,13 +433,18 @@ def add_parsers(sub, common):
     p.add_argument('--apply', action='store_true')
     p.set_defaults(func=cmd_instructions)
     p = sub.add_parser('session', parents=[common], help='independent owner-launched session registry and transport')
-    p.add_argument('action', choices=('capabilities', 'list', 'register', 'read', 'send', 'stopped'))
+    p.add_argument('action', choices=('capabilities', 'list', 'register', 'read', 'send', 'stopped',
+                                    'attach', 'assign', 'sent', 'started', 'reconcile', 'transition', 'cancel', 'recover-transition', 'discover', 'compact', 'compacted', 'reconcile-send'))
     p.add_argument('--wp')
     p.add_argument('--thread')
     p.add_argument('--worktree')
     p.add_argument('--evidence')
     p.add_argument('--message-file')
     p.add_argument('--request-id')
+    p.add_argument('--assignment'); p.add_argument('--coordinator'); p.add_argument('--generation', type=int)
+    p.add_argument('--pid', type=int); p.add_argument('--outcome', choices=('queued', 'outcome_unknown', 'not_sent'))
+    p.add_argument('--model', help='attach (Claude): owner-confirmed launch model of the session')
+    p.add_argument('--effort', help='attach (Claude): owner-confirmed launch effort of the session')
     p.set_defaults(func=cmd_session)
     p = sub.add_parser('client', parents=[common], help='sequential client switch, never a mixed writer program')
     p.add_argument('action', choices=('status', 'switch'))
@@ -414,3 +454,5 @@ def add_parsers(sub, common):
     p = sub.add_parser('prepare', parents=[common], help='prepare a Codex Git worktree before owner launch')
     p.add_argument('wp')
     p.set_defaults(func=cmd_prepare)
+    import autonomy
+    autonomy.add_parsers(sub, common)

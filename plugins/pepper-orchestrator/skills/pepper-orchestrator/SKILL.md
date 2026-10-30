@@ -2,7 +2,7 @@
 name: pepper-orchestrator
 description: Single-orchestrator (hub-and-spoke) method for programs that span several repositories and sessions. One orchestrator session plans, writes work packages, dispatches module sessions, verifies their results and keeps all state in Markdown files; the owner alone merges, deploys and touches production. Modules can be whole repositories or areas and domains of one repository, run as parallel streams in their own worktrees with locks on shared paths. Start with the init mode, then plan. Modes init, plan, dispatch, review, verify, deliver, release, resume, owner, decide, close, reopen, report. Use when the user asks to plan or run multi-repository work "by the single-orchestrator concept", to create an orchestrator workspace, to resume an orchestrator program, or to show the owner queue. Trigger phrases include "single orchestrator", "hub-and-spoke", "orchestrator workspace", "resume the program", "по концепции единого оркестратора", "единый оркестратор", "спланируй программу", "возобнови оркестратор", "очередь владельца". Do not activate for a single change in a single repository.
 metadata:
-  version: 0.12.0
+  version: 0.13.0
 ---
 
 # Pepper Orchestrator
@@ -229,6 +229,11 @@ files and run Python. Client-specific capabilities are adapters:
   and keep only conclusions in context.
 - **Cross-session messaging** (Claude Code `SendMessage` / `ListAgents`): where it is missing, the
   owner relays the one-line pointers and `resume` learns READY from `gh pr list`.
+- **Opt-in autonomy** (Claude Code 2.1.236+, local sessions): after `autonomy claim`/`enable`,
+  the coordinator itself dispatches READY packages to attached idle module sessions of the
+  stream (`next --json`, `dispatch --json`, `SendMessage`, `session sent`/`started`) and wakes on
+  its Monitor watcher instead of asking the owner to type `/dispatch`. New terminals, merge,
+  deploy and permissions stay with the owner. Follow [autonomy](references/autonomy.md).
 - **Session start commands** (`claude --name ...`, `claude -w <name>` for a stream worktree):
   elsewhere, the owner creates the worktree (`git worktree add <dir> -b <branch> origin/<base>`)
   and pastes the start prompt from the work package into a new session there.

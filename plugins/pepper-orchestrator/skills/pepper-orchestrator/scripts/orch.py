@@ -684,7 +684,7 @@ def build_settings(ws, names, orchestrator=True):
             lines.append(f'settings {name}: skipped (cloud sessions: permissions come from the cloud environment)')
             continue
         try:
-            data, notes = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo)
+            data, notes = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo, SKILL_DIR)
         except session_settings.PathError as error:
             raise OrchError(f'settings {name}: {error}')
         outputs.append((name, data))
@@ -2150,9 +2150,62 @@ def dispatch_problems(ws, wp):
     return problems, wanted, busy, r, module
 
 
+def claude_start_command(ws, module, wp, use_settings=True, warn=True):
+    """Owner start command of a local Claude module session for this WP (header model/effort,
+    module settings and permission mode). Shared by dispatch and autonomy `next`."""
+    r = ws.wp_rows()[wp]
+    path = ws.wp_path(r['wp'])
+    text = path.read_text(encoding='utf-8') if path else ''
+    meta = streams.wp_meta(path, module) if path and path.is_file() else {}
+    model, effort = meta.get('model'), meta.get('effort')
+    settings = session_settings.settings_path(ws.root, module.id)
+    blocks = [b.strip() for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)]
+    commands = [b for b in blocks if b.startswith('cd ') and ' claude ' in b]
+    command = streams.apply_model_flags(commands[-1], model, effort) if commands else None
+    legacy_prompt = re.search(r'## 5\.[^\n]*\n+```text\n(.*?)\n```', text, re.S)
+    if command and legacy_prompt and 'Before implementing, read both' not in command:
+        brief = legacy_prompt.group(1)
+        command = command.replace(brief, brief + '\n\n' + project_instructions.GUIDANCE)
+    if not command:
+        slug = path.stem[len(wp) + 1:]
+        command = streams.wp_fields(ws.lang, module, wp, slug, str(path.resolve()), ws.tag,
+                                    ws.coordinator, models=streams.active_models(ws.config))['START_COMMAND']
+        command = streams.apply_model_flags(command, model, effort)
+    existing = [e for e in streams.worktrees(module.repo) if e.get('branch') == meta.get('branch')]
+    if existing and streams.is_linked_worktree(existing[0]['path']):
+        slug = path.stem[len(wp) + 1:]
+        prompt = streams.wp_fields(ws.lang, module, wp, slug, str(path.resolve()), ws.tag,
+                                   ws.coordinator, models=streams.active_models(ws.config))['START_PROMPT']
+        prompt += ('\nUse this existing worktree and branch; skip worktree creation and client-specific '
+                   'startup instructions retained in the package from a previous client.\n' + project_instructions.GUIDANCE)
+        command = f'cd {shlex_quote(existing[0]["path"])} && claude --name {module.session} {shlex_quote(prompt)}'
+        command = streams.apply_model_flags(command, model, effort)
+    if command and use_settings:
+        command = session_settings.apply_flags(command, settings.resolve(), ws.config.get('permission_mode'))
+        expected, _ = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo, SKILL_DIR)
+        if warn and (not settings.is_file() or settings.read_text(encoding='utf-8') != session_settings.render(expected)):
+            print(f'dispatch: warning: {settings.relative_to(ws.root)} is older than orch.yaml: run orch.py '
+                  f'settings {module.id} before handing the command over', file=sys.stderr)
+    if command:
+        command = session_settings.shell_command(command, ws.config.get('shell'))
+    return command
+
+
 def cmd_dispatch(args):
     ws = Workspace(find_workspace(args.workspace))
     state_version = runtime_commands.state_version(ws)
+    routing = None
+    if ws.config.get('client') == 'codex' or (ws.config.get('client', 'claude') == 'claude' and (
+            args.json or (ws.root / 'orchestration/sessions.json').is_file())):
+        import autonomy
+        _, routing = autonomy.registry(ws)
+        if args.json or (routing['autonomy']['enabled'] and not args.owner_launch):
+            return autonomy.cmd_dispatch(args)
+        if routing['autonomy']['enabled']:
+            autonomy.owner(routing, args.coordinator, args.generation)
+            plan = autonomy.next_actions(ws)
+            if not any(a.get('wp') == args.wp and a['kind'] == 'owner' for a in plan['actions']):
+                raise OrchError('owner launch is blocked or an existing session is available; inspect next --json')
     ws.require_open('dispatch')
     wp = args.wp
     problems, wanted, busy, r, module = dispatch_problems(ws, wp)
@@ -2209,35 +2262,7 @@ def cmd_dispatch(args):
         if args.live:
             print('Use session send to queue the task to a registered thread; dispatch does not claim delivery.')
     else:
-        blocks = [b.strip() for b in re.findall(r'```bash\n(.*?)\n\s*```', text, re.S)]
-        commands = [b for b in blocks if b.startswith('cd ') and ' claude ' in b]
-        command = streams.apply_model_flags(commands[-1], model, effort) if commands else None
-        legacy_prompt = re.search(r'## 5\.[^\n]*\n+```text\n(.*?)\n```', text, re.S)
-        if command and legacy_prompt and 'Before implementing, read both' not in command:
-            brief = legacy_prompt.group(1)
-            command = command.replace(brief, brief + '\n\n' + project_instructions.GUIDANCE)
-        if not command:
-            slug = path.stem[len(wp) + 1:]
-            command = streams.wp_fields(ws.lang, module, wp, slug, str(path.resolve()), ws.tag,
-                                        ws.coordinator, models=streams.active_models(ws.config))['START_COMMAND']
-            command = streams.apply_model_flags(command, model, effort)
-        existing = [e for e in streams.worktrees(module.repo) if e.get('branch') == meta.get('branch')]
-        if existing and streams.is_linked_worktree(existing[0]['path']):
-            slug = path.stem[len(wp) + 1:]
-            prompt = streams.wp_fields(ws.lang, module, wp, slug, str(path.resolve()), ws.tag,
-                                       ws.coordinator, models=streams.active_models(ws.config))['START_PROMPT']
-            prompt += ('\nUse this existing worktree and branch; skip worktree creation and client-specific '
-                       'startup instructions retained in the package from a previous client.\n' + project_instructions.GUIDANCE)
-            command = f'cd {shlex_quote(existing[0]["path"])} && claude --name {module.session} {shlex_quote(prompt)}'
-            command = streams.apply_model_flags(command, model, effort)
-        if command and use_settings:
-            command = session_settings.apply_flags(command, settings.resolve(), ws.config.get('permission_mode'))
-            expected, _ = session_settings.module_settings(ws.config, ws.root, module, ws.in_repo)
-            if settings.read_text(encoding='utf-8') != session_settings.render(expected):
-                print(f'dispatch: warning: {settings.relative_to(ws.root)} is older than orch.yaml: run orch.py '
-                      f'settings {module.id} before handing the command over', file=sys.stderr)
-        if command:
-            command = session_settings.shell_command(command, ws.config.get('shell'))
+        command = claude_start_command(ws, module, wp, use_settings)
         if args.live:
             rel = path.relative_to(ws.root) if path else wp
             handover = f'[{ws.tag}] TASK {wp} :: {r["title"]} :: ref={ws.root / rel}'
@@ -2251,6 +2276,8 @@ def cmd_dispatch(args):
     with state_io.transaction(ws.root):
         if runtime_commands.state_version(ws) != state_version:
             raise OrchError("program state changed during external checks; retry from current files")
+        if routing and routing['autonomy']['enabled']:
+            autonomy.owner(autonomy.registry(ws)[1], args.coordinator, args.generation)
         for name in wanted:
             if acquire(ws, module.repo, name, wp, 'dispatch'):
                 raise OrchError(f'lock {name} became busy during dispatch; nothing handed over')
@@ -4723,6 +4750,9 @@ def build_parser():
                    help='cloud module: append the whole package text to the prompt')
     p.add_argument('--no-settings', action='store_true',
                    help='local module: start command without --settings (the pre-0.6.0 form)')
+    p.add_argument('--json', action='store_true', help='structured Codex assignment/delivery result')
+    p.add_argument('--owner-launch', action='store_true', help='reserve a slot and print a new owner-launched terminal command')
+    p.add_argument('--coordinator'); p.add_argument('--generation', type=int)
     p.set_defaults(func=cmd_dispatch)
 
     p = sub.add_parser('verify', parents=[common], help='verify a package, or verify finalize WP after the live scenario')
@@ -4873,7 +4903,7 @@ def main(argv=None):
         return runtime_commands.invoke(args)
     except (OrchError, delivery.DeliveryError, safe_edit.EditError, streams.StreamError, state_io.StateError,
             id_allocator.AllocationError, project_instructions.InstructionError,
-            codex_transport.TransportError) as error:
+            codex_transport.TransportError, OSError, subprocess.TimeoutExpired) as error:
         print(f'orch: {error}', file=sys.stderr)
         return 1
 

@@ -1,4 +1,4 @@
-# Codex CLI adapter and common runtime (0.12 preview)
+# Codex CLI adapter and common runtime (0.13.0)
 
 The owner launches independent module sessions. One coordinator writes `status.md`
 and decisions; module sessions implement WPs in their own Git worktrees. Preserve
@@ -15,6 +15,15 @@ a native compatibility package. Manual Codex skill copies from the plugin ZIP us
 that dedicated entrypoint with the same generated resources. Neither route changes
 Claude instructions or creates another editable runtime implementation.
 See [portable plugin component discovery](https://developers.openai.com/plugins/build/plugins).
+
+## Autonomous continuation
+
+Follow [local autonomy](autonomy.md) (Codex transport) for ownership, discovery/attachment,
+reuse, automatic dispatch, observation, start acknowledgements and recovery.
+Existing programs remain opt-out until the owner enables autonomy. When enabled,
+resume and lifecycle events run `next --json`; dispatch eligible packages yourself.
+For a new terminal, reserve through `dispatch --owner-launch` and give the owner
+the generated launch command. Do not ask the owner to invoke /dispatch.
 
 ## Modes
 
@@ -42,7 +51,9 @@ See [portable plugin component discovery](https://developers.openai.com/plugins/
   Register the thread ID from `/status` with `session register --wp WP --thread ID
   --worktree PATH`. TASK delivery to an existing session uses `session send
   --wp WP --message-file task.txt --request-id KEY`; it uses `codex queue`.
-  Failed delivery prints manual handover and is not recorded as delivered.
+  Only proven non-delivery permits manual handover. Unknown outcomes retain the
+  reservation and require recipient/Git reconciliation. With autonomy enabled use
+  structured dispatch and assignment IDs from the autonomy protocol.
 - `review`: verify PR/head SHA and tests, run `review-start WP --pr URL`, delegate
   the exact contract/head/base to `pepper_reviewer`. Use a disposable review clone
   for tests that write; never the implementer's active worktree. Collect evidence
@@ -62,6 +73,8 @@ See [portable plugin component discovery](https://developers.openai.com/plugins/
   user sandbox or enable production MCP. A permission refusal becomes an owner item.
 - `resume`: read all state and decisions, lint, inspect registered sessions with
   `session list` (Git checked) and `session read --wp WP` (documented App Server).
+  For enabled autonomy also run `autonomy resume` with the current coordinator
+  identity/generation, then `next --json`; consume pending signals before acting.
   Compare thread history with PR/head/CI and Git; do not derive state from messages,
   a TUI screen or Codex's internal database. Queued messages may be notifications
   for an idle thread; verify consumption with history before relying on them.
