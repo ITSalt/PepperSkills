@@ -38,7 +38,13 @@ def main():
     sys.path.insert(0,str(skill/'scripts'))
     import codex_transport,owner_main
     owner_main.verify_archive(a.archive,a.sha256,skill)
-    project=root/'project';project.mkdir();subprocess.run(['git','init','-q',project],check=True)
+    upstream=root/'upstream';upstream.mkdir();project=root/'project'
+    def git(where,*args):
+        return subprocess.run(['git','-c','user.name=Canary','-c','user.email=canary@example.invalid',
+            '-c','core.hooksPath='+os.devnull,'-C',str(where),*args],check=True,capture_output=True,text=True).stdout.strip()
+    git(upstream,'init','-q','-b','main');(upstream/'README').write_text('owned fixture\n')
+    git(upstream,'add','.');git(upstream,'commit','-qm','owned fixture')
+    git(upstream,'worktree','add','-qb','actor',str(project))
     marker=root/'MCP_MUST_NOT_START';canary=root/'owned-mcp-canary.py'
     canary.write_text('import pathlib,sys,json\npathlib.Path('+repr(str(marker))+').write_text("owned canary\\n")\n'
         'for line in sys.stdin:\n r=json.loads(line)\n if "id" not in r:continue\n'
@@ -57,9 +63,19 @@ def main():
         result['thread']=response['thread']['id'];result['profile']={k:response[k] for k in ('sandbox','approvalPolicy','approvalsReviewer','runtimeWorkspaceRoots')}
         result['config']=api.call('config/read',{'cwd':str(project),'includeLayers':True})
         result['mcp']=api.call('mcpServerStatus/list',{'threadId':response['thread']['id'],'detail':'toolsAndAuthOnly'})
-        result['marker_exists']=marker.exists();result['model_turns']=sum(e.get('method')=='turn/started' for e in api.events)
+        result['marker_exists']=marker.exists()
+        # The granted private gitdir is mutable. Native project isolation must
+        # survive a commondir redirect to another repository, too.
+        private=Path(git(project,'rev-parse','--absolute-git-dir'))
+        other=root/'other';other.mkdir();git(other,'init','-q','-b','main')
+        (private/'commondir').write_text(str(other/'.git')+'\n')
+        second=api.start_thread(project,'gpt-6.1-sol',[],'Zero model redirected metadata canary.')
+        result['redirected_thread']=second['thread']['id']
+        result['redirected_mcp']=api.call('mcpServerStatus/list',{'threadId':second['thread']['id'],'detail':'toolsAndAuthOnly'})
+        result['marker_after_redirect']=marker.exists()
+        result['model_turns']=sum(e.get('method')=='turn/started' for e in api.events)
         api.check_configuration(project)
-        if marker.exists() or result['mcp']['data'] or result['model_turns']:raise RuntimeError('project code executed or native profile escaped')
+        if marker.exists() or result['mcp']['data'] or result['redirected_mcp']['data'] or result['model_turns']:raise RuntimeError('project code executed or native profile escaped')
         result['verdict']='PASS'
     except Exception as error:result['error']=type(error).__name__+': '+str(error)
     finally:
