@@ -1,10 +1,12 @@
-# Windows installation and acceptance — 0.13.0 preview
+# Windows installation and acceptance — 0.14.0 preview
 
 Native Windows / PowerShell uses its own user profile and local runtime. WSL uses
 a separate home directory; do not share one live SQLite store between them or
 between machines. Keep repositories and runtime on a local disk. Python 3.12+,
 Git, `gh` and Codex CLI are required; CI pins Codex 0.154.0. No extra Python
 packages are needed for the Orchestrator runtime.
+
+The 0.14.0 private-owner live mode is supported on Linux/macOS only. Windows coverage remains the core/runtime suite and native plugin/App Server smoke below.
 
 ## Install or update
 
@@ -22,10 +24,10 @@ codex plugin list --json
 
 For an existing marketplace, refresh it with
 `codex plugin marketplace upgrade pepperskills`, then run the `plugin add` command
-again. Restart Codex and confirm the installed/enabled plugin is version 0.13.0.
+again. Restart Codex and confirm the installed/enabled plugin is version 0.14.0.
 Existing customized configuration and old program IDs are retained.
 
-The [public release](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.13.0)
+The [public release](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.14.0)
 also includes `pepper-orchestrator.plugin.zip`, `pepper-orchestrator.zip` and
 `SHA256SUMS`. The `.plugin.zip` contains the Codex adapter; the standalone `.zip`
 contains the common/Claude skill. For a manual Codex skill installation:
@@ -86,6 +88,6 @@ ZIP through native Codex plugin management and initializes native App Server.
 It makes no model calls. Interactive account login, permissions, MCP tools and
 a real module PR lifecycle are separate checks on the owner's machine.
 
-See [validation](../../docs/validation/pepper-orchestrator-0.13.0.md),
+See [validation](../../docs/validation/pepper-orchestrator-0.14.0-release.md),
 [Codex workflow](skills/pepper-orchestrator/references/codex.md) and
 [runtime contracts](skills/pepper-orchestrator/references/runtime.md).

@@ -1,7 +1,7 @@
 # Owner-held App Server STDIO and native dynamic tools
 
 30 October 2026, completed 31 October. **IMPLEMENTED AND RUNTIME-ACCEPTED IN THE
-UNRELEASED 0.14.0 CANDIDATE (Git-approved, on-request), LINUX/macOS.**
+0.14.0 PREVIEW (Git-approved, on-request), LINUX/macOS.**
 [Final same-archive acceptance and limits](../validation/pepper-orchestrator-0.14.0-private-owner.md). This supersedes the
 implementation direction, not the evidence or rejection, in the
 [MCP metadata ADR](2026-10-30-codex-stdio-bridge.md). See the

@@ -1,9 +1,9 @@
-# Opt-in local autonomy: Codex CLI and Claude Code (0.14.0 candidate)
+# Opt-in local autonomy: Codex CLI and Claude Code (0.14.0 preview)
 
 For explicit private-STDIO owner launch on Linux/macOS, follow
 [private owner setup and recovery](private-owner.md) ([Русский](private-owner.ru.md)).
 Use its typed tools rather than detached shell commands for active owner operations.
-This candidate remains unreleased; host acceptance is recorded separately.
+Linux/macOS private-owner live acceptance passed with native Codex 0.165.0; measured profiles, artifact hashes and limits are recorded in the repository validation reports.
 
 One coordinator chooses work; independent module sessions implement it. `next` is
 read-only. A local watcher observes facts and wakes the existing coordinator; it

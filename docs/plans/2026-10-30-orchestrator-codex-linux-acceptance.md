@@ -2,7 +2,7 @@
 
 30 October 2026 plan, completed 31 October. **Runtime PASS (Git-approved, on-request), Linux/macOS.**
 [Final implementation, permission accounting and evidence](../validation/pepper-orchestrator-0.14.0-private-owner.md).
-Candidate 0.14.0 is unreleased. Historical experiments below retain their original verdicts.
+Public release 0.14.0 was separately authorized on 31 October; see the [release packaging record](../validation/pepper-orchestrator-0.14.0-release.md). Historical experiments below retain their original verdicts.
 [Russian detailed plan](2026-10-30-orchestrator-codex-linux-acceptance.ru.md).
 [Design ADR](../adr/2026-10-30-codex-private-stdio-tools.md).
 [Linux agent prompt](2026-10-30-orchestrator-linux-agent.md) is retained for historical handoff.
@@ -16,7 +16,7 @@ Their pending integration claims describe the earlier stage, not the final resul
 
 Achieve Codex Linux autonomy with the existing sandbox/approval guarantees, then
 accept the same candidate archive on macOS. Preserve the portable scheduler,
-Claude transport and all its regressions. No public release is authorized.
+Claude transport and all its regressions. Public release was outside the original scope; the owner subsequently authorized it on 31 October.
 
 The immutable 0.13.0 baseline is tag `pepper-orchestrator-v0.13.0`, commit
 `e1134fdf92346a2911163042b74d8a47b7831b46`. It has now been rerun: macOS PASS,
@@ -28,7 +28,7 @@ them unless the environment changed. Do not attribute a candidate success to 0.1
 Continue branch `codex/orchestrator-linux-acceptance`, draft PR #42, retaining
 safety fix `6d59bfa` and report `35b3626`. Verify current HEAD/main before starting;
 do not resume the obsolete `abd7016` snapshot. Version 0.13.1 was the unreleased safety-fix investigation. The implemented
-0.14.0 candidate uses explicit owner launch; no public release is authorized.
+0.14.0 uses explicit owner launch; the subsequent owner request authorizes public release.
 
 ## Completion record
 
@@ -39,7 +39,7 @@ do not resume the obsolete `abd7016` snapshot. Version 0.13.1 was the unreleased
 | 3–4: scheduler, receipts, recovery, quiet watcher | Implemented; actual pending consume restart, stale wake retirement and same-thread reuse PASS |
 | 5: regressions/package | Local complete check PASS; 20 owner + 41 autonomy (15 Claude), extracted copies and reproducibility; CI evidence linked in final report |
 | 6: same archive Linux/macOS | PASS; plugin ZIP SHA256 57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a |
-| 7: docs and portable branch | Owner manifest/console/recovery and EN/RU evidence supplied; PR #42 remains draft, no merge/release |
+| 7: docs and portable branch | Owner manifest/console/recovery and EN/RU evidence supplied; public release authorized separately; packaging and publication recorded in the release report |
 
 The owner client forces actor-owned native config/hooks/rules disabled with
 session trust/discovery flags before thread loading. Effective config/read alone

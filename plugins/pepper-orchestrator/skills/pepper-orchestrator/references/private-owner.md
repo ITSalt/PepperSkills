@@ -1,4 +1,4 @@
-# Explicit private owner for Codex (0.14.0 candidate)
+# Explicit private owner for Codex (0.14.0 preview)
 
 This opt-in Linux/macOS mode connects the portable scheduler to its own Codex
 App Server through private STDIO. It creates only the fixed coordinator/module
@@ -52,7 +52,7 @@ state directory on first launch. Preflight makes no model call:
 ```sh
 python3 -I -S -B /absolute/installed-skill/scripts/owner_main.py \
   --manifest /absolute/owner-manifest.json --directory /absolute/owner-data \
-  --native /absolute/native/codex --archive /absolute/candidate.zip \
+  --native /absolute/native/codex --archive /absolute/pepper-orchestrator.zip \
   --sha256 ARCHIVE_SHA256 --preflight
 ```
 
@@ -134,5 +134,5 @@ Merge, deployment, production and review decisions stay with the owner.
 The acceptance target is **PASS (Git-approved, on-request)**: autonomous scheduling
 with ordinary permission pauses. It is not the earlier unchanged-profile Git
 preparation PASS or a zero-approval unattended claim. See repository validation
-reports for measured host/version/archive scope. This candidate is unreleased;
+reports for measured host/version/archive scope. Version 0.14.0 is a public preview;
 Windows retains offline/native core smoke only, without this live mode.

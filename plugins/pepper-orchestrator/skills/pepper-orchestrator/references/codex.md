@@ -1,9 +1,9 @@
-# Codex CLI adapter and common runtime (0.14.0 candidate)
+# Codex CLI adapter and common runtime (0.14.0 preview)
 
 For explicit private-STDIO owner launch on Linux/macOS, follow
 [private owner setup and recovery](private-owner.md) ([Русский](private-owner.ru.md)).
 Use its typed tools rather than detached shell commands for active owner operations.
-This candidate remains unreleased; host acceptance is recorded separately.
+Linux/macOS private-owner live acceptance passed with native Codex 0.165.0; measured profiles, artifact hashes and limits are recorded in the repository validation reports.
 
 The owner launches independent module sessions. One coordinator writes `status.md`
 and decisions; module sessions implement WPs in their own Git worktrees. Preserve

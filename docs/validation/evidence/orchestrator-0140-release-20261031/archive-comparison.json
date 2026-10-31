@@ -1,0 +1,48 @@
+{
+  "version": "0.14.0",
+  "accepted_runtime_commit": "0d6311a2234dbfccd15eddda7a06a9d28abc3c7d",
+  "archives": {
+    "pepper-orchestrator.plugin.zip": {
+      "live_accepted_sha256": "57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a",
+      "public_release_sha256": "c1975b462d4e28273dc63d69fd853d90bb6997691709f19ffd5b9e85be7d3b96",
+      "entries": 225,
+      "added_entries": [],
+      "removed_entries": [],
+      "changed_markdown_entries": [
+        "pepper-orchestrator/CHANGELOG.md",
+        "pepper-orchestrator/README.md",
+        "pepper-orchestrator/README.ru.md",
+        "pepper-orchestrator/WINDOWS.md",
+        "pepper-orchestrator/codex/skills/pepper-orchestrator/references/autonomy.md",
+        "pepper-orchestrator/codex/skills/pepper-orchestrator/references/codex.md",
+        "pepper-orchestrator/codex/skills/pepper-orchestrator/references/private-owner.md",
+        "pepper-orchestrator/codex/skills/pepper-orchestrator/references/private-owner.ru.md",
+        "pepper-orchestrator/skills/pepper-orchestrator/references/autonomy.md",
+        "pepper-orchestrator/skills/pepper-orchestrator/references/codex.md",
+        "pepper-orchestrator/skills/pepper-orchestrator/references/private-owner.md",
+        "pepper-orchestrator/skills/pepper-orchestrator/references/private-owner.ru.md"
+      ],
+      "identical_entries": 213,
+      "identical_script_entries": 82,
+      "identical_entries_manifest_sha256": "fd9f3402fe8f86e9ee46dac42037ef7254a9da2474fb473c50a3eb2d95e561b3",
+      "all_scripts_and_non_markdown_identical": true
+    },
+    "pepper-orchestrator.zip": {
+      "live_accepted_sha256": "7bc64b887591f175097d3aff2f149d7940403ce71c64fc0dfc64079333d89cab",
+      "public_release_sha256": "7371ec92ecd182f58a8366ac9e3b3a9d4ceca37a1c886883c9b1aed65f9faf19",
+      "entries": 101,
+      "added_entries": [],
+      "removed_entries": [],
+      "changed_markdown_entries": [
+        "pepper-orchestrator/references/autonomy.md",
+        "pepper-orchestrator/references/codex.md",
+        "pepper-orchestrator/references/private-owner.md",
+        "pepper-orchestrator/references/private-owner.ru.md"
+      ],
+      "identical_entries": 97,
+      "identical_script_entries": 41,
+      "identical_entries_manifest_sha256": "e27b1c82608d9609eb292fa95a3eefdc8031ad1fdb8e47b4f1db95af584c3842",
+      "all_scripts_and_non_markdown_identical": true
+    }
+  }
+}

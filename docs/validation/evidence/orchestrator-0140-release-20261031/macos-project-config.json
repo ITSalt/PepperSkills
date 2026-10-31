@@ -1,0 +1,43 @@
+{
+  "platform": "macos",
+  "archive_sha256": "c1975b462d4e28273dc63d69fd853d90bb6997691709f19ffd5b9e85be7d3b96",
+  "native_version": "0.165.0",
+  "raw_result_sha256": "d4f14d32a53955815aef76c2ec627bd6337955afafeec20fc07d7bb94941cb9c",
+  "probe_source_sha256": "f4fc812aa431eaefdbb9536f426fde151c12b64adf0a8453cb321b4d79be66f3",
+  "cleanup_source_sha256": "4384b66b2a1f6af5c8b7deb3761f68dc49aa2c88b6423b92897a039f3eb395e9",
+  "verdict": "PASS",
+  "model_turns": 0,
+  "profile": {
+    "sandbox": {
+      "type": "workspaceWrite",
+      "writableRoots": [],
+      "networkAccess": true,
+      "excludeTmpdirEnvVar": false,
+      "excludeSlashTmp": false
+    },
+    "approvalPolicy": "on-request",
+    "approvalsReviewer": "user",
+    "runtimeWorkspaceRoots": [
+      "<ACTOR_ROOT>"
+    ]
+  },
+  "mcp": {
+    "data": [],
+    "nextCursor": null
+  },
+  "redirected_mcp": {
+    "data": [],
+    "nextCursor": null
+  },
+  "marker_exists": false,
+  "marker_after_redirect": false,
+  "native_stopped": true,
+  "auth_removed": true,
+  "history_cleanup": [
+    "no_rollout_zero_model_thread",
+    "no_rollout_zero_model_thread"
+  ],
+  "history_cleanup_complete": true,
+  "cleanup_native_stopped": true,
+  "cleanup_auth_removed": true
+}

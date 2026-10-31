@@ -1,13 +1,10 @@
 # Pepper Orchestrator
 
-> 0.13.1 is an unreleased safety-fix candidate. Linux sandbox autonomy remains blocked; no privileged MCP bridge is shipped.
+> New in 0.14.0: explicit private-owner launch for autonomous Codex scheduling on Linux/macOS with workspace-write and on-request approvals. See [setup, permissions and recovery](skills/pepper-orchestrator/references/private-owner.md) and the [acceptance report](../../docs/validation/pepper-orchestrator-0.14.0-private-owner.md). Native Codex 0.165.0 is required for this mode.
 
+> Local session reuse and autonomous dispatch remain opt-in. Existing CLI/manual and Claude Code workflows are retained; Windows has core/native smoke coverage only. See the [changelog](CHANGELOG.md).
 
-> New in 0.13.0: opt-in local session reuse and autonomous dispatch for Codex CLI and Claude Code. See [autonomy](skills/pepper-orchestrator/references/autonomy.md).
-
-> 0.12.0 added Codex CLI trusted delivery and explicit live acceptance. See the [changelog](CHANGELOG.md).
-
-> **Preview (0.13.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
+> **Preview (0.14.0).** Modes `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > streams in one repository with worktrees and locks; cloud sessions; generated session settings.
 > Formats and commands may change before 1.0.0.
@@ -25,9 +22,15 @@ Installation and update models: [English guide](../../docs/installation-and-upda
 /plugin install pepper-orchestrator@pepperskills
 ```
 
+## Codex private owner on Linux/macOS
+
+Download the [0.14.0 preview release](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.14.0) and verify the ZIP against `SHA256SUMS`. Follow the [private-owner guide](skills/pepper-orchestrator/references/private-owner.md) to install outside module worktrees, declare the fixed coordinator/modules and run a zero-model preflight before launch. This explicitly starts its own App Server; it does not attach to an existing desktop chat.
+
+Git preparation stays inside each module sandbox. The owner grants each exact native permission request through the owner console; permissions are scoped to the turn. Merge, deployment and production decisions remain with the owner. Upgrading a running owner requires stopping it and an explicit migration; `--resume` requires unchanged code/configuration.
+
 ## Codex CLI on Windows
 
-[Download 0.13.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.13.0).
+[Download 0.14.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.14.0).
 Use Python 3.12+, Git, GitHub CLI (`gh`) and Codex CLI (tested: 0.154.0).
 In PowerShell, install the native plugin:
 
@@ -45,7 +48,7 @@ Claude permission settings described below belong to Claude Code.
 
 To update an existing installation, run `codex plugin marketplace upgrade pepperskills`
 and `codex plugin add pepper-orchestrator@pepperskills`, then restart Codex and check
-version 0.13.0. Preserve customized files. A manual ZIP installation and a Windows
+version 0.14.0. Preserve customized files. A manual ZIP installation and a Windows
 acceptance checklist are in the [Windows guide](WINDOWS.md).
 
 ## Use
@@ -68,7 +71,7 @@ Say "plan X by the single-orchestrator concept", or use the short commands:
 | `/pepper-orchestrator:reopen <reason>` | reopen a closed program whose goal is not reached |
 | `/pepper-orchestrator:report [what]` | report a defect of the plugin: anonymized record, Issue after your yes |
 
-Version 0.13.0 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c, 3d). Modules can be whole repositories or areas and
+Version 0.14.0 is a preview (stages 2a-2e, 3a, 3b, 3e, 3c, 3d). Modules can be whole repositories or areas and
 domains of one repository: each stream runs in its own worktree (`claude -w`), shared paths and
 resources are held by locks, merges into one repository go through a queue. `review` runs a
 read-only reviewer agent with a disposable clone on the first submission and reads the revision diff

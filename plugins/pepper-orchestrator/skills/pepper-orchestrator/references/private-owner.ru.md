@@ -1,4 +1,4 @@
-# Явный private owner для Codex (кандидат 0.14.0)
+# Явный private owner для Codex (preview 0.14.0)
 
 Режим Linux/macOS соединяет существующий scheduler с собственным App Server через
 приватный STDIO. Владелец заранее объявляет единственного координатора и фиксированные
@@ -74,5 +74,5 @@ compaction требуется новый завершённый native contextCo
 
 Цель приёмки — PASS (Git-approved, on-request): автономное планирование с обычными
 паузами approvals. Исторический unchanged-profile Git blocker не переименовывается
-в PASS. Кандидат не опубликован; Windows проверяется offline/native core smoke,
+в PASS. Версия 0.14.0 — публичный preview; Windows проверяется offline/native core smoke,
 живой private-owner сценарий Windows не заявляется.

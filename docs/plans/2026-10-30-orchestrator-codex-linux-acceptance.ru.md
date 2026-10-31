@@ -5,7 +5,7 @@
 
 Статус на 31 октября: **Runtime PASS (Git-approved, on-request), Linux/macOS**.
 [Финальная реализация, permissions и evidence](../validation/pepper-orchestrator-0.14.0-private-owner.ru.md).
-Кандидат 0.14.0 не опубликован; прежние экспериментальные verdict ниже исторические.
+31 октября владелец отдельно поручил публичный выпуск 0.14.0; см. [упаковку релиза](../validation/pepper-orchestrator-0.14.0-release.ru.md). Прежние экспериментальные verdict ниже исторические.
 Исторические component reports сохранены с исходными verdict:
 [Linux read-only follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.ru.md),
 [Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.ru.md),
@@ -25,7 +25,7 @@
 | §3–4: scheduler/receipts/recovery/watcher | Реализовано; restart на pending consume, списание старого wake-up и same-thread reuse PASS |
 | Регрессии и упаковка | Полный локальный check PASS; 20 owner, 41 autonomy (15 Claude), извлечённые копии и воспроизводимость; CI в evidence отчёта |
 | Сквозная приёмка | Linux/macOS PASS одного ZIP SHA256 57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a |
-| Документация/поставка | Manifest, console, recovery, EN/RU evidence; PR #42 draft, merge/release не выполнялись |
+| Документация/поставка | Manifest, console, recovery, EN/RU evidence; публичный выпуск отдельно разрешён владельцем; упаковка и публикация отражены в релизном отчёте |
 
 До загрузки thread native config/hooks/rules модулей отключены session flags.
 Один effective config/read оказался недостаточен: thread/start мог доверить
@@ -328,7 +328,7 @@ verdict. Новые approvals и решения владельца учитыв�
 превратить исходный профиль в другой. При нехватке API/прав — конкретный блокер
 и воспроизводимый тест, а не заявление о готовой автономности. Продолжить
 существующую ветку `codex/orchestrator-linux-acceptance` и PR #42 с доказательствами;
-публикацию нового релиза не выполнять
+публикацию нового релиза не выполнять без отдельного запроса (такой запрос получен 31 октября)
 без отдельного запроса владельца.
 
 Вне работы: #23, ранний reuse после ACCEPTED, смешанные клиенты, несколько хостов,

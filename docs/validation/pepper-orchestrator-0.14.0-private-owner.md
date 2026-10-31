@@ -1,7 +1,7 @@
 # Private owner 0.14.0: Linux/macOS acceptance
 
 31 October 2026. **Runtime PASS (Git-approved, on-request)** on Linux and macOS
-from the same immutable archive. Candidate remains unreleased; draft PR #42.
+from the same immutable archive. This is the pre-release acceptance snapshot. [Public release packaging](pepper-orchestrator-0.14.0-release.md) separately records documentation changes and new ZIP hashes.
 [Русский](pepper-orchestrator-0.14.0-private-owner.ru.md).
 [Native evidence and executable probes](evidence/orchestrator-private-owner-0140-20261031/README.md).
 
@@ -15,7 +15,7 @@ detached service or automatic production approval is installed.
 ## Artifact and measured hosts
 
 Packaged runtime commit: `0d6311a2234dbfccd15eddda7a06a9d28abc3c7d`.
-Later documentation/test-driver commits preserve these packaged bytes.
+Evidence/test-driver commit ee8a6fc preserved these packaged bytes. Release documentation was updated later; the hashes below identify live acceptance, not the rebuilt public release.
 
 | Artifact | SHA256 |
 |---|---|
