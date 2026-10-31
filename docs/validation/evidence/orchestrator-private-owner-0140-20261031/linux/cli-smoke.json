@@ -1,0 +1,170 @@
+{
+  "archive_sha256": "57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a",
+  "threads": [
+    "01a18f94-9315-7710-8ccf-bd551950ccc7",
+    "01a18f94-95fb-7e62-84ab-510f812bef1e",
+    "01a18f94-9710-7720-a7a3-3c8d920d450d"
+  ],
+  "checks": {
+    "cli-unarchive": {
+      "model_turns": 0,
+      "native_exited": true,
+      "auth_removed": true
+    },
+    "preflight": true,
+    "same_threads": true,
+    "generation_advanced": true,
+    "native_stopped": true,
+    "auth_removed": true,
+    "no_thread_start": true,
+    "fixed_thread_startup_and_watcher_wakes": true,
+    "no_approvals": true,
+    "cli-final-archive": {
+      "model_turns": 0,
+      "native_exited": true,
+      "auth_removed": true
+    }
+  },
+  "new_executors": 0,
+  "before_manifest": {
+    "epoch": "58a4600ec97e41d19407d2519e824c3d",
+    "process": {
+      "host": "fixture-host-linux",
+      "pid": 4182621,
+      "started": "FIXTURE_BOOT:73395728",
+      "pid_namespace": "pid:[4026531836]"
+    },
+    "workspace": "/FIXTURE/program-home/features/test",
+    "code_sha256": {
+      "autonomy_selftest.py": "0d0d1e74ca7f903f6078dd31ef1c0f0b300c674ff2f383496dd6f220ece20de8",
+      "release.py": "3b93c3d7d312841f9e66f175d53ed4858e037462e393a52d952dcc970927b68e",
+      "acceptance.py": "2b3d08d4396939e17e03d3bdab9ff73840501683ae5c20971014dc9b36bcbc7f",
+      "owner_main.py": "f4896745ecde63e704abbafdb8a6fbe5ff1697219438fed614842b073f717834",
+      "project_instructions.py": "6914cd240c42446d927af234b73fc6b6d96745bc42df2e9e42b6d79c3ce0e03b",
+      "session_settings.py": "c44f860491d8fc6b743a0506e5d0d892520fbb99d49eaae2305a75a5fb7fd01c",
+      "codex_adapter.py": "f4daab8992b44ceea598a1deefcd541b9c2613cb489347e60ae13fb90189db0a",
+      "orch.py": "b82a42e38176a2f40f8e9bff0ff661d69af878a9c1c6685e2447131bb2f4c814",
+      "private_owner.py": "da981c49ba6ecc589ba6da7d190ba1795eff7fc918c01344103e0f2f0fa27c88",
+      "claude_adapter.py": "5cbf63a92f21c99313d426847b7e27d4fe0138702653b1721ce615d10987aed2",
+      "runtime_commands.py": "947b59dd144bf52e4ea822f90199baf1ef3e3df26a03675d3f539a9d2ddf9921",
+      "safe_edit.py": "671b26f8447ef8fd1318af856b27b811b535f65e287e43178fd84d2b0ece4209",
+      "reliability_selftest.py": "75da033125d7f82a79b27c7f9aa8b9268fce3855e64013686ce04a0e2b78f763",
+      "plugin_report.py": "6291bf00fec4432aa1562432a2568d61059fff32cc54bfd89677207ca5d94942",
+      "codex_transport.py": "1f365f240b1e1d8676c1e7123e476be7449d4251ce12caf73a4af8a153d61bfb",
+      "id_allocator.py": "702506b365068315cdcd0aa743a81cacf17c6596810d7258cfcc0e43951cc2ab",
+      "delivery.py": "609a6f6d5d6a74fa851294eb40dadf173728f7f2292a915ac0e5c9d0df74bf7e",
+      "runtime_selftest.py": "10a9837fbc859a716094e2b3c5dd29584b3dcfae9f9b3622e4e7115d7d0dae8c",
+      "selftest.py": "77252899c14fa2ff78ddeefed29da6f1a99d853a2fa7b22af0a078a730e154de",
+      "autonomy.py": "70b31412e981c75d8583179e1bbaa19b28c4662a06b74ea36a9a6098efeb9dc2",
+      "streams.py": "485e03d694bf101bb3e9d6408c1c9756f6dab333c0f04ff2093c50406ef30a64",
+      "state_io.py": "491425df2ad584f893b05d20a708b986642db9498440050d0d60c1c82f84b2d3",
+      "owner_observation.py": "a403b60a36862d39ae8264b174707ffd8e4de9981fe5f1b40da9d6ad3e0ac3cf",
+      "owner_selftest.py": "83f51ce586d80532303dd756c24878b69ecd08ca0d5c011b4daae1e25d6408f1",
+      "module_prepare.py": "fa1530345f9bb3c9050d65755bb08c78bc77d607756ddb555e04c188cb784e47",
+      "verification.py": "edb75b32d1faa9ca767e5d2f5dc91089ec8d8b07313a5b270b6fcd9e38b5893b"
+    },
+    "config_sha256": "40f3311d26a83d7cd32405a67ae3fedacd5139ea88f36a0e3f87d4a9f8443f71",
+    "native": "/NATIVE/codex",
+    "codex_home": "/FIXTURE/owner-data/codex-home",
+    "actor_roots": [
+      "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+      "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed",
+      "/FIXTURE/coordinator"
+    ],
+    "isolated_config_sha256": "69928ea8faa535788cdeb7e5c204906950329f5abe12a094dac9f6f6bd60e426",
+    "native_sha256": "c06a67fd8ac76508dc78bd99ce20c9f317b8d568beda59485f3f4134df9962d5",
+    "event_log": "/FIXTURE/owner-data/native-events-2.jsonl",
+    "roles": {
+      "01a18f94-9315-7710-8ccf-bd551950ccc7": {
+        "role": "module",
+        "thread": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+        "worktree": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+        "module": "a",
+        "profile": {
+          "sandbox": {
+            "type": "workspaceWrite",
+            "writableRoots": [],
+            "networkAccess": true,
+            "excludeTmpdirEnvVar": false,
+            "excludeSlashTmp": false
+          },
+          "approvalPolicy": "on-request",
+          "approvalsReviewer": "user",
+          "model": "gpt-6.1-sol",
+          "runtimeWorkspaceRoots": [
+            "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed"
+          ]
+        },
+        "branch_prefix": "gate/a/",
+        "git": {
+          "private": "/FIXTURE/app/.git/worktrees/wp-a-01-seed",
+          "common": "/FIXTURE/app/.git"
+        }
+      },
+      "01a18f94-95fb-7e62-84ab-510f812bef1e": {
+        "role": "module",
+        "thread": "01a18f94-95fb-7e62-84ab-510f812bef1e",
+        "worktree": "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed",
+        "module": "b",
+        "profile": {
+          "sandbox": {
+            "type": "workspaceWrite",
+            "writableRoots": [],
+            "networkAccess": true,
+            "excludeTmpdirEnvVar": false,
+            "excludeSlashTmp": false
+          },
+          "approvalPolicy": "on-request",
+          "approvalsReviewer": "user",
+          "model": "gpt-6.1-sol",
+          "runtimeWorkspaceRoots": [
+            "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed"
+          ]
+        },
+        "branch_prefix": "gate/b/",
+        "git": {
+          "private": "/FIXTURE/app/.git/worktrees/wp-b-01-seed",
+          "common": "/FIXTURE/app/.git"
+        }
+      },
+      "01a18f94-9710-7720-a7a3-3c8d920d450d": {
+        "role": "coordinator",
+        "thread": "01a18f94-9710-7720-a7a3-3c8d920d450d",
+        "worktree": "/FIXTURE/coordinator",
+        "module": null,
+        "profile": {
+          "sandbox": {
+            "type": "workspaceWrite",
+            "writableRoots": [],
+            "networkAccess": true,
+            "excludeTmpdirEnvVar": false,
+            "excludeSlashTmp": false
+          },
+          "approvalPolicy": "on-request",
+          "approvalsReviewer": "user",
+          "model": "gpt-6.1-sol",
+          "runtimeWorkspaceRoots": [
+            "/FIXTURE/coordinator"
+          ]
+        }
+      }
+    },
+    "generation": 2
+  },
+  "preflight_stdout": "{\"archive_sha256\": \"57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a\", \"paths\": \"verified\", \"model_turns\": 0}\n",
+  "returncode": 0,
+  "stdout": "Private owner active. Commands: status, pause, resume, grant ID, deny ID, stop.\n{\"epoch\": \"df5f1292ba0547a681bbd23a30bba4a2\", \"generation\": 3, \"pending_approvals\": [], \"error\": null}\n{\n  \"enabled\": false,\n  \"session_reuse\": \"auto\",\n  \"interval_seconds\": 10,\n  \"max_parallel_sessions\": 2\n}\n",
+  "stderr": "",
+  "elapsed_seconds": 22.832474082009867,
+  "native_turns_started": 4,
+  "turn_assessment": {
+    "verified": true,
+    "explicit_context_starts": 3,
+    "native_turns_per_thread": {
+      "01a18f94-9315-7710-8ccf-bd551950ccc7": 1,
+      "01a18f94-95fb-7e62-84ab-510f812bef1e": 1,
+      "01a18f94-9710-7720-a7a3-3c8d920d450d": 2
+    }
+  },
+  "verdict": "PASS"
+}

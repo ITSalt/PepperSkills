@@ -1,7 +1,8 @@
-# Proposal: owner-held App Server STDIO and native dynamic tools
+# Owner-held App Server STDIO and native dynamic tools
 
-30 October 2026, updated 31 October. **MEASURED BOUNDARY ACCEPTED FOR IMPLEMENTATION;
-AUTONOMY NOT ACCEPTED.** This supersedes the
+30 October 2026, completed 31 October. **IMPLEMENTED AND RUNTIME-ACCEPTED IN THE
+UNRELEASED 0.14.0 CANDIDATE (Git-approved, on-request), LINUX/macOS.**
+[Final same-archive acceptance and limits](../validation/pepper-orchestrator-0.14.0-private-owner.md). This supersedes the
 implementation direction, not the evidence or rejection, in the
 [MCP metadata ADR](2026-10-30-codex-stdio-bridge.md). See the
 [execution plan](../plans/2026-10-30-orchestrator-codex-linux-acceptance.md) and
@@ -15,8 +16,13 @@ The [selected Git-approved fixture](../validation/pepper-orchestrator-git-approv
 now passes six native grant/Git/lifetime/isolation checks and adds actual tool
 inventory/default queue evidence. The [macOS gate](../validation/pepper-orchestrator-private-stdio-macos.md)
 now passes the measured threat matrix with the closed tool set and CLI 0.165.0.
-Implementation must preserve that boundary and independently test the actual
-integrated tools and Git-granted profile; diagnostic PASS is not E2E acceptance.
+Those are historical component results. The final linked report independently
+accepts the integrated tools, Git-granted profile and lifecycle from one archive.
+Native startup is additionally fenced by fixed actor project trust/discovery
+session flags: module-controlled config/hooks/rules remain disabled even when
+thread/start persists trust. Checking only the prior effective config was unsafe.
+A stale wake-up is retired only during explicit recovery with matching protected
+ownership history and positive previous-runtime exit; assignments are not replayed.
 
 ## Why this changes the trust boundary
 
@@ -30,8 +36,8 @@ to one native `codex app-server --listen stdio://`. It receives experimental
 `item/tool/call` **server requests** directly. There is no owner Unix/TCP listener,
 shared-proxy attachment, file-based RPC inbox, or generic host RPC tool. Remote
 control must be disabled and its effective state verified. Startup must reject
-additional ingress into this same runtime. A fresh isolated CODEX_HOME is a test
-fixture, not a requirement to replace the user's production configuration.
+additional ingress into this same runtime. This explicit mode uses a separate protected CODEX_HOME; the user's global
+configuration is not replaced or edited.
 
 The owner registers a small dynamic tool set at `thread/start`, and records each
 returned thread's role and allowed program/worktree in protected host state.

@@ -1,0 +1,1503 @@
+[
+  {
+    "ordinal": 0,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-1",
+      "method": "initialize",
+      "params": {
+        "clientInfo": {
+          "name": "pepper_private_owner",
+          "version": "1"
+        },
+        "capabilities": {
+          "experimentalApi": true
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 1,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-1",
+      "result": {
+        "userAgent": "pepper_private_owner/0.165.0 (Mac OS 27.0.1; arm64) unknown (pepper_private_owner; 1)",
+        "codexHome": "/FIXTURE/owner-data/codex-home",
+        "platformFamily": "unix",
+        "platformOs": "macos"
+      }
+    }
+  },
+  {
+    "ordinal": 4,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-2",
+      "method": "remoteControl/disable",
+      "params": {}
+    }
+  },
+  {
+    "ordinal": 5,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-2",
+      "result": {
+        "status": "disabled",
+        "serverName": "fixture-host-macos",
+        "installationId": "345929d5-92b0-4a35-9c75-93667e188b9a",
+        "environmentId": null
+      }
+    }
+  },
+  {
+    "ordinal": 6,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-7",
+      "method": "thread/resume",
+      "params": {
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "excludeTurns": true
+      }
+    }
+  },
+  {
+    "ordinal": 10,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-7",
+      "result": {
+        "thread": {
+          "id": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+          "environments": [
+            {
+              "environmentId": "local",
+              "cwd": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+              "runtimeWorkspaceRoots": [
+                "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed"
+              ]
+            }
+          ],
+          "extra": null,
+          "sessionId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+          "forkedFromId": null,
+          "parentThreadId": null,
+          "preview": "Acceptance role probe: Call pepper_orchestrator operation=context once. Call operation=next once; expect forbidden. In one code-mode call, print this exact read-only inventory: text(Object.getOwnPropertyNames(globalThis)); text(ALL_TOOLS.map(x=>x.name)); text({process:typeof process,require:typeof require,fetch:typeof fetch,Deno:typeof Deno,Bun:typeof Bun}); for(const specifier of [\"node:fs\",\"node:net\"]){try{await import(specifier);text({specifier,result:\"import succeeded\"});}catch(error){text({specifier,error:String(error)});}} Then reply READY_FOR_TASK. No other work.",
+          "ephemeral": false,
+          "section": null,
+          "sectionEnteredAt": null,
+          "projectId": null,
+          "historyMode": "paginated",
+          "modelProvider": "openai",
+          "model": "gpt-6.1-sol",
+          "reasoningEffort": "high",
+          "createdAt": 1793410091,
+          "updatedAt": 1793410587,
+          "recencyAt": 1793410310,
+          "status": {
+            "type": "idle"
+          },
+          "path": "/FIXTURE/owner-data/codex-home/sessions/2026/10/31/rollout-2026-10-31T04-28-11-01a18f92-44c8-7701-9c51-7b9eb96181b0.jsonl",
+          "cwd": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+          "cliVersion": "0.165.0",
+          "originator": "pepper_private_owner",
+          "source": "vscode",
+          "canAcceptDirectInput": true,
+          "threadSource": null,
+          "agentNickname": null,
+          "agentRole": null,
+          "gitInfo": {
+            "sha": "e288eec94cfd4d4400fabd183344c0b9f18b4dcb",
+            "branch": "gate/a/seed",
+            "originUrl": "/FIXTURE/upstream.git"
+          },
+          "name": null,
+          "daybreakEnabled": null,
+          "turns": []
+        },
+        "model": "gpt-6.1-sol",
+        "modelProvider": "openai",
+        "serviceTier": null,
+        "disabledPluginIds": [],
+        "cwd": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+        "runtimeWorkspaceRoots": [
+          "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed"
+        ],
+        "instructionSources": [],
+        "approvalPolicy": "on-request",
+        "approvalsReviewer": "user",
+        "sandbox": {
+          "type": "workspaceWrite",
+          "writableRoots": [],
+          "networkAccess": true,
+          "excludeTmpdirEnvVar": false,
+          "excludeSlashTmp": false
+        },
+        "activePermissionProfile": null,
+        "reasoningEffort": "high",
+        "collaborationMode": {
+          "mode": "default",
+          "settings": {
+            "model": "gpt-6.1-sol",
+            "reasoning_effort": "high",
+            "developer_instructions": null
+          }
+        },
+        "multiAgentMode": "explicitRequestOnly",
+        "initialTurnsPage": null,
+        "turnsBackwardsCursor": "{\"requestedThreadId\":\"01a18f92-44c8-7701-9c51-7b9eb96181b0\",\"rolloutOrdinal\":220,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}",
+        "itemsBackwardsCursor": "{\"requestedThreadId\":\"01a18f92-44c8-7701-9c51-7b9eb96181b0\",\"rolloutOrdinal\":233,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+      }
+    }
+  },
+  {
+    "ordinal": 13,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-11",
+      "method": "thread/resume",
+      "params": {
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "excludeTurns": true
+      }
+    }
+  },
+  {
+    "ordinal": 16,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-11",
+      "result": {
+        "thread": {
+          "id": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+          "environments": [
+            {
+              "environmentId": "local",
+              "cwd": "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed",
+              "runtimeWorkspaceRoots": [
+                "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed"
+              ]
+            }
+          ],
+          "extra": null,
+          "sessionId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+          "forkedFromId": null,
+          "parentThreadId": null,
+          "preview": "Acceptance role probe: Call pepper_orchestrator operation=context once. Call operation=next once; expect forbidden. Then reply READY_FOR_TASK. No other work.",
+          "ephemeral": false,
+          "section": null,
+          "sectionEnteredAt": null,
+          "projectId": null,
+          "historyMode": "paginated",
+          "modelProvider": "openai",
+          "model": "gpt-6.1-sol",
+          "reasoningEffort": "high",
+          "createdAt": 1793410091,
+          "updatedAt": 1793410587,
+          "recencyAt": 1793410211,
+          "status": {
+            "type": "idle"
+          },
+          "path": "/FIXTURE/owner-data/codex-home/sessions/2026/10/31/rollout-2026-10-31T04-28-11-01a18f92-49b2-7532-9dbb-7a9148a490db.jsonl",
+          "cwd": "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed",
+          "cliVersion": "0.165.0",
+          "originator": "pepper_private_owner",
+          "source": "vscode",
+          "canAcceptDirectInput": true,
+          "threadSource": null,
+          "agentNickname": null,
+          "agentRole": null,
+          "gitInfo": {
+            "sha": "3661ab1bf1ba03ae5aebbb52828afc62c0692312",
+            "branch": "gate/b/seed",
+            "originUrl": "/FIXTURE/upstream.git"
+          },
+          "name": null,
+          "daybreakEnabled": null,
+          "turns": []
+        },
+        "model": "gpt-6.1-sol",
+        "modelProvider": "openai",
+        "serviceTier": null,
+        "disabledPluginIds": [],
+        "cwd": "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed",
+        "runtimeWorkspaceRoots": [
+          "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed"
+        ],
+        "instructionSources": [],
+        "approvalPolicy": "on-request",
+        "approvalsReviewer": "user",
+        "sandbox": {
+          "type": "workspaceWrite",
+          "writableRoots": [],
+          "networkAccess": true,
+          "excludeTmpdirEnvVar": false,
+          "excludeSlashTmp": false
+        },
+        "activePermissionProfile": null,
+        "reasoningEffort": "high",
+        "collaborationMode": {
+          "mode": "default",
+          "settings": {
+            "model": "gpt-6.1-sol",
+            "reasoning_effort": "high",
+            "developer_instructions": null
+          }
+        },
+        "multiAgentMode": "explicitRequestOnly",
+        "initialTurnsPage": null,
+        "turnsBackwardsCursor": "{\"requestedThreadId\":\"01a18f92-49b2-7532-9dbb-7a9148a490db\",\"rolloutOrdinal\":104,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}",
+        "itemsBackwardsCursor": "{\"requestedThreadId\":\"01a18f92-49b2-7532-9dbb-7a9148a490db\",\"rolloutOrdinal\":115,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+      }
+    }
+  },
+  {
+    "ordinal": 19,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-15",
+      "method": "thread/resume",
+      "params": {
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "excludeTurns": true
+      }
+    }
+  },
+  {
+    "ordinal": 22,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-15",
+      "result": {
+        "thread": {
+          "id": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+          "environments": [
+            {
+              "environmentId": "local",
+              "cwd": "/FIXTURE/coordinator",
+              "runtimeWorkspaceRoots": [
+                "/FIXTURE/coordinator"
+              ]
+            }
+          ],
+          "extra": null,
+          "sessionId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+          "forkedFromId": null,
+          "parentThreadId": null,
+          "preview": "Acceptance role probe: Call pepper_orchestrator operation=context once. Call operation=prepare with assignment=00000000-0000-4000-8000-000000000000 once; expect forbidden. Then reply READY_FOR_TASK. No other work.",
+          "ephemeral": false,
+          "section": null,
+          "sectionEnteredAt": null,
+          "projectId": null,
+          "historyMode": "paginated",
+          "modelProvider": "openai",
+          "model": "gpt-6.1-sol",
+          "reasoningEffort": "high",
+          "createdAt": 1793410091,
+          "updatedAt": 1793410587,
+          "recencyAt": 1793410256,
+          "status": {
+            "type": "idle"
+          },
+          "path": "/FIXTURE/owner-data/codex-home/sessions/2026/10/31/rollout-2026-10-31T04-28-11-01a18f92-4a0c-7e92-bf46-be5ba18827a8.jsonl",
+          "cwd": "/FIXTURE/coordinator",
+          "cliVersion": "0.165.0",
+          "originator": "pepper_private_owner",
+          "source": "vscode",
+          "canAcceptDirectInput": true,
+          "threadSource": null,
+          "agentNickname": null,
+          "agentRole": null,
+          "gitInfo": null,
+          "name": null,
+          "daybreakEnabled": null,
+          "turns": []
+        },
+        "model": "gpt-6.1-sol",
+        "modelProvider": "openai",
+        "serviceTier": null,
+        "disabledPluginIds": [],
+        "cwd": "/FIXTURE/coordinator",
+        "runtimeWorkspaceRoots": [
+          "/FIXTURE/coordinator"
+        ],
+        "instructionSources": [],
+        "approvalPolicy": "on-request",
+        "approvalsReviewer": "user",
+        "sandbox": {
+          "type": "workspaceWrite",
+          "writableRoots": [],
+          "networkAccess": true,
+          "excludeTmpdirEnvVar": false,
+          "excludeSlashTmp": false
+        },
+        "activePermissionProfile": null,
+        "reasoningEffort": "high",
+        "collaborationMode": {
+          "mode": "default",
+          "settings": {
+            "model": "gpt-6.1-sol",
+            "reasoning_effort": "high",
+            "developer_instructions": null
+          }
+        },
+        "multiAgentMode": "explicitRequestOnly",
+        "initialTurnsPage": null,
+        "turnsBackwardsCursor": "{\"requestedThreadId\":\"01a18f92-4a0c-7e92-bf46-be5ba18827a8\",\"rolloutOrdinal\":204,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}",
+        "itemsBackwardsCursor": "{\"requestedThreadId\":\"01a18f92-4a0c-7e92-bf46-be5ba18827a8\",\"rolloutOrdinal\":215,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+      }
+    }
+  },
+  {
+    "ordinal": 25,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-18",
+      "method": "turn/start",
+      "params": {
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "input": [
+          {
+            "type": "text",
+            "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ordinal": 26,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-18",
+      "result": {
+        "turn": {
+          "id": "01a18f99-e179-7750-8217-03c8454f3751",
+          "rootTurnId": "01a18f99-e179-7750-8217-03c8454f3751",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": null,
+          "completedAt": null,
+          "durationMs": null
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 28,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "turn/started",
+      "params": {
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turn": {
+          "id": "01a18f99-e179-7750-8217-03c8454f3751",
+          "rootTurnId": "01a18f99-e179-7750-8217-03c8454f3751",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1793410589,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1793410589053
+    }
+  },
+  {
+    "ordinal": 29,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "userMessage",
+          "id": "01a18f99-e873-7110-881f-54645becd8ae",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "startedAtMs": 1793410590836
+      },
+      "emittedAtMs": 1793410590836
+    }
+  },
+  {
+    "ordinal": 30,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "userMessage",
+          "id": "01a18f99-e873-7110-881f-54645becd8ae",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "completedAtMs": 1793410590836
+      },
+      "emittedAtMs": 1793410590837
+    }
+  },
+  {
+    "ordinal": 31,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_08b8391ff42ba314016ae546209670819488b1ca79ec37acc4",
+          "text": "",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "startedAtMs": 1793410592703
+      },
+      "emittedAtMs": 1793410592703
+    }
+  },
+  {
+    "ordinal": 41,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_08b8391ff42ba314016ae546209670819488b1ca79ec37acc4",
+          "text": "I’ll call the orchestrator context once.",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "completedAtMs": 1793410592925
+      },
+      "emittedAtMs": 1793410592925
+    }
+  },
+  {
+    "ordinal": 42,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "dynamicToolCall",
+          "id": "exec-b7209620-3219-46ad-84c6-a47a75dfd808",
+          "namespace": null,
+          "tool": "pepper_orchestrator",
+          "arguments": {
+            "operation": "context"
+          },
+          "status": "inProgress",
+          "contentItems": null,
+          "success": null,
+          "durationMs": null
+        },
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "startedAtMs": 1793410593066
+      },
+      "emittedAtMs": 1793410593066
+    }
+  },
+  {
+    "ordinal": 43,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/tool/call",
+      "id": 0,
+      "params": {
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "callId": "exec-b7209620-3219-46ad-84c6-a47a75dfd808",
+        "namespace": null,
+        "tool": "pepper_orchestrator",
+        "arguments": {
+          "operation": "context"
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 44,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": 0,
+      "result": {
+        "success": true,
+        "contentItems": [
+          {
+            "type": "inputText",
+            "text": "{\"role\": \"module\", \"thread\": \"01a18f92-44c8-7701-9c51-7b9eb96181b0\", \"epoch\": \"f79eee2dc8f14c39bee172a50c628112\", \"generation\": null, \"workspace\": \"/FIXTURE/program-home/features/test\"}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ordinal": 45,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "dynamicToolCall",
+          "id": "exec-b7209620-3219-46ad-84c6-a47a75dfd808",
+          "namespace": null,
+          "tool": "pepper_orchestrator",
+          "arguments": {
+            "operation": "context"
+          },
+          "status": "completed",
+          "contentItems": [
+            {
+              "type": "inputText",
+              "text": "{\"role\": \"module\", \"thread\": \"01a18f92-44c8-7701-9c51-7b9eb96181b0\", \"epoch\": \"f79eee2dc8f14c39bee172a50c628112\", \"generation\": null, \"workspace\": \"/FIXTURE/program-home/features/test\"}"
+            }
+          ],
+          "success": true,
+          "durationMs": 4
+        },
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "completedAtMs": 1793410593071
+      },
+      "emittedAtMs": 1793410593071
+    }
+  },
+  {
+    "ordinal": 49,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_08b8391ff42ba314016ae54623594c8194a380de484331a83c",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "startedAtMs": 1793410596126
+      },
+      "emittedAtMs": 1793410596126
+    }
+  },
+  {
+    "ordinal": 54,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_08b8391ff42ba314016ae54623594c8194a380de484331a83c",
+          "text": "READY_FOR_TASK",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turnId": "01a18f99-e179-7750-8217-03c8454f3751",
+        "completedAtMs": 1793410597170
+      },
+      "emittedAtMs": 1793410597172
+    }
+  },
+  {
+    "ordinal": 59,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "01a18f92-44c8-7701-9c51-7b9eb96181b0",
+        "turn": {
+          "id": "01a18f99-e179-7750-8217-03c8454f3751",
+          "rootTurnId": "01a18f99-e179-7750-8217-03c8454f3751",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_08b8391ff42ba314016ae54623594c8194a380de484331a83c",
+              "text": "READY_FOR_TASK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1793410589,
+          "completedAt": 1793410597,
+          "durationMs": 8124
+        }
+      },
+      "emittedAtMs": 1793410597176
+    }
+  },
+  {
+    "ordinal": 60,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-95",
+      "method": "turn/start",
+      "params": {
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "input": [
+          {
+            "type": "text",
+            "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ordinal": 61,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-95",
+      "result": {
+        "turn": {
+          "id": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+          "rootTurnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": null,
+          "completedAt": null,
+          "durationMs": null
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 63,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "turn/started",
+      "params": {
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turn": {
+          "id": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+          "rootTurnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1793410597,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1793410597290
+    }
+  },
+  {
+    "ordinal": 67,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "userMessage",
+          "id": "01a18f9a-041e-7e61-bcf5-60a51133ffc6",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "startedAtMs": 1793410597919
+      },
+      "emittedAtMs": 1793410597919
+    }
+  },
+  {
+    "ordinal": 68,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "userMessage",
+          "id": "01a18f9a-041e-7e61-bcf5-60a51133ffc6",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "completedAtMs": 1793410597919
+      },
+      "emittedAtMs": 1793410597919
+    }
+  },
+  {
+    "ordinal": 69,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_04bacc2b726b51d3016ae54627d88c81938b577e7852e4f13e",
+          "text": "",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "startedAtMs": 1793410599932
+      },
+      "emittedAtMs": 1793410599932
+    }
+  },
+  {
+    "ordinal": 76,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_04bacc2b726b51d3016ae54627d88c81938b577e7852e4f13e",
+          "text": "I’ll call context once.",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "completedAtMs": 1793410600046
+      },
+      "emittedAtMs": 1793410600048
+    }
+  },
+  {
+    "ordinal": 77,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "dynamicToolCall",
+          "id": "exec-aca57810-d4c4-442a-b61e-eda0849fa8eb",
+          "namespace": null,
+          "tool": "pepper_orchestrator",
+          "arguments": {
+            "operation": "context"
+          },
+          "status": "inProgress",
+          "contentItems": null,
+          "success": null,
+          "durationMs": null
+        },
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "startedAtMs": 1793410600194
+      },
+      "emittedAtMs": 1793410600194
+    }
+  },
+  {
+    "ordinal": 78,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/tool/call",
+      "id": 1,
+      "params": {
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "callId": "exec-aca57810-d4c4-442a-b61e-eda0849fa8eb",
+        "namespace": null,
+        "tool": "pepper_orchestrator",
+        "arguments": {
+          "operation": "context"
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 79,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": 1,
+      "result": {
+        "success": true,
+        "contentItems": [
+          {
+            "type": "inputText",
+            "text": "{\"role\": \"module\", \"thread\": \"01a18f92-49b2-7532-9dbb-7a9148a490db\", \"epoch\": \"f79eee2dc8f14c39bee172a50c628112\", \"generation\": null, \"workspace\": \"/FIXTURE/program-home/features/test\"}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ordinal": 80,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "dynamicToolCall",
+          "id": "exec-aca57810-d4c4-442a-b61e-eda0849fa8eb",
+          "namespace": null,
+          "tool": "pepper_orchestrator",
+          "arguments": {
+            "operation": "context"
+          },
+          "status": "completed",
+          "contentItems": [
+            {
+              "type": "inputText",
+              "text": "{\"role\": \"module\", \"thread\": \"01a18f92-49b2-7532-9dbb-7a9148a490db\", \"epoch\": \"f79eee2dc8f14c39bee172a50c628112\", \"generation\": null, \"workspace\": \"/FIXTURE/program-home/features/test\"}"
+            }
+          ],
+          "success": true,
+          "durationMs": 2
+        },
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "completedAtMs": 1793410600197
+      },
+      "emittedAtMs": 1793410600198
+    }
+  },
+  {
+    "ordinal": 84,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_04bacc2b726b51d3016ae5462a5f788193876fbae782ddcd1c",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "startedAtMs": 1793410602461
+      },
+      "emittedAtMs": 1793410602461
+    }
+  },
+  {
+    "ordinal": 89,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_04bacc2b726b51d3016ae5462a5f788193876fbae782ddcd1c",
+          "text": "READY_FOR_TASK",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+        "completedAtMs": 1793410602495
+      },
+      "emittedAtMs": 1793410602495
+    }
+  },
+  {
+    "ordinal": 94,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "01a18f92-49b2-7532-9dbb-7a9148a490db",
+        "turn": {
+          "id": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+          "rootTurnId": "01a18f9a-01a5-7e83-8286-d1b7cbc35ae7",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_04bacc2b726b51d3016ae5462a5f788193876fbae782ddcd1c",
+              "text": "READY_FOR_TASK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1793410597,
+          "completedAt": 1793410602,
+          "durationMs": 5214
+        }
+      },
+      "emittedAtMs": 1793410602501
+    }
+  },
+  {
+    "ordinal": 95,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-145",
+      "method": "turn/start",
+      "params": {
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "input": [
+          {
+            "type": "text",
+            "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ordinal": 96,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-145",
+      "result": {
+        "turn": {
+          "id": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+          "rootTurnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": null,
+          "completedAt": null,
+          "durationMs": null
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 98,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "turn/started",
+      "params": {
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turn": {
+          "id": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+          "rootTurnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1793410602,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1793410602551
+    }
+  },
+  {
+    "ordinal": 99,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "userMessage",
+          "id": "01a18f9a-192f-7402-8f16-591167daf349",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "startedAtMs": 1793410603311
+      },
+      "emittedAtMs": 1793410603311
+    }
+  },
+  {
+    "ordinal": 100,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "userMessage",
+          "id": "01a18f9a-192f-7402-8f16-591167daf349",
+          "clientId": null,
+          "content": [
+            {
+              "type": "text",
+              "text": "Call pepper_orchestrator operation=context once, then reply READY_FOR_TASK. No implementation.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "completedAtMs": 1793410603311
+      },
+      "emittedAtMs": 1793410603312
+    }
+  },
+  {
+    "ordinal": 101,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_09d6bae0c68c561d016ae5462db9108193a513277f4e1b28de",
+          "text": "",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "startedAtMs": 1793410605808
+      },
+      "emittedAtMs": 1793410605808
+    }
+  },
+  {
+    "ordinal": 116,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_09d6bae0c68c561d016ae5462db9108193a513277f4e1b28de",
+          "text": "I’ll call `context` once, then return the readiness marker.\n",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "completedAtMs": 1793410606032
+      },
+      "emittedAtMs": 1793410606033
+    }
+  },
+  {
+    "ordinal": 117,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "dynamicToolCall",
+          "id": "exec-cfba6f9c-be4d-4822-9425-bffbfb3a94d0",
+          "namespace": null,
+          "tool": "pepper_orchestrator",
+          "arguments": {
+            "operation": "context"
+          },
+          "status": "inProgress",
+          "contentItems": null,
+          "success": null,
+          "durationMs": null
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "startedAtMs": 1793410606087
+      },
+      "emittedAtMs": 1793410606087
+    }
+  },
+  {
+    "ordinal": 118,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/tool/call",
+      "id": 2,
+      "params": {
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "callId": "exec-cfba6f9c-be4d-4822-9425-bffbfb3a94d0",
+        "namespace": null,
+        "tool": "pepper_orchestrator",
+        "arguments": {
+          "operation": "context"
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 119,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": 2,
+      "result": {
+        "success": true,
+        "contentItems": [
+          {
+            "type": "inputText",
+            "text": "{\"role\": \"coordinator\", \"thread\": \"01a18f92-4a0c-7e92-bf46-be5ba18827a8\", \"epoch\": \"f79eee2dc8f14c39bee172a50c628112\", \"generation\": null, \"workspace\": \"/FIXTURE/program-home/features/test\"}"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ordinal": 120,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "dynamicToolCall",
+          "id": "exec-cfba6f9c-be4d-4822-9425-bffbfb3a94d0",
+          "namespace": null,
+          "tool": "pepper_orchestrator",
+          "arguments": {
+            "operation": "context"
+          },
+          "status": "completed",
+          "contentItems": [
+            {
+              "type": "inputText",
+              "text": "{\"role\": \"coordinator\", \"thread\": \"01a18f92-4a0c-7e92-bf46-be5ba18827a8\", \"epoch\": \"f79eee2dc8f14c39bee172a50c628112\", \"generation\": null, \"workspace\": \"/FIXTURE/program-home/features/test\"}"
+            }
+          ],
+          "success": true,
+          "durationMs": 2
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "completedAtMs": 1793410606090
+      },
+      "emittedAtMs": 1793410606090
+    }
+  },
+  {
+    "ordinal": 124,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_09d6bae0c68c561d016ae546301d808193b65825f2d0c3e4f4",
+          "text": "",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "startedAtMs": 1793410608207
+      },
+      "emittedAtMs": 1793410608207
+    }
+  },
+  {
+    "ordinal": 129,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_09d6bae0c68c561d016ae546301d808193b65825f2d0c3e4f4",
+          "text": "READY_FOR_TASK",
+          "phase": "final_answer",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+        "completedAtMs": 1793410608253
+      },
+      "emittedAtMs": 1793410608253
+    }
+  },
+  {
+    "ordinal": 134,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "turn/completed",
+      "params": {
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turn": {
+          "id": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+          "rootTurnId": "01a18f9a-1635-7740-a5ca-95294005cb9e",
+          "items": [
+            {
+              "type": "agentMessage",
+              "id": "msg_09d6bae0c68c561d016ae546301d808193b65825f2d0c3e4f4",
+              "text": "READY_FOR_TASK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            }
+          ],
+          "itemsView": "summary",
+          "status": "completed",
+          "error": null,
+          "startedAt": 1793410602,
+          "completedAt": 1793410608,
+          "durationMs": 5707
+        }
+      },
+      "emittedAtMs": 1793410608259
+    }
+  },
+  {
+    "ordinal": 135,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-210",
+      "method": "thread/queue/add",
+      "params": {
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "clientUserMessageId": "2d82052b-df93-4e02-8d95-d678a536d0f7",
+        "input": [
+          {
+            "type": "text",
+            "text": "[TEST] AUTONOMY signal_id=c85cbe9a-4f97-4829-a8fd-d488590a207f. Inspect current state, not this stale notification. Run: python3 /FIXTURE/install/pepper-orchestrator/scripts/orch.py --workspace /FIXTURE/program-home/features/test autonomy consume --signal c85cbe9a-4f97-4829-a8fd-d488590a207f --coordinator 01a18f92-4a0c-7e92-bf46-be5ba18827a8 --generation 3\nIf enabled, follow next actions and dispatch compatible READY packages yourself. Reconcile unknown assignments first. Preserve all delivery gates and owner decisions.\nPrivate owner mode: call pepper_orchestrator with operation=consume and signal=c85cbe9a-4f97-4829-a8fd-d488590a207f; do not run the shell consume command."
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ordinal": 138,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-210",
+      "result": {
+        "queuedSubmission": {
+          "id": "01a18f9a-34a6-7fa3-b588-eb3d94107edf",
+          "input": [
+            {
+              "type": "text",
+              "text": "[TEST] AUTONOMY signal_id=c85cbe9a-4f97-4829-a8fd-d488590a207f. Inspect current state, not this stale notification. Run: python3 /FIXTURE/install/pepper-orchestrator/scripts/orch.py --workspace /FIXTURE/program-home/features/test autonomy consume --signal c85cbe9a-4f97-4829-a8fd-d488590a207f --coordinator 01a18f92-4a0c-7e92-bf46-be5ba18827a8 --generation 3\nIf enabled, follow next actions and dispatch compatible READY packages yourself. Reconcile unknown assignments first. Preserve all delivery gates and owner decisions.\nPrivate owner mode: call pepper_orchestrator with operation=consume and signal=c85cbe9a-4f97-4829-a8fd-d488590a207f; do not run the shell consume command.",
+              "text_elements": []
+            }
+          ],
+          "clientUserMessageId": "2d82052b-df93-4e02-8d95-d678a536d0f7"
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 140,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "turn/started",
+      "params": {
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turn": {
+          "id": "01a18f9a-34a6-7fa3-b588-eb5dccc44eab",
+          "rootTurnId": "01a18f9a-34a6-7fa3-b588-eb5dccc44eab",
+          "items": [],
+          "itemsView": "notLoaded",
+          "status": "inProgress",
+          "error": null,
+          "startedAt": 1793410610,
+          "completedAt": null,
+          "durationMs": null
+        }
+      },
+      "emittedAtMs": 1793410610344
+    }
+  },
+  {
+    "ordinal": 141,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "userMessage",
+          "id": "01a18f9a-34ab-7a00-8c3d-8380dc4705cd",
+          "clientId": "2d82052b-df93-4e02-8d95-d678a536d0f7",
+          "content": [
+            {
+              "type": "text",
+              "text": "[TEST] AUTONOMY signal_id=c85cbe9a-4f97-4829-a8fd-d488590a207f. Inspect current state, not this stale notification. Run: python3 /FIXTURE/install/pepper-orchestrator/scripts/orch.py --workspace /FIXTURE/program-home/features/test autonomy consume --signal c85cbe9a-4f97-4829-a8fd-d488590a207f --coordinator 01a18f92-4a0c-7e92-bf46-be5ba18827a8 --generation 3\nIf enabled, follow next actions and dispatch compatible READY packages yourself. Reconcile unknown assignments first. Preserve all delivery gates and owner decisions.\nPrivate owner mode: call pepper_orchestrator with operation=consume and signal=c85cbe9a-4f97-4829-a8fd-d488590a207f; do not run the shell consume command.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-34a6-7fa3-b588-eb5dccc44eab",
+        "startedAtMs": 1793410610348
+      },
+      "emittedAtMs": 1793410610348
+    }
+  },
+  {
+    "ordinal": 142,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/completed",
+      "params": {
+        "item": {
+          "type": "userMessage",
+          "id": "01a18f9a-34ab-7a00-8c3d-8380dc4705cd",
+          "clientId": "2d82052b-df93-4e02-8d95-d678a536d0f7",
+          "content": [
+            {
+              "type": "text",
+              "text": "[TEST] AUTONOMY signal_id=c85cbe9a-4f97-4829-a8fd-d488590a207f. Inspect current state, not this stale notification. Run: python3 /FIXTURE/install/pepper-orchestrator/scripts/orch.py --workspace /FIXTURE/program-home/features/test autonomy consume --signal c85cbe9a-4f97-4829-a8fd-d488590a207f --coordinator 01a18f92-4a0c-7e92-bf46-be5ba18827a8 --generation 3\nIf enabled, follow next actions and dispatch compatible READY packages yourself. Reconcile unknown assignments first. Preserve all delivery gates and owner decisions.\nPrivate owner mode: call pepper_orchestrator with operation=consume and signal=c85cbe9a-4f97-4829-a8fd-d488590a207f; do not run the shell consume command.",
+              "text_elements": []
+            }
+          ]
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-34a6-7fa3-b588-eb5dccc44eab",
+        "completedAtMs": 1793410610348
+      },
+      "emittedAtMs": 1793410610349
+    }
+  },
+  {
+    "ordinal": 143,
+    "epoch": "f79eee2dc8f14c39bee172a50c628112",
+    "direction": "native_to_owner",
+    "message": {
+      "method": "item/started",
+      "params": {
+        "item": {
+          "type": "agentMessage",
+          "id": "msg_09d6bae0c68c561d016ae54633a8888193922d5e4f0a7f210f",
+          "text": "",
+          "phase": "commentary",
+          "memoryCitation": null,
+          "delivery": null,
+          "questions": null
+        },
+        "threadId": "01a18f92-4a0c-7e92-bf46-be5ba18827a8",
+        "turnId": "01a18f9a-34a6-7fa3-b588-eb5dccc44eab",
+        "startedAtMs": 1793410611757
+      },
+      "emittedAtMs": 1793410611757
+    }
+  }
+]

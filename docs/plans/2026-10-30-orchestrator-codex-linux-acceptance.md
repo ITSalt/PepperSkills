@@ -1,19 +1,16 @@
 # Codex Linux autonomy and macOS acceptance plan
 
-30 October 2026 plan, updated 31 October. **Measured step 2 boundary PASS; integration and E2E outstanding.**
+30 October 2026 plan, completed 31 October. **Runtime PASS (Git-approved, on-request), Linux/macOS.**
+[Final implementation, permission accounting and evidence](../validation/pepper-orchestrator-0.14.0-private-owner.md).
+Candidate 0.14.0 is unreleased. Historical experiments below retain their original verdicts.
 [Russian detailed plan](2026-10-30-orchestrator-codex-linux-acceptance.ru.md).
 [Design ADR](../adr/2026-10-30-codex-private-stdio-tools.md).
-[Linux agent prompt](2026-10-30-orchestrator-linux-agent.md).
-[Linux follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.md):
-API/caller/host/approval/same-thread recovery checks PASS, RPC/FD INCONCLUSIVE,
-Git preparation BLOCKED at unchanged worktree roots. No scheduler integration.
-[Selected Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.md):
-all six grant/Git/boundary/expiry/sibling/restart checks PASS on Linux 0.165.0.
-Actual code-mode inventory and default CLI queue observations now supplement the
-earlier RPC/FD coverage. This is not autonomy E2E or authorization to ship host operations.
-[macOS boundary probes](../validation/pepper-orchestrator-private-stdio-macos.md)
-now pass the measured threat matrix. Proceed to the narrow implementation;
-repeat negative checks against its actual tool set and Git-granted profile.
+[Linux agent prompt](2026-10-30-orchestrator-linux-agent.md) is retained for historical handoff.
+Earlier component reports retain their original scope:
+[Linux read-only follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.md),
+[Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.md),
+[macOS boundary](../validation/pepper-orchestrator-private-stdio-macos.md).
+Their pending integration claims describe the earlier stage, not the final result.
 
 ## Scope and existing evidence
 
@@ -30,8 +27,27 @@ them unless the environment changed. Do not attribute a candidate success to 0.1
 
 Continue branch `codex/orchestrator-linux-acceptance`, draft PR #42, retaining
 safety fix `6d59bfa` and report `35b3626`. Verify current HEAD/main before starting;
-do not resume the obsolete `abd7016` snapshot. Version 0.13.1 is an unreleased
-safety-fix candidate, not an accepted Linux autonomy release.
+do not resume the obsolete `abd7016` snapshot. Version 0.13.1 was the unreleased safety-fix investigation. The implemented
+0.14.0 candidate uses explicit owner launch; no public release is authorized.
+
+## Completion record
+
+| Step | Result |
+|---|---|
+| 1–2: caller/transport/host boundary | PASS for the measured closed owner mode; native project config startup canary added and fixed |
+| 2a: selected Git-approved profile | PASS; three explicit bounded test-controller turn grants per host, zero native UI clicks |
+| 3–4: scheduler, receipts, recovery, quiet watcher | Implemented; actual pending consume restart, stale wake retirement and same-thread reuse PASS |
+| 5: regressions/package | Local complete check PASS; 20 owner + 41 autonomy (15 Claude), extracted copies and reproducibility; CI evidence linked in final report |
+| 6: same archive Linux/macOS | PASS; plugin ZIP SHA256 57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a |
+| 7: docs and portable branch | Owner manifest/console/recovery and EN/RU evidence supplied; PR #42 remains draft, no merge/release |
+
+The owner client forces actor-owned native config/hooks/rules disabled with
+session trust/discovery flags before thread loading. Effective config/read alone
+was insufficient: native thread/start could trust a skipped project layer and
+launch its MCP. Both hosts pass the final zero-model linked-worktree/commondir
+canary with unchanged workspace-write/on-request/network=true profiles.
+Pending wake-up retirement requires matching protected recovery history and
+positive old-process exit; it does not clear assignments or unknown delivery.
 
 ## 1. Localize the boundary
 
@@ -99,13 +115,16 @@ The owner selected the separate `Git-approved` profile for a disposable Linux
 fixture. Its bounded native grant and actual Git preparation now pass; see the
 linked evidence above. The original unchanged-profile evidence stays
 BLOCKED_GIT_PREPARATION. No production profile or global config was changed.
-This selection does not authorize grants for an unrelated program.
+This selection does not authorize grants for an unrelated program. The final disposable acceptance uses a separate,
+owner-selected bounded decision controller for exact six-root turn requests. It
+records WAIT and zero manual native UI clicks; it does not claim per-request
+human UI confirmation. Production owner_main requires an explicit console grant.
 
 Keep workspace-write/on-request and the private owner channel. The tested native
 mechanism uses `request_permissions_tool=true` in isolated config and grants six
 Git metadata directories for one turn. Integration must record exact requested/
 resolved paths, command, lifetime and owner decision. Prefer command/turn scope; a persistent session grant needs
-an explicit separate owner choice. No blanket `git` allow-rule, automatic approval,
+an explicit separate owner choice. No blanket `git` allow-rule, automatic production approval,
 full home/root write access, generic host runner or host-side project setup.
 If the CLI cannot enforce a narrow grant, report that limitation; do not silently
 substitute unsandboxed execution.
@@ -193,7 +212,10 @@ module worktrees from one candidate commit/archive SHA256 on Linux and macOS.
 Record each host's effective workspace-write/on-request profile, network and
 runtime roots. The disposable private-repository owner driver sets up sessions,
 observes facts and performs fixture PR/merge actions; it does not dispatch or
-reconcile for the coordinator, approve requests automatically, or run module setup.
+reconcile assignments for the coordinator or run module setup. Under the explicitly
+selected disposable Git-approved test policy, the separate fixture controller
+resolves only exact six-root native turn requests and records zero manual native
+UI clicks; production owner_main approvals remain manual.
 
 Require overlapping native turns for two independent WPs; a third WP reusing the
 same thread/worktree with a new branch after squash merge and remote-branch

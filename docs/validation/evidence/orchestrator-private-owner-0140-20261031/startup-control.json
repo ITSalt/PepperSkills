@@ -1,0 +1,51 @@
+{
+  "native": "0.165.0",
+  "before_source_commit": "7005569",
+  "before_effective_config_browser_use": false,
+  "before_preflight_rejected": false,
+  "before": {
+    "mcp_started_before_model": true,
+    "status": {
+      "data": [
+        {
+          "name": "owned_canary",
+          "runtimeStatus": "connected",
+          "pluginId": null,
+          "httpOrigin": null,
+          "serverInfo": {
+            "name": "owned-canary",
+            "title": null,
+            "version": "1",
+            "description": null,
+            "icons": null,
+            "websiteUrl": null
+          },
+          "serverCapabilities": {
+            "tools": {}
+          },
+          "toolListMeta": null,
+          "tools": {},
+          "toolsError": null,
+          "resources": [],
+          "resourceTemplates": [],
+          "authStatus": "unsupported"
+        }
+      ],
+      "nextCursor": null
+    },
+    "model_turns": 0
+  },
+  "after_session_flags": {
+    "mcp_started_before_model": false,
+    "status": {
+      "data": [],
+      "nextCursor": null
+    },
+    "model_turns": 0
+  },
+  "raw_proof_sha256": {
+    "proof.json": "e1bd466bda338f36c2b0766de1dc4046debef657d78bb6c84db0c08e0bc83dfc",
+    "start-proof.json": "561d59a0b980b0ab957e20356a054306ac39bf5c0faa31f0648385c16f0111aa",
+    "fixed-start-proof.json": "205f5bdfe9e60a9fa422027ed5a12d6b3a89951c723615eb5b37fe7e975445c9"
+  }
+}

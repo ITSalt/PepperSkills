@@ -3,23 +3,38 @@
 Дата: 30 октября 2026 года. Обновление после проверки блокера §2.
 [English canonical plan](2026-10-30-orchestrator-codex-linux-acceptance.md).
 
-Статус: прежний MCP-вариант отклонён; измеренная граница §2 PASS, интеграция и E2E впереди.
-[Живой Linux follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.ru.md):
-API/caller/host/approval/same-thread recovery PASS, RPC/FD INCONCLUSIVE,
-Git preparation BLOCKED с неизменёнными worktree roots. Это ещё не security PASS
-и не Linux autonomy PASS; scheduler не интегрирован.
-[Выбранный Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.ru.md):
-шесть grant/Git/boundary/expiry/sibling/restart проверок PASS на Linux 0.165.0.
-[macOS gate](../validation/pepper-orchestrator-private-stdio-macos.ru.md) прошёл
-измеренную матрицу угроз. Следующий этап — узкая реализация с повтором negative
-probes её настоящих tools и профиля с Git-grant; автономность ещё не принята.
-Фактический code-mode inventory и default CLI queue дополнили прежнее покрытие
-RPC/FD. Это не autonomy E2E и не разрешение поставить host-операции.
-[Новый ADR](../adr/2026-10-30-codex-private-stdio-tools.md),
-[исторический отказ](../adr/2026-10-30-codex-stdio-bridge.ru.md),
-[промпт Linux-агенту](2026-10-30-orchestrator-linux-agent.ru.md).
-Привилегированный мост не поставляется; независимое исправление безопасной
-отмены и диагностические проверки уже выполнены.
+Статус на 31 октября: **Runtime PASS (Git-approved, on-request), Linux/macOS**.
+[Финальная реализация, permissions и evidence](../validation/pepper-orchestrator-0.14.0-private-owner.ru.md).
+Кандидат 0.14.0 не опубликован; прежние экспериментальные verdict ниже исторические.
+Исторические component reports сохранены с исходными verdict:
+[Linux read-only follow-up](../validation/pepper-orchestrator-private-stdio-linux-2026-10-30.ru.md),
+[Git-approved fixture](../validation/pepper-orchestrator-git-approved-linux.ru.md),
+[macOS boundary](../validation/pepper-orchestrator-private-stdio-macos.ru.md).
+Указанная в них незавершённая интеграция относится к прежнему этапу.
+[ADR](../adr/2026-10-30-codex-private-stdio-tools.md),
+[отклонённый MCP-вариант](../adr/2026-10-30-codex-stdio-bridge.ru.md) и
+[прежний handoff](2026-10-30-orchestrator-linux-agent.ru.md) сохранены для трассировки.
+Подробные шаги ниже — исходные требования; итог выполнения указан в таблице.
+
+## Итог выполнения
+
+| Этап | Результат |
+|---|---|
+| §1–2: caller/transport/host boundary | PASS измеренного closed owner mode; добавлен и закрыт native project-config startup canary |
+| §2a: выбранный Git-approved профиль | PASS; по три точных test-controller turn grants на ОС, native UI кликов 0 |
+| §3–4: scheduler/receipts/recovery/watcher | Реализовано; restart на pending consume, списание старого wake-up и same-thread reuse PASS |
+| Регрессии и упаковка | Полный локальный check PASS; 20 owner, 41 autonomy (15 Claude), извлечённые копии и воспроизводимость; CI в evidence отчёта |
+| Сквозная приёмка | Linux/macOS PASS одного ZIP SHA256 57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a |
+| Документация/поставка | Manifest, console, recovery, EN/RU evidence; PR #42 draft, merge/release не выполнялись |
+
+До загрузки thread native config/hooks/rules модулей отключены session flags.
+Один effective config/read оказался недостаточен: thread/start мог доверить
+пропущенный project layer и запустить MCP. Финальный zero-model canary обеих ОС
+прошёл linked-worktree и redirected-commondir случаи при сохранённых
+workspace-write/on-request/network=true. Списание старого wake-up требует
+защищённой истории recovery и доказанного выхода прошлого процесса; назначения
+и unknown delivery outbox не очищаются. Grant-контроллер существует только в
+явно выбранном disposable fixture; производственные approvals ручные.
 
 ## Цель и исходная точка
 
@@ -151,7 +166,10 @@ BLOCKED_GIT_PREPARATION даже после security PASS; это ещё не Li
 Владелец выбрал `Git-approved` для одноразового Linux-fixture. Ограниченный
 native grant и реальная Git-подготовка теперь PASS; evidence по ссылке выше.
 Исторический неизменённый профиль остаётся BLOCKED_GIT_PREPARATION. Production-
-профиль и глобальные config не менялись; выбор не разрешает grants другой программе.
+профиль и глобальные config не менялись; выбор не разрешает grants другой программе. В финальном disposable прогоне отдельно выбранный
+владельцем контроллер применяет только ограниченное решение для точных шести
+roots на один turn. Он фиксирует WAIT и 0 ручных native UI кликов; это не выдаётся
+за ручное подтверждение каждого запроса. В production owner_main grant ручной.
 
 Сохранить workspace-write/on-request и закрытый канал владельца. Проверен native
 механизм `request_permissions_tool=true` в изолированном config с grant шести

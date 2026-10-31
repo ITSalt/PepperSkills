@@ -1,0 +1,110 @@
+{
+  "root": "/CLAUDE_FIXTURE",
+  "platform": "linux",
+  "checks": {
+    "completed_packages": [
+      "WP-A-02",
+      "WP-A-03",
+      "WP-B-02"
+    ],
+    "concurrent_busy_observed": true,
+    "same_a_session_reused": true,
+    "a03_branch": "test/wp-a-03-third",
+    "no_user_dispatch": true,
+    "compaction": {
+      "asked": "owner_action",
+      "confirmed": "compacted"
+    }
+  },
+  "sessions": {
+    "test-a": {
+      "sessionId": "c5ae75b2-0ba7-4598-ac6b-de71563bbf69",
+      "pid": 11130,
+      "cwd": "/CLAUDE_FIXTURE/wt-a"
+    },
+    "test-b": {
+      "sessionId": "1e33db9b-85c2-493e-8e86-9433a6c09366",
+      "pid": 11849,
+      "cwd": "/CLAUDE_FIXTURE/wt-b"
+    },
+    "test-coord": {
+      "sessionId": "63c568d2-3a90-436d-9ed2-467ffa6ddeff",
+      "pid": 12588,
+      "cwd": "/CLAUDE_FIXTURE/program-home/features/test"
+    }
+  },
+  "model": "sonnet",
+  "claude_version": "2.1.312",
+  "github_repository": "example/claude-fixture",
+  "prs": [
+    {
+      "wp": "WP-A-01",
+      "url": "https://github.com/example/claude-fixture/pull/1",
+      "head": "36c0777b925217189eba5edc3ba2e0124dc768f1"
+    },
+    {
+      "wp": "WP-B-01",
+      "url": "https://github.com/example/claude-fixture/pull/2",
+      "head": "21b184a8a4b3b8ce8106015703edae99b92316f2"
+    },
+    {
+      "wp": "WP-B-02",
+      "url": "https://github.com/example/claude-fixture/pull/3",
+      "head": "846d378d3a643c7679855a9f2303f4b3809d4744"
+    },
+    {
+      "wp": "WP-A-02",
+      "url": "https://github.com/example/claude-fixture/pull/4",
+      "head": "59e1b86e6d4ab3d858d66eab5f500a672399333e"
+    },
+    {
+      "wp": "WP-A-03",
+      "url": "https://github.com/example/claude-fixture/pull/5",
+      "head": "b0d39b504ebb90ad3680b0cba05a5c1d3cff9d4d"
+    }
+  ],
+  "assignments": [
+    {
+      "id": "c3c2d738-53a9-42a9-8960-7d4d651ef85d",
+      "wp": "WP-A-02",
+      "session": "claude:c5ae75b2-0ba7-4598-ac6b-de71563bbf69",
+      "state": "completed"
+    },
+    {
+      "id": "74ac25f8-4cae-4bf5-b0bf-9d3b3d1872af",
+      "wp": "WP-B-02",
+      "session": "claude:1e33db9b-85c2-493e-8e86-9433a6c09366",
+      "state": "started"
+    },
+    {
+      "id": "89130762-d890-487c-97db-13948a37fceb",
+      "wp": "WP-A-03",
+      "session": "claude:c5ae75b2-0ba7-4598-ac6b-de71563bbf69",
+      "state": "started"
+    }
+  ],
+  "verdict": "PASS",
+  "watcher": {
+    "token": "86f03c18-f5f9-4353-863b-9996902bbad8",
+    "process": {
+      "host": "vps-big-for-all",
+      "pid": 17609,
+      "started": "4b06542b-d8f6-45aa-b5b9-d42dbdd011e6:73420756",
+      "pid_namespace": "pid:[4026531836]"
+    },
+    "stopped": true,
+    "coordinator": {
+      "thread": "63c568d2-3a90-436d-9ed2-467ffa6ddeff",
+      "generation": 1
+    },
+    "fingerprint": "951dd843e44d6e77ed9bcde82a259b19f847a70009d4c813c13f7dc5666680cd",
+    "next_due": 1793411353.2506337,
+    "pending": null,
+    "last_consumed": "54931f6c-9b24-47d5-ae94-bd786baece18",
+    "coalesced": "f78fcc7c900ea1f3a9b8d026665d00cdaa0849e0bcfe951b3f2a2c3a8ece8ff2"
+  },
+  "repository_archived": true,
+  "archive_sha256": "57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a",
+  "source_commit": "0d6311a2234dbfccd15eddda7a06a9d28abc3c7d",
+  "driver_sha256": "8747d36d888e4a5111c285a6da4ad428f838a111cb75f3781e346ae77cd10f9d"
+}
