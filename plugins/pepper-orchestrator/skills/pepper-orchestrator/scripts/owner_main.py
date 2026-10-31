@@ -185,7 +185,7 @@ def main():
     directory, native, archive, auth_home = (v.expanduser().resolve() for v in (a.directory, a.native, a.archive, a.auth_home))
     if not native.is_file() or not archive.is_file():
         raise RuntimeError('native executable and candidate archive must exist')
-    validate_paths(manifest, directory, native, archive, auth_home)
+    roots = validate_paths(manifest, directory, native, archive, auth_home)
     skill = Path(__file__).resolve().parent.parent
     outside_repository(skill)
     verify_archive(archive, a.sha256, skill)
@@ -226,7 +226,7 @@ def main():
         try:
             shutil.copyfile(auth_home / 'auth.json', auth); auth.chmod(0o600)
             os.environ.update(CODEX_HOME=str(home), ORCH_RUNTIME_DIR=str(directory / 'runtime'), PYTHONDONTWRITEBYTECODE='1')
-            api = codex_transport.PrivateServer(native, home, directory, directory / ('events-' + uuid.uuid4().hex + '.jsonl'))
+            api = codex_transport.PrivateServer(native, home, directory, directory / ('events-' + uuid.uuid4().hex + '.jsonl'), actor_roots=roots)
             owner = private_owner.PrivateOwner(api, workspace, directory)
             if saved:
                 for tid, row in saved['roles'].items():

@@ -38,6 +38,7 @@ skill="plugins/pepper-ru-web-compliance/skills/pepper-ru-web-compliance"
 "$PYTHON" scripts/test-orchestrator-private-stdio.py
 "$PYTHON" scripts/test-orchestrator-git-grants.py
 "$PYTHON" scripts/test-orchestrator-macos-stdio.py
+"$PYTHON" scripts/test-orchestrator-private-autonomy-probe.py
 "$PYTHON" plugins/pepper-ru-web-compliance/submission/run_tests.py --out "$qa_dir/submission"
 bash scripts/test-install-links.sh
 "$PYTHON" scripts/test-install-docs.py

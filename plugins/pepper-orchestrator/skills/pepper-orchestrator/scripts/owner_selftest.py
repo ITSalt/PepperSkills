@@ -74,7 +74,7 @@ class OwnerArchiveTests(unittest.TestCase):
             try:
                 saved = {'workspace': str(workspace.resolve()), 'process': autonomy.process_identity(child.pid),
                     'native_sha256': codex_transport.file_sha256(native),
-                    'codex_home': str(home), 'isolated_config_sha256': state_io.digest(config),
+                    'codex_home': str(home), 'isolated_config_sha256': state_io.digest(config), 'actor_roots': [], 'roles': {},
                     'code_sha256': {p.name: state_io.digest(p) for p in Path(private_owner.__file__).parent.glob('*.py')},
                     'config_sha256': state_io.digest(workspace / 'orch.yaml'), 'event_log': str(log)}
                 (root / 'roles.json').write_text(json.dumps(saved))
@@ -231,6 +231,42 @@ class OwnerObservationTests(unittest.TestCase):
 
 
 class PrivateTransportTests(unittest.TestCase):
+    def test_effective_config_cannot_hide_an_active_project_layer(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            api = codex_transport.PrivateServer.__new__(codex_transport.PrivateServer)
+            api.actor_roots = {str(root)}
+            cfg = {'approval_policy':'on-request','approvals_reviewer':'user','sandbox_mode':'workspace-write',
+                'sandbox_workspace_write':{'network_access':True}, 'project_root_markers':[],
+                'projects':{str(root):{'trust_level':'untrusted'}},
+                'features':dict.fromkeys(('apps','plugins','remote_plugin','browser_use','computer_use',
+                    'image_generation','multi_agent','hooks','shell_snapshot','daemon_auto_start'),False)
+                    | {'skip_host_skill_discovery':True,'request_permissions_tool':True}}
+            layer = {'name':{'type':'project'}, 'config':{'mcp_servers':{'untrusted':{'command':'never-run'}}},
+                'disabledReason':'explicitly untrusted actor root'}
+            calls=[]
+            def call(method, params):
+                calls.append(method)
+                return {'config':cfg,'layers':[layer]} if method == 'config/read' else {'thread':{'id':'fixture'}}
+            api.call=call
+            api.start_thread(root,'fixture',[], 'fixture')
+            self.assertEqual(calls, ['config/read','thread/start'])
+            calls.clear(); layer['disabledReason']=None
+            with self.assertRaisesRegex(codex_transport.TransportError,'must remain disabled'):
+                api.start_thread(root,'fixture',[], 'fixture')
+            self.assertEqual(calls,['config/read'])
+            layer['disabledReason']='untrusted'; cfg['projects'][str(root)]['trust_level']='trusted'
+            with self.assertRaisesRegex(codex_transport.TransportError,'isolation flags'):
+                api.check_configuration(root)
+
+    def test_undeclared_cwd_is_refused_before_native_loading(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp).resolve(); api=codex_transport.PrivateServer.__new__(codex_transport.PrivateServer)
+            api.actor_roots=set()
+            api.call=lambda *a: self.fail('native loading must not be reached')
+            with self.assertRaisesRegex(codex_transport.TransportError,'declared actor root'):
+                api.start_thread(root,'fixture',[], 'fixture')
+
     def test_unfinished_commands_prevent_idle_observation_and_compaction(self):
         api = codex_transport.PrivateServer.__new__(codex_transport.PrivateServer)
         api.commands = {('thread', 'command'): {'status': 'completed', 'exitCode': None}}
@@ -302,13 +338,13 @@ for line in sys.stdin:
   send({'id':77,'method':'item/tool/call','params':{'threadId':'module','turnId':'turn','callId':'call','tool':'pepper_next','arguments':{}}})
   send({'id':78,'method':'item/commandExecution/requestApproval','params':{'threadId':'module','turnId':'turn'}})
  config={'approval_policy':'on-request','approvals_reviewer':'user','sandbox_mode':'workspace-write',
-  'sandbox_workspace_write':{'network_access':True},'features':dict.fromkeys(['apps','plugins','remote_plugin','browser_use',
+  'sandbox_workspace_write':{'network_access':True},'project_root_markers':[], 'projects':{__import__('os').getcwd():{'trust_level':'untrusted'}},'features':dict.fromkeys(['apps','plugins','remote_plugin','browser_use',
   'computer_use','image_generation','multi_agent','hooks','shell_snapshot','daemon_auto_start'],False)|{'skip_host_skill_discovery':True,'request_permissions_tool':True}}
  result={'status':'disabled'} if method=='remoteControl/status/read' else {'data':[]} if method=='mcpServerStatus/list' else {'config':config} if method=='config/read' else {}
  send({'id':r['id'],'result':result})
 ''')
             native.chmod(0o700)
-            api = codex_transport.PrivateServer(native, root, root, root / 'events.jsonl')
+            api = codex_transport.PrivateServer(native, root, root, root / 'events.jsonl', actor_roots=[root])
             try:
                 with ThreadPoolExecutor(max_workers=8) as pool:
                     results = list(pool.map(lambda n: api.call('echo', {'number': n}, timeout=5), range(8)))

@@ -81,6 +81,8 @@ class PrivateOwner:
             raise OwnerError('program configuration changed during recovery')
         if state_io.digest(Path(saved['codex_home']) / 'config.toml') != saved.get('isolated_config_sha256'):
             raise OwnerError('isolated native configuration changed during recovery')
+        if set(saved.get('actor_roots', [])) != {r['worktree'] for r in saved.get('roles', {}).values()}:
+            raise OwnerError('saved native actor root declarations are incomplete or changed')
         # Native command launch rights can survive a turn. Unknown terminals are
         # never assumed dead just because their parent App Server stopped.
         log = Path(saved['event_log'])
@@ -162,6 +164,8 @@ class PrivateOwner:
         if role not in ('coordinator', 'module') or self.worker:
             raise OwnerError('register fixed roles before starting the owner worker')
         tid = response['thread']['id']; cwd = Path(response['cwd']).resolve(strict=True)
+        if str(cwd) not in self.api.actor_roots:
+            raise OwnerError('native cwd is outside the immutable actor root declarations')
         if tid in self.roles or any(within(cwd, r['worktree']) or within(r['worktree'], cwd) for r in self.roles.values()):
             raise OwnerError('duplicate thread or overlapping actor roots')
         sb = response.get('sandbox', {})
@@ -230,6 +234,7 @@ class PrivateOwner:
             'code_sha256': {Path(p).name: sha for p, sha in self.code_hashes.items()},
             'config_sha256': self.config, 'native': self.api.native,
             'codex_home': str(self.api.home),
+            'actor_roots': sorted(self.api.actor_roots),
             'isolated_config_sha256': self.isolated_config or state_io.digest(self.api.home / 'config.toml'),
             'native_sha256': self.api.native_sha256,
             'event_log': str(Path(self.api.log.name).resolve()),
@@ -273,6 +278,8 @@ class PrivateOwner:
         return result
 
     def bind_generation(self, generation):
+        if {r['worktree'] for r in self.roles.values()} != set(self.api.actor_roots):
+            raise OwnerError('all fixed native actor roots must be registered before enabling work')
         with self.core():
             ws = self.workspace_now(); _, data = autonomy.registry(ws)
             autonomy.owner(data, self.coordinator, generation)

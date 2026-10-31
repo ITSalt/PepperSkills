@@ -4,6 +4,7 @@
 
 - Add explicit Linux/macOS owner launch over private App Server STDIO with fixed native coordinator/module threads, typed role-bound tools and the existing portable scheduler.
 - Keep workspace-write/on-request, human owner permission decisions and module-side finite Git preparation; verify native command provenance before STARTED. No privileged public MCP/RPC bridge or automatic production approvals.
+- Keep actor-owned native config/hooks/rules disabled by fixed session trust/discovery flags before native startup, including previously disabled layers that thread/start would otherwise trust and execute.
 - Pin read-only Git observations, isolate installed code/imports and owner state, retain unknown deliveries, and recover only after positive old-runtime exit with the same persisted threads/tools and unchanged code/config.
 - Add disposable same-archive Linux/macOS acceptance for watcher dispatch, parallel packages, same-thread reuse, pause, restart, grant expiry and native negative probes. Acceptance results are recorded in repository validation; this entry does not assert an unrun gate.
 - Preserve the historical 0.13.0 Linux refusal and the 0.13.1 investigation. No merge, release or Windows live-mode claim.

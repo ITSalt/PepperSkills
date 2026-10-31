@@ -64,7 +64,7 @@ def history(method,label):
  if autonomy.process_observation(current['process'])['state']!='exited':raise RuntimeError('old fixture owner is still live/unobservable')
  try:
   shutil.copyfile(Path.home()/'.codex/auth.json',auth);auth.chmod(0o600)
-  api=codex_transport.PrivateServer(before['native'],home,data,data/(label+'-events.jsonl'),audit=True)
+  api=codex_transport.PrivateServer(before['native'],home,data,data/(label+'-events.jsonl'),actor_roots=[v['worktree'] for v in before['roles'].values()],audit=True)
   for tid in before['roles']:api.call(method,{'threadId':tid})
   assert not any(e.get('method')=='turn/started' for e in api.events)
  finally:

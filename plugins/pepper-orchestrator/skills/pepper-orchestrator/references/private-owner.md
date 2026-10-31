@@ -71,8 +71,14 @@ one actor runtime root, no additional base writable roots, MCP or remote ingress
 Apps, remote plugins, browser/computer use, hooks, automatic daemon and additional
 agents are disabled in this explicit mode. Normal network connectivity remains;
 this is not a promise that arbitrary host UNIX services are unreachable. The
-owner's control channel has no socket to reach. Unsupported capability/config
-changes fail closed before loading a worktree's native thread.
+owner's control channel has no socket to reach. Actor-owned `.codex/config.toml`, hooks and exec-policy rules are disabled by
+immutable native session flags: `project_root_markers=[]` and untrusted trust
+entries for every fixed actor cwd. This outranks thread/start's persisted trust;
+checking only effective config before that call is insufficient. Owner settings
+come from the protected isolated home, not mutable project layers. Configuration
+checks inspect layer metadata before start/resume/compaction and reject an active
+project layer or missing isolation flags. This does not broaden filesystem or
+approval permissions.
 
 The passive watcher calls the existing deterministic scheduler without model
 polling. It queues a signal; the real coordinator invokes `consume`, `dispatch`

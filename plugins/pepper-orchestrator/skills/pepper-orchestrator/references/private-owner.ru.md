@@ -29,7 +29,12 @@ trust-записи проектов внутри изолированного ho
 явном режиме отключены apps, remote plugins, browser/computer use, hooks, daemon и
 дополнительные агенты. Сетевые возможности сохраняются: произвольные UNIX-сервисы
 хоста не объявляются недоступными; у private owner нет доступного им сокета управления.
-Каждый worktree проверяется до загрузки native thread.
+Native config, hooks и exec-policy rules модулей отключены неизменяемыми session
+flags: project_root_markers=[] и untrusted для каждого фиксированного actor cwd.
+Они выше trust-записей, которые thread/start сохраняет сам. Настройки owner берутся
+из защищённого isolated home. Перед start/resume/compaction проверяются метаданные
+слоёв; active project layer или потеря session flags дают отказ. Файловые права и
+approval policy этим не расширяются.
 
 Watcher без модельного polling вызывает общий scheduler и будит координатора сигналом.
 Координатор через `pepper_orchestrator` вызывает consume/dispatch/reconcile, модуль —

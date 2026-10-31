@@ -34,6 +34,18 @@ def run(argv, timeout=90):
     return p.stdout.strip()
 
 
+def exact_command(item, command, cwd):
+    if item.get('cwd') != str(cwd) or item.get('status') != 'completed' or item.get('exitCode') != 0:
+        return False
+    try:
+        words = shlex.split(item['command'])
+        if len(words) == 3 and words[0] in ('/bin/bash','/bin/sh','/bin/zsh') and words[1] in ('-lc','-c'):
+            words = shlex.split(words[2])
+        return words == shlex.split(command)
+    except (KeyError, ValueError):
+        return False
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--run', required=True, action='store_true')
@@ -237,7 +249,7 @@ def main():
         (codexhome / 'config.toml').write_text(owner_main.CONFIG)
         def new_owner(saved=None):
             nonlocal api, owner
-            api = codex_transport.PrivateServer(a.native, codexhome, data, data / ('native-events-' + str(len(apis) + 1) + '.jsonl'), audit=True)
+            api = codex_transport.PrivateServer(a.native, codexhome, data, data / ('native-events-' + str(len(apis) + 1) + '.jsonl'), actor_roots=[*writers.values(), root / 'coordinator'], audit=True)
             apis.append(api); result['epochs'].append(api.epoch)
             owner = private_owner.PrivateOwner(api, program, data)
             if saved:
@@ -247,6 +259,7 @@ def main():
                         raise RuntimeError('recovery replaced a thread/model')
                     owner.register(response, row['role'], row['module'], row.get('branch_prefix'))
             return owner
+        (root / 'coordinator').mkdir()
         new_owner()
         module_ids = {}
         for role, area, cwd in [('module', 'a', writers['a']), ('module', 'b', writers['b']), ('coordinator', None, root / 'coordinator')]:
@@ -350,14 +363,7 @@ def main():
             items = [e['params']['item'] for e in api.events if e.get('method') == 'item/completed'
                 and e.get('params', {}).get('threadId') == row['thread'] and e['params'].get('turnId') == turn
                 and e['params'].get('item', {}).get('type') == 'commandExecution'
-                and command in e['params']['item'].get('command', '').replace("'\"'\"'", "'")]
-            # Native shell quoting can wrap the command. Parse its argv rather than
-            # trusting model text or a mutable result file.
-            if len(items) != 1:
-                items = [e['params']['item'] for e in api.events if e.get('method') == 'item/completed'
-                    and e.get('params', {}).get('threadId') == row['thread'] and e['params'].get('turnId') == turn
-                    and e['params'].get('item', {}).get('type') == 'commandExecution'
-                    and str(path) in e['params']['item'].get('command', '')]
+                and exact_command(e['params']['item'], command, row['worktree'])]
             if len(items) != 1 or items[0].get('exitCode') != 0: raise RuntimeError('missing actual expiry command')
             proof = json.loads(items[0]['aggregatedOutput'])
             if not proof['boundary']['safe'] or proof['caller'] != row['thread']:
@@ -457,8 +463,8 @@ def main():
             and e.get('params', {}).get('threadId') == module_ids['a'] and e['params'].get('turnId') == wd_turn
             and e['params'].get('item', {}).get('type') == 'commandExecution']
         proofs = []
-        for target in targets:
-            matches = [i for i in wd_items if i.get('cwd') == str(target.parent) and str(target) in i.get('command','')]
+        for target, probe in zip(targets, probes):
+            matches = [i for i in wd_items if exact_command(i, probe['cmd'], probe['workdir'])]
             if len(matches) != 1 or matches[0].get('exitCode') != 0: raise RuntimeError('missing actual outside-workdir probe')
             proof = json.loads(matches[0]['aggregatedOutput'])
             if proof.get('cwd') != str(target.parent) or proof.get('path') != str(target) or proof.get('acquired') is not False or proof.get('errno') not in (1,13,30):

@@ -90,8 +90,11 @@ class PrivateServer:
     No handler executes on the reader. Only the owner consumes requests; native
     approvals have a separate explicit response path and never default to accept.
     """
-    def __init__(self, native, home, directory, event_log, audit=False):
+    def __init__(self, native, home, directory, event_log, *, actor_roots, audit=False):
         self.epoch = uuid.uuid4().hex
+        self.actor_roots = frozenset(str(Path(p).resolve(strict=True)) for p in actor_roots)
+        if not self.actor_roots:
+            raise TransportError('private owner requires fixed actor roots before native startup')
         self.native = str(Path(native).resolve())
         version = subprocess.run([self.native, '--version'], capture_output=True, text=True, timeout=15,
             env={**os.environ, 'CODEX_HOME': str(Path(home).resolve())})
@@ -121,7 +124,14 @@ class PrivateServer:
             'HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'NO_PROXY')}
         env.update(CODEX_HOME=str(self.home), PYTHONNOUSERSITE='1',
                    GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
-        self.proc = subprocess.Popen([self.native, 'app-server', '--listen', 'stdio://'],
+        # Native thread/start persists trust before loading project MCP/hooks.
+        # A read of its previously disabled effective config is not preflight.
+        # Session flags outrank that persisted trust. Fix discovery at each actor
+        # cwd and keep every mutable project layer untrusted, including future
+        # config/rules/hooks and a redirected .git. No model-supplied overrides.
+        trust = ', '.join(json.dumps(p) + ' = { trust_level = "untrusted" }' for p in sorted(self.actor_roots))
+        self.proc = subprocess.Popen([self.native, 'app-server', '--listen', 'stdio://',
+            '-c', 'project_root_markers=[]', '-c', 'projects={' + trust + '}'],
             cwd=directory, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, encoding='utf-8', bufsize=1, close_fds=True,
             start_new_session=True)
@@ -142,7 +152,10 @@ class PrivateServer:
             raise
 
     def check_configuration(self, cwd=None):
-        cfg = self.call('config/read', {'includeLayers': False, **({'cwd': str(cwd)} if cwd else {})})['config']
+        if cwd is not None and str(Path(cwd).resolve(strict=True)) not in self.actor_roots:
+            raise TransportError('cwd is not an owner-declared actor root')
+        response = self.call('config/read', {'includeLayers': True, **({'cwd': str(cwd)} if cwd else {})})
+        cfg = response['config']
         features = cfg.get('features') or {}
         disabled = ('apps', 'plugins', 'remote_plugin', 'browser_use', 'computer_use',
             'image_generation', 'multi_agent', 'hooks', 'shell_snapshot', 'daemon_auto_start')
@@ -154,6 +167,12 @@ class PrivateServer:
                 or features.get('skip_host_skill_discovery') is not True
                 or features.get('request_permissions_tool') is not True):
             raise TransportError('private owner requires its measured closed tool/configuration profile')
+        if cfg.get('project_root_markers') != [] or any(
+                (cfg.get('projects') or {}).get(root, {}).get('trust_level') != 'untrusted' for root in self.actor_roots):
+            raise TransportError('native actor project isolation flags are missing or overridden')
+        if any(layer.get('name', {}).get('type') == 'project' and not layer.get('disabledReason')
+               for layer in response.get('layers') or []):
+            raise TransportError('native project configuration/hooks/rules must remain disabled')
         return cfg
 
     def start_thread(self, cwd, model, tools, instructions):
@@ -619,6 +638,8 @@ def compact(thread_id, remote=None, timeout=60):
         thread = api.call('thread/read', {'threadId': thread_id})['thread']
         if thread.get('status', {}).get('type') != 'idle':
             raise TransportError('compaction requires a loaded idle thread')
+        if isinstance(api, PrivateServer):
+            api.check_configuration(thread.get('cwd'))
         # Subscribe to the already-loaded runtime on this exact server. No model,
         # permissions or configuration overrides; never resume a notLoaded thread.
         api.call('thread/resume', {'threadId': thread_id, 'excludeTurns': True})
