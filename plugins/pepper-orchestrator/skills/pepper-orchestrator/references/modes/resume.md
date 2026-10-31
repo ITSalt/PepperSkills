@@ -1,5 +1,9 @@
 # Mode: resume
 
+Codex private-owner mode follows [its dedicated lifecycle](../private-owner.md).
+Use the bound typed tool for coordinator operations and the owner console for
+pause/resume/stop/permissions; never create another App Server to observe it.
+
 Opt-in autonomous continuation (Codex CLI and Claude Code) follows [autonomy](../autonomy.md):
 use `next --json`, current coordinator ownership and stable assignment IDs. Pause/close
 prevents new assignments; a queued signal must recheck current state. With autonomy

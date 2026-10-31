@@ -13,6 +13,64 @@ from types import SimpleNamespace
 import codex_transport
 import owner_observation
 import private_owner
+import owner_main
+import autonomy
+import state_io
+import zipfile
+
+
+class OwnerArchiveTests(unittest.TestCase):
+    def test_archive_hash_installed_bytes_and_no_extra_imports(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); skill = root / 'skill'; skill.mkdir()
+            archive = root / 'candidate.zip'
+            files = {n: b'# verified fixture\n' for n in ('scripts/orch.py', 'scripts/owner_main.py',
+                'scripts/private_owner.py', 'scripts/module_prepare.py', 'scripts/codex_transport.py')}
+            files.update({f'references/{n}.md': b'fixture\n' for n in range(5)})
+            with zipfile.ZipFile(archive, 'w') as z:
+                for name, data in files.items():
+                    z.writestr('pepper-orchestrator/' + name, data)
+                    target = skill / name; target.parent.mkdir(exist_ok=True); target.write_bytes(data)
+            sha = owner_main.file_sha(archive)
+            owner_main.verify_archive(archive, sha, skill)
+            with self.assertRaisesRegex(RuntimeError, 'SHA256'):
+                owner_main.verify_archive(archive, '0' * 64, skill)
+            extra = skill / 'scripts/subprocess.py'; extra.write_text('raise RuntimeError("unverified import")\n')
+            with self.assertRaisesRegex(RuntimeError, 'unverified'):
+                owner_main.verify_archive(archive, sha, skill)
+            extra.unlink(); (skill / 'scripts/orch.py').write_text('# modified\n')
+            with self.assertRaisesRegex(RuntimeError, 'differs'):
+                owner_main.verify_archive(archive, sha, skill)
+
+    @unittest.skipIf(os.name == 'nt', 'private owner live mode is Linux/macOS')
+    def test_recovery_requires_positive_exit_same_code_config_and_known_terminal_lifetime(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); workspace = root / 'workspace'; workspace.mkdir()
+            (workspace / 'orch.yaml').write_text('program: fixture\n')
+            native = root / 'native'; native.write_bytes(b'fixture native')
+            log = root / 'events.jsonl'; log.write_text('')
+            child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+            try:
+                saved = {'workspace': str(workspace.resolve()), 'process': autonomy.process_identity(child.pid),
+                    'native_sha256': codex_transport.file_sha256(native),
+                    'code_sha256': {p.name: state_io.digest(p) for p in Path(private_owner.__file__).parent.glob('*.py')},
+                    'config_sha256': state_io.digest(workspace / 'orch.yaml'), 'event_log': str(log)}
+                (root / 'roles.json').write_text(json.dumps(saved))
+                with self.assertRaisesRegex(private_owner.OwnerError, 'positively stopped'):
+                    private_owner.PrivateOwner.validate_recovery(root, native, workspace)
+            finally:
+                child.terminate(); child.wait(timeout=5)
+            event = {'direction': 'native_to_owner', 'message': {'method': 'item/started', 'params': {
+                'threadId': 'module', 'item': {'type': 'commandExecution', 'id': 'command', 'status': 'inProgress', 'exitCode': None}}}}
+            log.write_text(json.dumps(event) + '\n')
+            with self.assertRaisesRegex(private_owner.OwnerError, 'unknown lifetime'):
+                private_owner.PrivateOwner.validate_recovery(root, native, workspace)
+            event['message']['method'] = 'item/completed'; event['message']['params']['item'].update(status='completed', exitCode=0)
+            log.write_text(json.dumps(event) + '\n')
+            self.assertEqual(private_owner.PrivateOwner.validate_recovery(root, native, workspace)['process'], saved['process'])
+            (workspace / 'orch.yaml').write_text('program: changed\n')
+            with self.assertRaisesRegex(private_owner.OwnerError, 'configuration changed'):
+                private_owner.PrivateOwner.validate_recovery(root, native, workspace)
 
 
 class NativeAuthorizationTests(unittest.TestCase):
@@ -128,6 +186,18 @@ class OwnerObservationTests(unittest.TestCase):
 
 
 class PrivateTransportTests(unittest.TestCase):
+    def test_unfinished_commands_prevent_idle_observation_and_compaction(self):
+        api = codex_transport.PrivateServer.__new__(codex_transport.PrivateServer)
+        api.commands = {('thread', 'command'): {'status': 'completed', 'exitCode': None}}
+        api.active = {}; api.events = []
+        api.call = lambda *a, **k: {'thread': {'status': {'type': 'idle'}}}
+        with codex_transport.owner_transport(api):
+            self.assertEqual(codex_transport.read_thread('thread')['thread']['status']['type'], 'active')
+            with self.assertRaisesRegex(codex_transport.TransportError, 'unresolved'):
+                codex_transport.compact('thread')
+        api.commands[('thread', 'command')]['exitCode'] = 0
+        self.assertEqual(api.running_commands('thread'), [])
+
     def test_queue_add_ack_is_enough_and_unknown_add_is_not_retried(self):
         api = codex_transport.PrivateServer.__new__(codex_transport.PrivateServer)
         api.active = {}; api.registered_threads = {'thread'}

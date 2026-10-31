@@ -1,4 +1,9 @@
-# Opt-in local autonomy: Codex CLI and Claude Code (0.13.1 safety-fix candidate)
+# Opt-in local autonomy: Codex CLI and Claude Code (0.14.0 candidate)
+
+For explicit private-STDIO owner launch on Linux/macOS, follow
+[private owner setup and recovery](private-owner.md) ([Русский](private-owner.ru.md)).
+Use its typed tools rather than detached shell commands for active owner operations.
+This candidate remains unreleased; host acceptance is recorded separately.
 
 One coordinator chooses work; independent module sessions implement it. `next` is
 read-only. A local watcher observes facts and wakes the existing coordinator; it
@@ -202,9 +207,9 @@ Merge/stand/PROD delegation, database restrictions, sandbox and approvals remain
 unchanged. No new product initiatives or automatic terminal creation are allowed.
 
 
-## Linux observation and the MCP gate (0.13.1 candidate)
+## Historical Linux observation and rejected MCP bridge
 
-Linux autonomy remains unavailable in the tested workspace-write/on-request profile.
+Legacy Linux autonomy remains unavailable in the historical workspace-write/on-request observation profile; the explicit private owner is a separate mode.
 A hidden PID namespace can report ENOENT for a live host process; denied access is
 not evidence of exit. Cancellation now distinguishes live, positively proven exited
 and unavailable observation. The last state retains the assignment, outbox, slot and

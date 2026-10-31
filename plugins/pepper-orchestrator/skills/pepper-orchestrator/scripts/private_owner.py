@@ -25,6 +25,7 @@ import owner_observation
 import runtime_commands as runtime
 import state_io
 import streams
+from owner_main import within, outside_repository
 
 
 class OwnerError(RuntimeError):
@@ -60,6 +61,38 @@ TOOL = {'type': 'function', 'name': 'pepper_orchestrator',
 
 
 class PrivateOwner:
+    @staticmethod
+    def validate_recovery(directory, native, workspace):
+        """Must run BEFORE creating a replacement App Server. No implicit takeover."""
+        directory = Path(directory).resolve()
+        saved = json.loads((directory / 'roles.json').read_text(encoding='utf-8'))
+        if saved['workspace'] != str(Path(workspace).resolve()):
+            raise OwnerError('saved owner belongs to another program')
+        observed = autonomy.process_observation(saved.get('process'))
+        if observed.get('state') != 'exited':
+            raise OwnerError('old native runtime is not positively stopped: ' + str(observed))
+        if codex_transport.file_sha256(native) != saved.get('native_sha256'):
+            raise OwnerError('native binary changed; explicit owner migration required')
+        code = Path(__file__).resolve().parent
+        current = {p.name: state_io.digest(p) for p in code.glob('*.py')}
+        if current != saved.get('code_sha256'):
+            raise OwnerError('installed runtime changed; explicit owner migration required')
+        if state_io.digest(Path(workspace) / 'orch.yaml') != saved.get('config_sha256'):
+            raise OwnerError('program configuration changed during recovery')
+        # Native command launch rights can survive a turn. Unknown terminals are
+        # never assumed dead just because their parent App Server stopped.
+        log = Path(saved['event_log'])
+        commands = {}
+        for line in log.read_text(encoding='utf-8').splitlines():
+            e = json.loads(line); m = e['message']; p = m.get('params', {})
+            if e['direction'] == 'native_to_owner' and m.get('method') in ('item/started', 'item/completed') and p.get('item', {}).get('type') == 'commandExecution':
+                commands[(p['threadId'], p['item']['id'])] = p['item']
+        if any(c.get('status') != 'completed' or c.get('exitCode') is None for c in commands.values()):
+            raise OwnerError('old native commands have unknown lifetime; inspect and stop them before recovery')
+        with (directory / 'recovery-history.jsonl').open('a', encoding='utf-8') as history:
+            history.write(json.dumps({'previous': saved, 'observation': observed}) + '\n')
+        return saved
+
     def __init__(self, api, workspace, directory):
         if os.name == 'nt':
             raise OwnerError('private owner live mode requires Linux or macOS')
@@ -68,6 +101,7 @@ class PrivateOwner:
         self.workspace = Path(workspace).resolve(strict=True)
         self.config = state_io.digest(self.workspace / 'orch.yaml')
         self.code = Path(__file__).resolve().parent
+        outside_repository(self.code)
         self.roles = {}
         self.seen = set()
         self.preparations = {}
@@ -108,8 +142,8 @@ class PrivateOwner:
         if any(state_io.digest(p) != sha for p, sha in self.code_hashes.items()):
             raise OwnerError('installed owner code drift; stop and recover explicitly')
         # The protected program tree must never redirect host reads/writes elsewhere.
-        if any(p.is_symlink() for p in self.workspace.rglob('*')):
-            raise OwnerError('symlink in protected program state')
+        if any(p.is_symlink() or p.is_file() and p.stat().st_nlink != 1 for p in self.workspace.rglob('*')):
+            raise OwnerError('symlink or hardlinked file in protected program state')
         ws = runtime.api().Workspace(self.workspace)
         _, data = autonomy.registry(ws)
         for instance in data['instances'].values():
@@ -123,7 +157,7 @@ class PrivateOwner:
         if role not in ('coordinator', 'module') or self.worker:
             raise OwnerError('register fixed roles before starting the owner worker')
         tid = response['thread']['id']; cwd = Path(response['cwd']).resolve(strict=True)
-        if tid in self.roles or any(cwd == Path(r['worktree']) or cwd.is_relative_to(Path(r['worktree'])) or Path(r['worktree']).is_relative_to(cwd) for r in self.roles.values()):
+        if tid in self.roles or any(within(cwd, r['worktree']) or within(r['worktree'], cwd) for r in self.roles.values()):
             raise OwnerError('duplicate thread or overlapping actor roots')
         sb = response.get('sandbox', {})
         if (sb.get('type') != 'workspaceWrite' or sb.get('writableRoots') != []
@@ -131,10 +165,17 @@ class PrivateOwner:
                 or sb.get('excludeTmpdirEnvVar') is not False or sb.get('excludeSlashTmp') is not False
                 or response.get('approvalPolicy') != 'on-request' or response.get('approvalsReviewer') != 'user'):
             raise OwnerError('unsupported native permission profile')
-        for protected in (self.directory, self.workspace, self.code, self.api.home, Path(self.api.native),
-                          Path(self.observer.git_binary), Path(sys.executable).resolve()):
-            if protected == cwd or protected.is_relative_to(cwd):
+        protected_directories = (self.directory, self.workspace, self.code.parent, self.api.home,
+            Path(self.api.native).parent, Path.home() / '.local/share/pepper-orchestrator/owner-locks')
+        for protected in protected_directories:
+            if within(protected, cwd) or protected.exists() and within(cwd, protected):
                 raise OwnerError('model root would expose owner authority to writes')
+        for executable in (Path(self.observer.git_binary), Path(sys.executable).resolve()):
+            if within(executable, cwd):
+                raise OwnerError('model root would expose an owner executable')
+        for other in self.roles.values():
+            if other['role'] == 'module' and (within(cwd, other['git']['common']) or within(other['git']['common'], cwd)):
+                raise OwnerError('actor root overlaps foreign Git metadata')
         row = {'role': role, 'thread': tid, 'worktree': str(cwd), 'module': module,
             'profile': copy.deepcopy({k: response[k] for k in ('sandbox', 'approvalPolicy', 'approvalsReviewer', 'model', 'runtimeWorkspaceRoots')})}
         self.api.check_configuration(cwd)
@@ -145,17 +186,29 @@ class PrivateOwner:
                 raise OwnerError('module requires an owner-registered branch namespace')
             row['branch_prefix'] = branch_prefix.rstrip('/') + '/'
             pin = self.observer.register(cwd)
+            if os.path.samefile(pin['private'], pin['common']):
+                raise OwnerError('private owner modules require separate linked worktrees')
             row['git'] = {k: str(pin[k]) for k in ('private', 'common')}
-            for other in self.roles.values():
-                if other['role'] == 'module' and other['git']['common'] == row['git']['common'] and (
-                        row['branch_prefix'].startswith(other['branch_prefix']) or other['branch_prefix'].startswith(row['branch_prefix'])):
-                    raise OwnerError('module Git branch namespaces must not overlap')
             for relative in ('refs/heads', 'logs/refs/heads'):
                 (pin['common'] / relative / row['branch_prefix']).mkdir(parents=True, exist_ok=True)
-            authority = [self.workspace, self.code, self.api.home, state_io.runtime_dir(),
+            for relative in ('refs/remotes/origin', 'logs/refs/remotes/origin'):
+                (pin['common'] / relative).mkdir(parents=True, exist_ok=True)
+            for actor in [*self.roles.values(), row]:
+                if within(actor['worktree'], pin['common']) or within(pin['common'], actor['worktree']):
+                    raise OwnerError('actor roots and common Git metadata must not overlap')
+                if actor['role'] == 'module':
+                    other_common = Path(actor['git']['common'])
+                    if within(cwd, other_common) or within(other_common, cwd):
+                        raise OwnerError('actor roots and foreign Git metadata must not overlap')
+                    if actor is not row and os.path.samefile(other_common, pin['common']):
+                        a = pin['common'] / 'refs/heads' / row['branch_prefix']
+                        b = other_common / 'refs/heads' / actor['branch_prefix']
+                        if within(a, b) or within(b, a):
+                            raise OwnerError('module Git branch namespaces must not overlap')
+            authority = [self.workspace, self.code.parent, self.api.home, state_io.runtime_dir(),
                 self.directory / 'roles.json', self.directory / 'preparations', self.directory / 'permissions.jsonl',
                 Path(self.api.native), Path(self.observer.git_binary), Path(sys.executable).resolve(), Path(self.api.log.name)]
-            if any(target.is_relative_to(Path(root)) for root in self.grant_roots(row) for target in authority):
+            if any(within(target, root) for root in self.grant_roots(row) for target in authority):
                 raise OwnerError('Git grant would expose owner authority or executable code')
         elif self.coordinator:
             raise OwnerError('only one coordinator per owner')
@@ -172,6 +225,7 @@ class PrivateOwner:
             'code_sha256': {Path(p).name: sha for p, sha in self.code_hashes.items()},
             'config_sha256': self.config, 'native': self.api.native,
             'native_sha256': self.api.native_sha256,
+            'event_log': str(Path(self.api.log.name).resolve()),
             'roles': self.roles, 'generation': self.generation}, indent=2).encode(), 0o600)
 
     @staticmethod
@@ -288,6 +342,8 @@ class PrivateOwner:
             raise OwnerError('preparation already attempted; reconcile its outcome, never retry blindly')
         if a['state'] not in ('sending', 'queued', 'outcome_unknown'):
             raise OwnerError('assignment is not awaiting preparation')
+        if self.api.running_commands(row['thread']):
+            raise OwnerError('module still has unresolved native commands; preparation/reuse blocked')
         live = autonomy.observe_thread(ws, row['thread'])
         errors = autonomy.compatible(ws, instance, {**live, 'status': {'type': 'idle'}}, {})
         facts = autonomy.git_snapshot(Path(row['worktree']))

@@ -60,7 +60,8 @@ def check_native_operation():
     subject, api = _native_operation.get(), _owner.get()
     if subject is not None:
         epoch, tid, turn, call = subject
-        if api is None or api.epoch != epoch or api.active.get(tid) != turn or (tid, turn, call) not in api.items:
+        if (api is None or getattr(api, 'closed', False) or getattr(api, 'failure', None)
+                or api.epoch != epoch or api.active.get(tid) != turn or (tid, turn, call) not in api.items):
             raise TransportError('native operation expired/interrupted; reservation retained')
 
 
@@ -98,6 +99,7 @@ class PrivateServer:
         self.registered_threads = set()
         self.active = {}
         self.items = set()
+        self.commands = {}
         self.guard = threading.Lock()
         self.writer = threading.Lock()
         self.counter = 0
@@ -112,7 +114,8 @@ class PrivateServer:
                    GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
         self.proc = subprocess.Popen([self.native, 'app-server', '--listen', 'stdio://'],
             cwd=directory, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, text=True, encoding='utf-8', bufsize=1, close_fds=True)
+            stderr=subprocess.DEVNULL, text=True, encoding='utf-8', bufsize=1, close_fds=True,
+            start_new_session=True)
         self.reader = threading.Thread(target=self._read, daemon=True)
         self.reader.start()
         try:
@@ -151,6 +154,35 @@ class PrivateServer:
         return self.call('thread/start', {'cwd': cwd, 'model': model, 'sandbox': 'workspace-write',
             'approvalPolicy': 'on-request', 'approvalsReviewer': 'user', 'runtimeWorkspaceRoots': [cwd],
             'dynamicTools': tools, 'experimentalRawEvents': True, 'developerInstructions': instructions})
+
+    def resume_thread(self, thread, cwd):
+        self.check_configuration(cwd)
+        return self.call('thread/resume', {'threadId': thread, 'excludeTurns': True})
+
+    def wait_idle(self, thread, turn=None, timeout=180):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.failure:
+                raise TransportError(self.failure)
+            try:
+                live = self.call('thread/read', {'threadId': thread})['thread']
+            except TransportError as error:
+                if 'rollout' in str(error) and 'is empty' in str(error):
+                    time.sleep(.1); continue
+                raise
+            completed = [e['params']['turn'] for e in self.events if e.get('method') == 'turn/completed'
+                and e.get('params', {}).get('threadId') == thread
+                and (turn is None or e['params']['turn']['id'] == turn)]
+            if completed and completed[-1].get('status') != 'completed':
+                raise TransportError('native model turn did not complete: ' + str(completed[-1].get('status')))
+            if not self.active.get(thread) and live.get('status', {}).get('type') == 'idle' and (turn is None or completed):
+                return live
+            time.sleep(.1)
+        raise TransportError('native idle/completion wait timed out; do not start another executor')
+
+    def running_commands(self, thread):
+        return [v for (tid, _), v in list(self.commands.items()) if tid == thread
+            and (v.get('status') != 'completed' or v.get('exitCode') is None)]
 
     def _record(self, direction, message):
         event = {'epoch': self.epoch, 'direction': direction, 'message': message}
@@ -220,6 +252,8 @@ class PrivateServer:
                     self.items = {key for key in self.items if key[:2] != (p['threadId'], p['turn']['id'])}
                 elif method == 'item/started' and p.get('item', {}).get('type') == 'dynamicToolCall':
                     self.items.add((p['threadId'], p['turnId'], p['item']['id']))
+                if method in ('item/started', 'item/completed') and p.get('item', {}).get('type') == 'commandExecution':
+                    self.commands[(p['threadId'], p['item']['id'])] = p['item']
                 if 'id' in message:
                     if method.endswith('/requestApproval'):
                         self.approvals[message['id']] = message
@@ -232,6 +266,7 @@ class PrivateServer:
             self.failure = type(error).__name__ + ': ' + str(error)
         finally:
             self.failure = self.failure or 'private native channel disconnected'
+            self.active.clear(); self.items.clear()
             with self.guard:
                 for waiter in self.pending.values():
                     try:
@@ -277,7 +312,10 @@ class PrivateServer:
             return
         # Only this native child; no resume is allowed before wait() succeeds.
         self.closed = True
-        self.proc.stdin.close()
+        try:
+            self.proc.stdin.close()
+        except OSError:
+            pass
         try:
             self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -537,8 +575,11 @@ def server(shared=False, remote=None):
 def read_thread(thread_id, include_turns=False, shared=False, remote=None):
     with server(shared=shared, remote=remote) as api:
         result = api.call('thread/read', {'threadId': thread_id})
-        if isinstance(api, PrivateServer) and api.active.get(thread_id) and result['thread'].get('status', {}).get('type') == 'idle':
-            result['thread']['status'] = {'type': 'active', 'activeFlags': []}
+        if isinstance(api, PrivateServer):
+            if api.running_commands(thread_id):
+                result['thread']['status'] = {'type': 'active', 'activeFlags': ['unresolvedCommand']}
+            elif api.active.get(thread_id) and result['thread'].get('status', {}).get('type') == 'idle':
+                result['thread']['status'] = {'type': 'active', 'activeFlags': []}
         if include_turns:
             result['thread']['turns'] = turns(api, thread_id)
         return result
@@ -561,6 +602,8 @@ def compact(thread_id, remote=None, timeout=60):
     must be reconciled, never replaced by sending literal slash-command text.
     """
     with server(shared=True, remote=remote) as api:
+        if isinstance(api, PrivateServer) and api.running_commands(thread_id):
+            raise TransportError('compaction requires no unresolved native commands')
         previous = {e.get('params', {}).get('item', {}).get('id') for e in api.events
                     if e.get('method') == 'item/completed' and e.get('params', {}).get('threadId') == thread_id
                     and e.get('params', {}).get('item', {}).get('type') == 'contextCompaction'}
