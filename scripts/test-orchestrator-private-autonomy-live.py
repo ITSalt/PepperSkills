@@ -129,12 +129,23 @@ def main():
     def descendants():
         rows = run(['ps', '-axo', 'pid=,ppid='])
         parents = {int(p): int(pp) for p,pp in (r.split() for r in rows.splitlines())}
+        if api.proc.poll() is not None: return []
         found = {api.proc.pid}
         while True:
             larger = found | {p for p,pp in parents.items() if pp in found}
             if found == larger: break
             found = larger
-        return [autonomy.process_identity(pid) for pid in sorted(found)]
+        identities = []
+        for pid in sorted(found):
+            try: identities.append(autonomy.process_identity(pid))
+            except autonomy.AutonomyError:
+                # Host-side ps/proc inventory can race a finite child exit. It
+                # cannot skip a still present/inaccessible process.
+                try: os.kill(pid, 0)
+                except ProcessLookupError:
+                    result.setdefault('inventory_exit_races', []).append(pid); continue
+                raise
+        return identities
     def check_stopped(identities):
         proof = [autonomy.process_observation(p) for p in identities]
         if any(p.get('state') != 'exited' for p in proof):
@@ -461,15 +472,19 @@ def main():
             raise RuntimeError('unexpected native tool/import authority: ' + repr(values))
         result['checks']['native_tool_surface'] = {'call': inventories[0], 'tools': tools, 'types': types, 'imports': imports}
         result['checks']['native_role_rejection'] = True
-        result['checks']['assignments_exactly_once'] = len(result['assignments']) == 3
+        rows = list(result['assignments'].values())
+        result['checks']['same_a_thread_reused'] = all(row['session'] == 'codex:' + module_ids['a'] for row in rows if row['wp'].startswith('WP-A-'))
+        result['checks']['assignments_exactly_once'] = len(rows) == 3 and {row['wp'] for row in rows} == set(expected) and result['checks']['same_a_thread_reused']
         if not result['checks']['assignments_exactly_once'] or len(result['grants']) != 3:
             raise RuntimeError('duplicate/missing assignment or grant')
         # Real native module turn intervals for independent packages must overlap.
         spans = {}
         for area in ('a', 'b'):
             tid = module_ids[area]
-            starts = [i for i,e in enumerate(all_events) if e.get('method') == 'turn/started' and e.get('params', {}).get('threadId') == tid]
-            ends = [i for i,e in enumerate(all_events) if e.get('method') == 'turn/completed' and e.get('params', {}).get('threadId') == tid]
+            aid = next(aid for aid,row in result['assignments'].items() if row['wp'] == 'WP-' + area.upper() + '-02')
+            turn = next(g['request']['params']['turnId'] for g in result['grants'] if g['assignment'] == aid)
+            starts = [i for i,e in enumerate(all_events) if e.get('method') == 'turn/started' and e.get('params', {}).get('threadId') == tid and e['params']['turn']['id'] == turn]
+            ends = [i for i,e in enumerate(all_events) if e.get('method') == 'turn/completed' and e.get('params', {}).get('threadId') == tid and e['params']['turn']['id'] == turn]
             spans[area] = (starts[-1], ends[-1])
         result['checks']['parallel_native_turns'] = max(v[0] for v in spans.values()) < min(v[1] for v in spans.values())
         if not result['checks']['parallel_native_turns']: raise RuntimeError('independent module native turns did not overlap')
@@ -489,8 +504,11 @@ def main():
             for tid in result['threads']:
                 try: api.call('thread/archive', {'threadId': tid})
                 except Exception as error: result.setdefault('archive_errors', []).append(str(error))
-            owned = descendants()
-            api.close(); result['runtime_stopped'] = api.proc.returncode is not None
+            owned = []
+            try: owned = descendants()
+            except Exception as error: result['inventory_error'] = str(error); result['verdict'] = 'WAIT'
+            finally:
+                api.close(); result['runtime_stopped'] = api.proc.returncode is not None
             try: result.setdefault('stops', []).append(check_stopped(owned))
             except Exception as error: result['cleanup_error'] = str(error); result['verdict'] = 'WAIT'
         if created:

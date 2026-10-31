@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 
 import codex_transport
@@ -20,6 +21,23 @@ import zipfile
 
 
 class OwnerArchiveTests(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'POSIX owner lock; live Windows mode is unsupported')
+    def test_path_aliases_and_program_identity_prevent_second_owner(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); program = root / 'program'; program.mkdir()
+            alias = root / 'alias'; alias.symlink_to(program, target_is_directory=True)
+            self.assertTrue(owner_main.within(alias / 'future-state', program))
+            with patch.object(owner_main.Path, 'home', return_value=root):
+                with owner_main.program_mutex(program):
+                    with self.assertRaisesRegex(RuntimeError, 'another private owner'):
+                        with owner_main.program_mutex(alias):
+                            self.fail('same program acquired twice through an alias')
+                with owner_main.program_mutex(alias):
+                    pass
+            (program / '.git').mkdir()
+            with self.assertRaisesRegex(RuntimeError, 'outside Git'):
+                owner_main.outside_repository(alias)
+
     def test_archive_hash_installed_bytes_and_no_extra_imports(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); skill = root / 'skill'; skill.mkdir()
@@ -68,6 +86,13 @@ class OwnerArchiveTests(unittest.TestCase):
             event['message']['method'] = 'item/completed'; event['message']['params']['item'].update(status='completed', exitCode=0)
             log.write_text(json.dumps(event) + '\n')
             self.assertEqual(private_owner.PrivateOwner.validate_recovery(root, native, workspace)['process'], saved['process'])
+            event['message']['params']['item'].update(status='failed', exitCode=1)
+            log.write_text(json.dumps(event) + '\n')
+            self.assertEqual(private_owner.PrivateOwner.validate_recovery(root, native, workspace)['process'], saved['process'])
+            event['message']['params']['item']['exitCode'] = None
+            log.write_text(json.dumps(event) + '\n')
+            with self.assertRaisesRegex(private_owner.OwnerError, 'unknown lifetime'):
+                private_owner.PrivateOwner.validate_recovery(root, native, workspace)
             (workspace / 'orch.yaml').write_text('program: changed\n')
             with self.assertRaisesRegex(private_owner.OwnerError, 'configuration changed'):
                 private_owner.PrivateOwner.validate_recovery(root, native, workspace)
@@ -197,6 +222,10 @@ class PrivateTransportTests(unittest.TestCase):
                 codex_transport.compact('thread')
         api.commands[('thread', 'command')]['exitCode'] = 0
         self.assertEqual(api.running_commands('thread'), [])
+        api.commands[('thread', 'command')].update(status='failed', exitCode=1)
+        self.assertEqual(api.running_commands('thread'), [])
+        api.commands[('thread', 'command')]['exitCode'] = None
+        self.assertTrue(api.running_commands('thread'))
 
     def test_queue_add_ack_is_enough_and_unknown_add_is_not_retried(self):
         api = codex_transport.PrivateServer.__new__(codex_transport.PrivateServer)

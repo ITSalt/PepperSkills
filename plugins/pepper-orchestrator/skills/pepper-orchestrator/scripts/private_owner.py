@@ -87,7 +87,7 @@ class PrivateOwner:
             e = json.loads(line); m = e['message']; p = m.get('params', {})
             if e['direction'] == 'native_to_owner' and m.get('method') in ('item/started', 'item/completed') and p.get('item', {}).get('type') == 'commandExecution':
                 commands[(p['threadId'], p['item']['id'])] = p['item']
-        if any(c.get('status') != 'completed' or c.get('exitCode') is None for c in commands.values()):
+        if any(codex_transport.unresolved_command(c) for c in commands.values()):
             raise OwnerError('old native commands have unknown lifetime; inspect and stop them before recovery')
         with (directory / 'recovery-history.jsonl').open('a', encoding='utf-8') as history:
             history.write(json.dumps({'previous': saved, 'observation': observed}) + '\n')

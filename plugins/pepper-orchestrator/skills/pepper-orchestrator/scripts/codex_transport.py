@@ -21,6 +21,15 @@ class TransportError(RuntimeError):
     pass
 
 
+def unresolved_command(item):
+    """A failed command with a native exit code has ended, too.
+
+    Failed/aborted without an exit code may still retain a terminal. Neither a
+    model assertion nor disappearance of the parent proves that lifetime ended.
+    """
+    return item.get('status') not in ('completed', 'failed') or type(item.get('exitCode')) is not int
+
+
 def file_sha256(path):
     value = hashlib.sha256()
     with open(path, 'rb') as source:
@@ -182,7 +191,7 @@ class PrivateServer:
 
     def running_commands(self, thread):
         return [v for (tid, _), v in list(self.commands.items()) if tid == thread
-            and (v.get('status') != 'completed' or v.get('exitCode') is None)]
+            and unresolved_command(v)]
 
     def _record(self, direction, message):
         event = {'epoch': self.epoch, 'direction': direction, 'message': message}
