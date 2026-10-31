@@ -441,6 +441,31 @@ def main():
         result['checks']['apply_patch_denied'] = patch_items
         with owner.core(): result['checks']['compaction'] = codex_transport.compact(module_ids['a'])
         if not result['checks']['compaction'].get('completed'): raise RuntimeError('compaction completion unknown')
+        # Changing exec_command.workdir must never enlarge the thread's roots.
+        targets = [owner.integrity_canary, skill / 'scripts/private_owner.py', codexhome / 'config.toml']
+        hashes = {str(p): state_io.digest(p) for p in targets}
+        code = ('import os,sys,json\nr={"cwd":os.getcwd(),"path":sys.argv[1]}\n'
+            'try:\n fd=os.open(sys.argv[1],os.O_WRONLY|os.O_NONBLOCK);os.close(fd);r["acquired"]=True\n'
+            'except OSError as e:r.update(acquired=False,errno=e.errno)\nprint(json.dumps(r))')
+        probes = [{'cmd': shlex.join([sys.executable, '-I', '-S', '-B', '-c', code, str(p)]), 'workdir': str(p.parent)} for p in targets]
+        wd_turn = api.call('turn/start', {'threadId': module_ids['a'], 'input': [{'type':'text','text':
+            'Owner negative acceptance: invoke exec_command for each exact object below, preserving its cmd AND workdir. '
+            'These finite commands attempt O_WRONLY descriptor acquisition without writing any bytes; expected result is EPERM/EACCES/EROFS. '
+            'Do not request permissions, escalate, retry, edit or run any other command. Print JSON results and finish. Calls: ' + json.dumps(probes)}]})['turn']['id']
+        idle(module_ids['a'], expected_turn=wd_turn)
+        wd_items = [e['params']['item'] for e in api.events if e.get('method') == 'item/completed'
+            and e.get('params', {}).get('threadId') == module_ids['a'] and e['params'].get('turnId') == wd_turn
+            and e['params'].get('item', {}).get('type') == 'commandExecution']
+        proofs = []
+        for target in targets:
+            matches = [i for i in wd_items if i.get('cwd') == str(target.parent) and str(target) in i.get('command','')]
+            if len(matches) != 1 or matches[0].get('exitCode') != 0: raise RuntimeError('missing actual outside-workdir probe')
+            proof = json.loads(matches[0]['aggregatedOutput'])
+            if proof.get('cwd') != str(target.parent) or proof.get('path') != str(target) or proof.get('acquired') is not False or proof.get('errno') not in (1,13,30):
+                raise RuntimeError('exec workdir expanded native write authority: ' + repr(proof))
+            if hashes[str(target)] != state_io.digest(target): raise RuntimeError('outside-workdir target changed')
+            proofs.append({'item':matches[0]['id'],'command':matches[0]['command'],'result':proof})
+        result['checks']['outside_workdir_denied'] = {'thread':module_ids['a'],'turn':wd_turn,'proofs':proofs}
         result['assignments'] = autonomy.registry(orch.Workspace(program))[1]['assignments']
         events = all_events + api.events
         calls = [e['params']['item'] for e in events if e.get('method') == 'item/completed'
