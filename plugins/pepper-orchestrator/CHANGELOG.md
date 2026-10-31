@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.14.0 — 2026-10-31, public preview: private owner on Linux/macOS
+
+- Add explicit Linux/macOS owner launch over private App Server STDIO with fixed native coordinator/module threads, typed role-bound tools and the existing portable scheduler.
+- Keep workspace-write/on-request, human owner permission decisions and module-side finite Git preparation; verify native command provenance before STARTED. No privileged public MCP/RPC bridge or automatic production approvals.
+- Keep actor-owned native config/hooks/rules disabled by fixed session trust/discovery flags before native startup, including previously disabled layers that thread/start would otherwise trust and execute.
+- Pin read-only Git observations, isolate installed code/imports and owner state, retain unknown deliveries, and recover only after positive old-runtime exit with the same persisted threads/tools and unchanged code/config.
+- Add disposable same-archive Linux/macOS acceptance for watcher dispatch, parallel packages, same-thread reuse, pause, restart, grant expiry and native negative probes. Linux/macOS live acceptance and the Claude Code Linux regression passed; release packaging records documentation-only changes from the accepted archive.
+- Preserve the historical 0.13.0 Linux refusal and the 0.13.1 investigation. Windows retains core/native smoke coverage; private-owner Windows live acceptance is not claimed.
+
+## 0.13.1 — unreleased safety-fix candidate; Linux autonomy remains blocked
+
+- Cancellation distinguishes live, proven exited and unavailable process observation. Denied access, hidden/unconfirmed Linux PID namespaces, missing boot identity and timeouts cannot release reservations or unknown outbox entries.
+- Resolve the actual native Codex executable from official npm shims on macOS/Linux, so process lifetime/confirmation belongs to the App Server rather than its Node wrapper.
+- Preserve sanitized Git fetch failure diagnostics; isolate live-test configuration from user MCP servers and record archive/commit/profile provenance.
+- Add an explicit paid, read-only MCP protocol/role-impersonation reproducer. Native thread metadata and the correct parent PID do not authenticate a caller when the model can invoke raw App Server RPC.
+- The proposed privileged host bridge is not shipped. Linux acceptance is blocked; 0.13.0 archives and historical refusal remain unchanged. No public release.
+
 ## 0.13.0 — 2026-10-30, public preview: opt-in autonomy for Codex CLI and Claude Code
 
 - Opt-in local autonomy for Codex CLI and Claude Code: a session registry v2, process/configuration confirmations,

@@ -1,0 +1,275 @@
+{
+  "scope": "read-only shell diagnostics from disposable experimental fixture; not privileged-bridge acceptance",
+  "codex_version": "codex-cli 0.165.0",
+  "sandbox": "workspace-write",
+  "approval_policy": "on-request",
+  "network_access": true,
+  "probes": [
+    {
+      "role": "coordinator",
+      "platform": "linux",
+      "thread": "01a18bf8-cb5c-71c0-be31-95d4bc2e555a",
+      "shell_cwd": "<fixture>/coordinator/features/test",
+      "process_identity": {
+        "available": false,
+        "layers": [
+          {
+            "type": "AutonomyError",
+            "errno": null,
+            "message": "process 2550135 is not observable; reconfirm after recovery"
+          },
+          {
+            "type": "FileNotFoundError",
+            "errno": 2,
+            "message": "[Errno 2] No such file or directory: '/proc/2550135/stat'"
+          }
+        ]
+      },
+      "proc_stat": {
+        "available": false,
+        "layers": [
+          {
+            "type": "FileNotFoundError",
+            "errno": 2,
+            "message": "[Errno 2] No such file or directory: '/proc/2550135/stat'"
+          }
+        ]
+      },
+      "boot_id": {
+        "available": true,
+        "value": "dacafcdb243de37e0edc13a18017c2f71142d4e09ff6fda9bbe913f621fddf6f"
+      },
+      "pid_namespace": {
+        "available": true,
+        "value": "pid:[4026534990]"
+      },
+      "app_server_socket": {
+        "available": false,
+        "layers": [
+          {
+            "type": "PermissionError",
+            "errno": 13,
+            "message": "[Errno 13] Permission denied"
+          }
+        ]
+      },
+      "host_code_writable": {
+        "available": false,
+        "layers": [
+          {
+            "type": "OSError",
+            "errno": 30,
+            "message": "[Errno 30] Read-only file system: '$HOME/.local/share/pepper-orchestrator/acceptance/0b65286183c144ab8d47bf4cbbf21992/sandbox-canary'"
+          }
+        ]
+      },
+      "native_cli": {
+        "available": true,
+        "value": [
+          "$HOME/.nvm/versions/node/v24.21.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        ]
+      },
+      "capabilities": {
+        "available": true,
+        "value": {
+          "available": true,
+          "queue": true,
+          "app_server": true,
+          "version": "codex-cli 0.165.0"
+        }
+      },
+      "queue": {
+        "available": true,
+        "value": {
+          "delivered": false,
+          "queued": false,
+          "outcome_unknown": true,
+          "fallback": null,
+          "reason": "codex queue failed; inspect the destination session"
+        }
+      },
+      "pid_namespace_differs_from_host": true
+    },
+    {
+      "role": "a",
+      "platform": "linux",
+      "thread": "01a18bf8-9fd6-7ae0-90ba-7f28d5d33dfa",
+      "shell_cwd": "<fixture>/app/.pepper-worktrees/wp-a-01-seed",
+      "process_identity": {
+        "available": false,
+        "layers": [
+          {
+            "type": "AutonomyError",
+            "errno": null,
+            "message": "process 2550135 is not observable; reconfirm after recovery"
+          },
+          {
+            "type": "FileNotFoundError",
+            "errno": 2,
+            "message": "[Errno 2] No such file or directory: '/proc/2550135/stat'"
+          }
+        ]
+      },
+      "proc_stat": {
+        "available": false,
+        "layers": [
+          {
+            "type": "FileNotFoundError",
+            "errno": 2,
+            "message": "[Errno 2] No such file or directory: '/proc/2550135/stat'"
+          }
+        ]
+      },
+      "boot_id": {
+        "available": true,
+        "value": "dacafcdb243de37e0edc13a18017c2f71142d4e09ff6fda9bbe913f621fddf6f"
+      },
+      "pid_namespace": {
+        "available": true,
+        "value": "pid:[4026534992]"
+      },
+      "app_server_socket": {
+        "available": false,
+        "layers": [
+          {
+            "type": "PermissionError",
+            "errno": 13,
+            "message": "[Errno 13] Permission denied"
+          }
+        ]
+      },
+      "host_code_writable": {
+        "available": false,
+        "layers": [
+          {
+            "type": "OSError",
+            "errno": 30,
+            "message": "[Errno 30] Read-only file system: '$HOME/.local/share/pepper-orchestrator/acceptance/0b65286183c144ab8d47bf4cbbf21992/sandbox-canary'"
+          }
+        ]
+      },
+      "native_cli": {
+        "available": true,
+        "value": [
+          "$HOME/.nvm/versions/node/v24.21.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        ]
+      },
+      "capabilities": {
+        "available": true,
+        "value": {
+          "available": true,
+          "queue": true,
+          "app_server": true,
+          "version": "codex-cli 0.165.0"
+        }
+      },
+      "queue": {
+        "available": true,
+        "value": {
+          "delivered": false,
+          "queued": false,
+          "outcome_unknown": true,
+          "fallback": null,
+          "reason": "codex queue failed; inspect the destination session"
+        }
+      },
+      "configuration": {
+        "available": true,
+        "value": "00f772b9139387b29c20f672fc42deb8625c54ea7a42dfe842f343a17fd09b46"
+      },
+      "owner_configuration": "00f772b9139387b29c20f672fc42deb8625c54ea7a42dfe842f343a17fd09b46",
+      "pid_namespace_differs_from_host": true
+    },
+    {
+      "role": "b",
+      "platform": "linux",
+      "thread": "01a18bf8-b706-7f41-ab49-213a2426bbe5",
+      "shell_cwd": "<fixture>/app/.pepper-worktrees/wp-b-01-seed",
+      "process_identity": {
+        "available": false,
+        "layers": [
+          {
+            "type": "AutonomyError",
+            "errno": null,
+            "message": "process 2550135 is not observable; reconfirm after recovery"
+          },
+          {
+            "type": "FileNotFoundError",
+            "errno": 2,
+            "message": "[Errno 2] No such file or directory: '/proc/2550135/stat'"
+          }
+        ]
+      },
+      "proc_stat": {
+        "available": false,
+        "layers": [
+          {
+            "type": "FileNotFoundError",
+            "errno": 2,
+            "message": "[Errno 2] No such file or directory: '/proc/2550135/stat'"
+          }
+        ]
+      },
+      "boot_id": {
+        "available": true,
+        "value": "dacafcdb243de37e0edc13a18017c2f71142d4e09ff6fda9bbe913f621fddf6f"
+      },
+      "pid_namespace": {
+        "available": true,
+        "value": "pid:[4026534992]"
+      },
+      "app_server_socket": {
+        "available": false,
+        "layers": [
+          {
+            "type": "PermissionError",
+            "errno": 13,
+            "message": "[Errno 13] Permission denied"
+          }
+        ]
+      },
+      "host_code_writable": {
+        "available": false,
+        "layers": [
+          {
+            "type": "OSError",
+            "errno": 30,
+            "message": "[Errno 30] Read-only file system: '$HOME/.local/share/pepper-orchestrator/acceptance/0b65286183c144ab8d47bf4cbbf21992/sandbox-canary'"
+          }
+        ]
+      },
+      "native_cli": {
+        "available": true,
+        "value": [
+          "$HOME/.nvm/versions/node/v24.21.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+        ]
+      },
+      "capabilities": {
+        "available": true,
+        "value": {
+          "available": true,
+          "queue": true,
+          "app_server": true,
+          "version": "codex-cli 0.165.0"
+        }
+      },
+      "queue": {
+        "available": true,
+        "value": {
+          "delivered": false,
+          "queued": false,
+          "outcome_unknown": true,
+          "fallback": null,
+          "reason": "codex queue failed; inspect the destination session"
+        }
+      },
+      "configuration": {
+        "available": true,
+        "value": "2b10ccdb574a893e4a3572fd1949c57b0a48ba3930d062d747eb3050b653d5df"
+      },
+      "owner_configuration": "2b10ccdb574a893e4a3572fd1949c57b0a48ba3930d062d747eb3050b653d5df",
+      "pid_namespace_differs_from_host": true
+    }
+  ],
+  "host_pid_namespace": "pid:[4026531836]"
+}

@@ -1,0 +1,96 @@
+{
+  "os": "Linux",
+  "kernel": "6.8.0-147-generic",
+  "python": "3.12.3",
+  "cli": "codex-cli 0.165.0",
+  "native_binary": "$HOME/.nvm/versions/node/v24.21.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+  "threads": [
+    "01a18c19-01a7-7823-b800-e73ff3aeb8ac",
+    "01a18c19-337a-7223-88ab-35ab4f892782"
+  ],
+  "owner_calls": [
+    {
+      "pid": 2759155,
+      "parent": 2758973,
+      "meta": {
+        "threadId": "01a18c19-01a7-7823-b800-e73ff3aeb8ac"
+      },
+      "turn": {}
+    },
+    {
+      "pid": 2760622,
+      "parent": 2758973,
+      "meta": {
+        "threadId": "01a18c19-337a-7223-88ab-35ab4f892782"
+      },
+      "turn": {}
+    }
+  ],
+  "turns": [
+    "01a18c19-061c-7110-850b-ea8b162c3ce2",
+    "01a18c19-3608-7243-910c-179939463772"
+  ],
+  "native_model_calls": [
+    {
+      "pid": 2759155,
+      "parent": 2758973,
+      "meta": {
+        "threadId": "01a18c19-01a7-7823-b800-e73ff3aeb8ac",
+        "itemId": "ctc_002091627a07a94e016ae4608927d48197998078209ce69a24",
+        "callId": "exec-b8d8f9eb-73ce-469d-b121-e4e4a458d994",
+        "sessionId": "01a18c19-01a7-7823-b800-e73ff3aeb8ac",
+        "windowId": "01a18c19-01a7-7823-b800-e73ff3aeb8ac:0"
+      },
+      "turn": {
+        "session_id": "01a18c19-01a7-7823-b800-e73ff3aeb8ac",
+        "thread_id": "01a18c19-01a7-7823-b800-e73ff3aeb8ac",
+        "turn_id": "01a18c19-061c-7110-850b-ea8b162c3ce2",
+        "sandbox": "seccomp",
+        "sandbox_mode": "workspace-write",
+        "codex_version": "0.165.0",
+        "auto_review_enabled": false,
+        "model": "gpt-6-astra",
+        "reasoning_effort": "high"
+      }
+    },
+    {
+      "pid": 2760622,
+      "parent": 2758973,
+      "meta": {
+        "threadId": "01a18c19-337a-7223-88ab-35ab4f892782",
+        "itemId": "ctc_048e6184931a247f016ae460964e308194b324d54aebf45b4d",
+        "callId": "exec-23cfd84f-01aa-40d9-823f-9e1401ff4161",
+        "sessionId": "01a18c19-337a-7223-88ab-35ab4f892782",
+        "windowId": "01a18c19-337a-7223-88ab-35ab4f892782:0"
+      },
+      "turn": {
+        "session_id": "01a18c19-337a-7223-88ab-35ab4f892782",
+        "thread_id": "01a18c19-337a-7223-88ab-35ab4f892782",
+        "turn_id": "01a18c19-3608-7243-910c-179939463772",
+        "sandbox": "seccomp",
+        "sandbox_mode": "workspace-write",
+        "codex_version": "0.165.0",
+        "auto_review_enabled": false,
+        "model": "gpt-6-astra",
+        "reasoning_effort": "high"
+      }
+    }
+  ],
+  "checks": {
+    "both_roles": true,
+    "same_native_parent": true,
+    "thread_turn_binding": true,
+    "workspace_write": true,
+    "owner_rpc_is_not_model_identity": true,
+    "native_report_matches_file": true,
+    "shell_cannot_impersonate_coordinator": true
+  },
+  "shell_impersonation_probe": {
+    "caller": "01a18c19-337a-7223-88ab-35ab4f892782",
+    "reachable": false,
+    "denied": true,
+    "error": "PermissionError: [Errno 13] Permission denied"
+  },
+  "verdict": "PASS",
+  "scope": "read-only authentication prototype; no privileged bridge supplied"
+}

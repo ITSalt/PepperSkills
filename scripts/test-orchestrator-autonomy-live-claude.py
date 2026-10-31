@@ -42,7 +42,9 @@ def main():
     import autonomy
     import claude_adapter
     import orch
-    root = Path(tempfile.mkdtemp(prefix='pepper-live-claude-', dir='/tmp')).resolve()
+    parent = Path.home() / '.local/share/pepper-orchestrator/claude-autonomy-trials'
+    parent.mkdir(parents=True, exist_ok=True)
+    root = Path(tempfile.mkdtemp(prefix='trial-', dir=parent)).resolve()
     runtime = root / 'runtime'
     result = {'root': str(root), 'platform': sys.platform, 'checks': {}, 'sessions': {}, 'model': args.model,
               'claude_version': '.'.join(map(str, claude_adapter.version()))}

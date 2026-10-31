@@ -37,6 +37,26 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: '1'
         run: python plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/autonomy_selftest.py
+      - name: Private owner routing, sandbox approvals and safe Git observations
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python plugins/pepper-orchestrator/skills/pepper-orchestrator/scripts/owner_selftest.py
+      - name: Read-only MCP reproducer and inconclusive-probe regression
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python scripts/test-orchestrator-mcp-probe.py
+      - name: Bounded Git grants and native evidence (offline; no model)
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python scripts/test-orchestrator-git-grants.py
+      - name: macOS STDIO provenance and listener controls (offline; no model)
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python scripts/test-orchestrator-macos-stdio.py
+      - name: Exact native shell provenance in paid acceptance (offline; no model)
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python scripts/test-orchestrator-private-autonomy-probe.py
       - name: Install native Windows Codex CLI for transport acceptance
         if: runner.os == 'Windows'
         run: npm install --global @openai/codex@0.154.0

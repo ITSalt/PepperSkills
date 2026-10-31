@@ -1,0 +1,6 @@
+{
+  "verdict": "PASS",
+  "known_session_pids_absent": true,
+  "present_pids": [],
+  "driver_sha256": "8747d36d888e4a5111c285a6da4ad428f838a111cb75f3781e346ae77cd10f9d"
+}

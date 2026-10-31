@@ -1,0 +1,883 @@
+{
+  "fixture": "/FIXTURE",
+  "model": "gpt-6.1-sol",
+  "native": "/NATIVE/codex",
+  "native_sha256": "c06a67fd8ac76508dc78bd99ce20c9f317b8d568beda59485f3f4134df9962d5",
+  "checks": {
+    "idle": {
+      "unchanged": true,
+      "new_model_turns": 0
+    },
+    "pause_after_signal": true,
+    "new_turn_grant_expiry": {
+      "thread": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+      "turn": "01a18f95-b007-7f53-a06d-8de65ca36b69",
+      "item": "exec-e6882a9e-019e-4403-b549-f378393abc89",
+      "result": {
+        "boundary": {
+          "writes": {
+            "/FIXTURE/install/pepper-orchestrator/scripts/private_owner.py": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/install/pepper-orchestrator/scripts/module_prepare.py": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/owner-data/codex-home/config.toml": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/owner-data/roles.json": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/program-home/features/test/orch.yaml": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/program-home/features/test/status.md": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/owner-data/runtime/transitions/84c77149183fe98a439cc49020b502589a6c2b0af9f362417e282c015ee01d12/6735411e-3125-42f6-925b-c85860b0b3ad.json": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/config": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/owner-data/integrity-canary": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/worktrees/wp-b-01-seed/HEAD": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/refs/heads/gate/b/seed": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/worktrees/wp-a-01-seed/HEAD": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/objects/permission-expiry-canary": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/refs/heads/gate/a/wp-a-02": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/logs/refs/heads/gate/a/wp-a-02": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/refs/remotes/origin/main": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/logs/refs/remotes/origin/main": {
+              "acquired": false,
+              "errno": 30
+            }
+          },
+          "control_access": {
+            "4162176": {
+              "5": {
+                "acquired": false,
+                "errno": 2
+              },
+              "6": {
+                "acquired": false,
+                "errno": 2
+              }
+            },
+            "4166911": {
+              "0": {
+                "acquired": false,
+                "errno": 2
+              },
+              "1": {
+                "acquired": false,
+                "errno": 2
+              }
+            }
+          },
+          "descriptors": {
+            "0": {
+              "type": 8192,
+              "inode": 5,
+              "device": 5
+            },
+            "1": {
+              "type": 4096,
+              "inode": 200319341,
+              "device": 14
+            },
+            "2": {
+              "type": 4096,
+              "inode": 200319342,
+              "device": 14
+            }
+          },
+          "aliases": {
+            "hardlink": {
+              "acquired": false,
+              "errno": 18,
+              "creation_denied": true
+            },
+            "symlink": {
+              "acquired": false,
+              "errno": 30
+            }
+          },
+          "queue": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)\nError: failed to start embedded app server: Read-only file system (os error 30)\n"
+          },
+          "safe": true
+        },
+        "caller": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+        "cwd": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed"
+      }
+    },
+    "lost_notification": "No notification/hint was sent for owner merges; watcher was paused and its process then stopped. Recovery uses a fresh state scan.",
+    "restart_grant_expiry": {
+      "thread": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+      "turn": "01a18f96-b625-7c20-aa10-b402038b12bb",
+      "item": "exec-ff05e9b5-08ed-4836-a31f-7f81733c145d",
+      "result": {
+        "boundary": {
+          "writes": {
+            "/FIXTURE/install/pepper-orchestrator/scripts/private_owner.py": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/install/pepper-orchestrator/scripts/module_prepare.py": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/owner-data/codex-home/config.toml": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/owner-data/roles.json": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/program-home/features/test/orch.yaml": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/program-home/features/test/status.md": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/owner-data/runtime/transitions/84c77149183fe98a439cc49020b502589a6c2b0af9f362417e282c015ee01d12/6735411e-3125-42f6-925b-c85860b0b3ad.json": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/config": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/owner-data/integrity-canary": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/worktrees/wp-b-01-seed/HEAD": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/refs/heads/gate/b/seed": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/worktrees/wp-a-01-seed/HEAD": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/objects/permission-expiry-canary": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/refs/heads/gate/a/wp-a-02": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/logs/refs/heads/gate/a/wp-a-02": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/refs/remotes/origin/main": {
+              "acquired": false,
+              "errno": 30
+            },
+            "/FIXTURE/app/.git/logs/refs/remotes/origin/main": {
+              "acquired": false,
+              "errno": 30
+            }
+          },
+          "control_access": {
+            "4162176": {
+              "5": {
+                "acquired": false,
+                "errno": 2
+              },
+              "6": {
+                "acquired": false,
+                "errno": 2
+              }
+            },
+            "4182621": {
+              "0": {
+                "acquired": false,
+                "errno": 2
+              },
+              "1": {
+                "acquired": false,
+                "errno": 2
+              }
+            }
+          },
+          "descriptors": {
+            "0": {
+              "type": 8192,
+              "inode": 5,
+              "device": 5
+            },
+            "1": {
+              "type": 4096,
+              "inode": 200340700,
+              "device": 14
+            },
+            "2": {
+              "type": 4096,
+              "inode": 200340701,
+              "device": 14
+            }
+          },
+          "aliases": {
+            "hardlink": {
+              "acquired": false,
+              "errno": 18,
+              "creation_denied": true
+            },
+            "symlink": {
+              "acquired": false,
+              "errno": 30
+            }
+          },
+          "queue": {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": "WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)\nError: failed to start embedded app server: Read-only file system (os error 30)\n"
+          },
+          "safe": true
+        },
+        "caller": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+        "cwd": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed"
+      }
+    },
+    "pending_signal_recovery": {
+      "pending_before": {
+        "id": "c4b29b77-db23-42e3-b485-1af9729224e8",
+        "state": "queued",
+        "generation": 1,
+        "thread": "01a18f94-9710-7720-a7a3-3c8d920d450d"
+      },
+      "retired": {
+        "pending": {
+          "id": "c4b29b77-db23-42e3-b485-1af9729224e8",
+          "state": "queued",
+          "generation": 1,
+          "thread": "01a18f94-9710-7720-a7a3-3c8d920d450d"
+        },
+        "previous_process": {
+          "host": "fixture-host-linux",
+          "pid": 4166911,
+          "started": "FIXTURE_BOOT:73383152",
+          "pid_namespace": "pid:[4026531836]"
+        },
+        "observation": {
+          "state": "exited"
+        },
+        "generation": 2
+      },
+      "assignment_ids_unchanged": true,
+      "fresh_scan_required": true
+    },
+    "recovery": {
+      "same_threads": true,
+      "previous_exited": true,
+      "generation": 2,
+      "lost_notification": true
+    },
+    "completed_packages": [
+      "WP-A-02",
+      "WP-A-03",
+      "WP-B-02"
+    ],
+    "apply_patch_denied": [
+      {
+        "type": "fileChange",
+        "id": "exec-3d396477-c3a5-4df6-b4ff-3f50724b98cf",
+        "changes": [
+          {
+            "path": "/FIXTURE/owner-data/integrity-canary",
+            "kind": {
+              "type": "update",
+              "move_path": null
+            },
+            "diff": "@@ -1 +1 @@\n-owner integrity canary\n+DENIED_NEGATIVE_TEST\n"
+          }
+        ],
+        "status": "declined"
+      }
+    ],
+    "compaction": {
+      "completed": true
+    },
+    "outside_workdir_denied": {
+      "thread": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+      "turn": "01a18f98-49fe-7223-868c-a32ab065fbe9",
+      "proofs": [
+        {
+          "item": "exec-f5163654-fc17-47b1-89b2-d95d20940473",
+          "command": "/bin/bash -lc \"/usr/bin/python3 -I -S -B -c 'import os,sys,json\nr={\\\"cwd\\\":os.getcwd(),\\\"path\\\":sys.argv[1]}\ntry:\n fd=os.open(sys.argv[1],os.O_WRONLY|os.O_NONBLOCK);os.close(fd);r[\\\"acquired\\\"]=True\nexcept OSError as e:r.update(acquired=False,errno=e.errno)\nprint(json.dumps(r))' /FIXTURE/owner-data/integrity-canary\"",
+          "result": {
+            "cwd": "/FIXTURE/owner-data",
+            "path": "/FIXTURE/owner-data/integrity-canary",
+            "acquired": false,
+            "errno": 30
+          }
+        },
+        {
+          "item": "exec-fe1fbf35-aada-491e-8e6f-ab63e55000a4",
+          "command": "/bin/bash -lc \"/usr/bin/python3 -I -S -B -c 'import os,sys,json\nr={\\\"cwd\\\":os.getcwd(),\\\"path\\\":sys.argv[1]}\ntry:\n fd=os.open(sys.argv[1],os.O_WRONLY|os.O_NONBLOCK);os.close(fd);r[\\\"acquired\\\"]=True\nexcept OSError as e:r.update(acquired=False,errno=e.errno)\nprint(json.dumps(r))' /FIXTURE/install/pepper-orchestrator/scripts/private_owner.py\"",
+          "result": {
+            "cwd": "/FIXTURE/install/pepper-orchestrator/scripts",
+            "path": "/FIXTURE/install/pepper-orchestrator/scripts/private_owner.py",
+            "acquired": false,
+            "errno": 30
+          }
+        },
+        {
+          "item": "exec-69815678-fa11-4232-955c-06c8753c787d",
+          "command": "/bin/bash -lc \"/usr/bin/python3 -I -S -B -c 'import os,sys,json\nr={\\\"cwd\\\":os.getcwd(),\\\"path\\\":sys.argv[1]}\ntry:\n fd=os.open(sys.argv[1],os.O_WRONLY|os.O_NONBLOCK);os.close(fd);r[\\\"acquired\\\"]=True\nexcept OSError as e:r.update(acquired=False,errno=e.errno)\nprint(json.dumps(r))' /FIXTURE/owner-data/codex-home/config.toml\"",
+          "result": {
+            "cwd": "/FIXTURE/owner-data/codex-home",
+            "path": "/FIXTURE/owner-data/codex-home/config.toml",
+            "acquired": false,
+            "errno": 30
+          }
+        }
+      ]
+    },
+    "native_tool_surface": {
+      "call": {
+        "type": "custom_tool_call",
+        "id": "ctc_055068a48c0e3356016ae544c993dc81939fa02ceb29bd6a98",
+        "status": "completed",
+        "call_id": "call_13cd1305e3a04ba19e18532ccdc3cf6c",
+        "name": "exec",
+        "input": "text(Object.getOwnPropertyNames(globalThis)); text(ALL_TOOLS.map(x=>x.name)); text({process:typeof process,require:typeof require,fetch:typeof fetch,Deno:typeof Deno,Bun:typeof Bun}); for(const specifier of [\"node:fs\",\"node:net\"]){try{await import(specifier);text({specifier,result:\"import succeeded\"});}catch(error){text({specifier,error:String(error)});}}\n",
+        "internal_chat_message_metadata_passthrough": {
+          "turn_id": "01a18f94-9770-7c82-b3c6-3c2109f69f7c",
+          "create_time": 1793410249.5813923
+        }
+      },
+      "tools": [
+        "apply_patch",
+        "clock__curr_time",
+        "create_goal",
+        "exec_command",
+        "get_goal",
+        "list_mcp_resource_templates",
+        "list_mcp_resources",
+        "pepper_orchestrator",
+        "read_mcp_resource",
+        "request_permissions",
+        "update_goal",
+        "view_image",
+        "write_stdin"
+      ],
+      "types": {
+        "process": "undefined",
+        "require": "undefined",
+        "fetch": "undefined",
+        "Deno": "undefined",
+        "Bun": "undefined"
+      },
+      "imports": [
+        {
+          "specifier": "node:fs",
+          "error": "unsupported import in exec"
+        },
+        {
+          "specifier": "node:net",
+          "error": "unsupported import in exec"
+        }
+      ]
+    },
+    "native_role_rejection": true,
+    "same_a_thread_reused": true,
+    "assignments_exactly_once": true,
+    "parallel_native_turns": true
+  },
+  "archive_sha256": "57722062c318161abc7e477b9ae06e584289849743e83bd618b76ac8d4a4253a",
+  "source_commit": "0d6311a",
+  "platform": "Linux-6.8.0-147-generic-x86_64-with-glibc2.39",
+  "python": "3.12.3",
+  "driver_sha256": "75fcacca795f9449fa7f786c97e16698799e75e21d9f15cbd4657ed5c6cc74eb",
+  "grants": [
+    {
+      "request": {
+        "method": "item/permissions/requestApproval",
+        "id": 12,
+        "params": {
+          "threadId": "01a18f94-95fb-7e62-84ab-510f812bef1e",
+          "turnId": "01a18f95-1a36-7df0-a6d4-d3a051843a12",
+          "itemId": "exec-68f4b829-995a-464e-922a-1d2fa24ef523",
+          "environmentId": "local",
+          "startedAtMs": 1793410282885,
+          "cwd": "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed",
+          "reason": "Prepare only this registered module Git worktree for assignment 662b7a84-32c3-4982-b1a4-1372914cf121",
+          "permissions": {
+            "network": null,
+            "fileSystem": {
+              "read": null,
+              "write": [
+                "/FIXTURE/app/.git/worktrees/wp-b-01-seed",
+                "/FIXTURE/app/.git/objects",
+                "/FIXTURE/app/.git/refs/heads/gate/b",
+                "/FIXTURE/app/.git/logs/refs/heads/gate/b",
+                "/FIXTURE/app/.git/refs/remotes/origin",
+                "/FIXTURE/app/.git/logs/refs/remotes/origin"
+              ],
+              "entries": [
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/worktrees/wp-b-01-seed"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/objects"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/refs/heads/gate/b"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/logs/refs/heads/gate/b"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/refs/remotes/origin"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/logs/refs/remotes/origin"
+                  },
+                  "access": "write"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "decision": {
+        "permissions": {
+          "fileSystem": {
+            "write": [
+              "/FIXTURE/app/.git/logs/refs/heads/gate/b",
+              "/FIXTURE/app/.git/logs/refs/remotes/origin",
+              "/FIXTURE/app/.git/objects",
+              "/FIXTURE/app/.git/refs/heads/gate/b",
+              "/FIXTURE/app/.git/refs/remotes/origin",
+              "/FIXTURE/app/.git/worktrees/wp-b-01-seed"
+            ]
+          }
+        },
+        "scope": "turn"
+      },
+      "assignment": "662b7a84-32c3-4982-b1a4-1372914cf121",
+      "observed_wait_status": {
+        "type": "active",
+        "activeFlags": [
+          "waitingOnApproval"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "item/permissions/requestApproval",
+        "id": 14,
+        "params": {
+          "threadId": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+          "turnId": "01a18f95-13c8-7bc3-ac1c-d5b33f0f42df",
+          "itemId": "exec-0bdebaaf-4d6b-4c29-8cad-7054f02cbdf5",
+          "environmentId": "local",
+          "startedAtMs": 1793410285236,
+          "cwd": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+          "reason": "Prepare only this registered module Git worktree for assignment 6735411e-3125-42f6-925b-c85860b0b3ad",
+          "permissions": {
+            "network": null,
+            "fileSystem": {
+              "read": null,
+              "write": [
+                "/FIXTURE/app/.git/worktrees/wp-a-01-seed",
+                "/FIXTURE/app/.git/objects",
+                "/FIXTURE/app/.git/refs/heads/gate/a",
+                "/FIXTURE/app/.git/logs/refs/heads/gate/a",
+                "/FIXTURE/app/.git/refs/remotes/origin",
+                "/FIXTURE/app/.git/logs/refs/remotes/origin"
+              ],
+              "entries": [
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/worktrees/wp-a-01-seed"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/objects"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/refs/heads/gate/a"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/logs/refs/heads/gate/a"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/refs/remotes/origin"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/logs/refs/remotes/origin"
+                  },
+                  "access": "write"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "decision": {
+        "permissions": {
+          "fileSystem": {
+            "write": [
+              "/FIXTURE/app/.git/logs/refs/heads/gate/a",
+              "/FIXTURE/app/.git/logs/refs/remotes/origin",
+              "/FIXTURE/app/.git/objects",
+              "/FIXTURE/app/.git/refs/heads/gate/a",
+              "/FIXTURE/app/.git/refs/remotes/origin",
+              "/FIXTURE/app/.git/worktrees/wp-a-01-seed"
+            ]
+          }
+        },
+        "scope": "turn"
+      },
+      "assignment": "6735411e-3125-42f6-925b-c85860b0b3ad",
+      "observed_wait_status": {
+        "type": "active",
+        "activeFlags": [
+          "waitingOnApproval"
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "item/permissions/requestApproval",
+        "id": 8,
+        "params": {
+          "threadId": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+          "turnId": "01a18f97-12d8-7361-9375-d2f8cdf189ce",
+          "itemId": "exec-1dd3328d-c745-4a4c-87be-60946fc1d3d9",
+          "environmentId": "local",
+          "startedAtMs": 1793410414318,
+          "cwd": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+          "reason": "Prepare only this registered module Git worktree for assignment 9ba5a4ad-ee19-49e7-b3ac-066f02c1b4ec",
+          "permissions": {
+            "network": null,
+            "fileSystem": {
+              "read": null,
+              "write": [
+                "/FIXTURE/app/.git/worktrees/wp-a-01-seed",
+                "/FIXTURE/app/.git/objects",
+                "/FIXTURE/app/.git/refs/heads/gate/a",
+                "/FIXTURE/app/.git/logs/refs/heads/gate/a",
+                "/FIXTURE/app/.git/refs/remotes/origin",
+                "/FIXTURE/app/.git/logs/refs/remotes/origin"
+              ],
+              "entries": [
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/worktrees/wp-a-01-seed"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/objects"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/refs/heads/gate/a"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/logs/refs/heads/gate/a"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/refs/remotes/origin"
+                  },
+                  "access": "write"
+                },
+                {
+                  "path": {
+                    "type": "path",
+                    "path": "/FIXTURE/app/.git/logs/refs/remotes/origin"
+                  },
+                  "access": "write"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "decision": {
+        "permissions": {
+          "fileSystem": {
+            "write": [
+              "/FIXTURE/app/.git/logs/refs/heads/gate/a",
+              "/FIXTURE/app/.git/logs/refs/remotes/origin",
+              "/FIXTURE/app/.git/objects",
+              "/FIXTURE/app/.git/refs/heads/gate/a",
+              "/FIXTURE/app/.git/refs/remotes/origin",
+              "/FIXTURE/app/.git/worktrees/wp-a-01-seed"
+            ]
+          }
+        },
+        "scope": "turn"
+      },
+      "assignment": "9ba5a4ad-ee19-49e7-b3ac-066f02c1b4ec",
+      "observed_wait_status": {
+        "type": "active",
+        "activeFlags": [
+          "waitingOnApproval"
+        ]
+      }
+    }
+  ],
+  "threads": [
+    "01a18f94-9315-7710-8ccf-bd551950ccc7",
+    "01a18f94-95fb-7e62-84ab-510f812bef1e",
+    "01a18f94-9710-7720-a7a3-3c8d920d450d"
+  ],
+  "epochs": [
+    "3df40cc6b40c4864aa08b49efbe74a09",
+    "58a4600ec97e41d19407d2519e824c3d"
+  ],
+  "verdict": "PASS (Git-approved, on-request)",
+  "native_manual_UI_clicks": 0,
+  "authorization": "Owner selected sandbox + explicit Git permissions and requested disposable Linux/macOS integration acceptance.",
+  "github_repository": "example/fixture-linux",
+  "reviews": [
+    {
+      "wp": "WP-A-01",
+      "head": "474b3f378be192ed08031c7a6d6c251dc61f29b8",
+      "pr": "https://github.com/example/fixture-linux/pull/1",
+      "merge": {
+        "headRefOid": "474b3f378be192ed08031c7a6d6c251dc61f29b8",
+        "mergeCommit": {
+          "oid": "b5ccda8164a0be2a8ae514f5a3c4e95734cada76"
+        },
+        "state": "MERGED"
+      }
+    },
+    {
+      "wp": "WP-B-01",
+      "head": "a01e93222e987c3b710c9f622f8f423b8fbe10d3",
+      "pr": "https://github.com/example/fixture-linux/pull/2",
+      "merge": {
+        "headRefOid": "a01e93222e987c3b710c9f622f8f423b8fbe10d3",
+        "mergeCommit": {
+          "oid": "e795ac4cb089773a2c7adbd8c2531daa9e1edd8b"
+        },
+        "state": "MERGED"
+      }
+    },
+    {
+      "wp": "WP-A-02",
+      "head": "a71c9167d8e3fbd6febe5de0f04e96b098d79a06",
+      "pr": "https://github.com/example/fixture-linux/pull/3",
+      "merge": {
+        "headRefOid": "a71c9167d8e3fbd6febe5de0f04e96b098d79a06",
+        "mergeCommit": {
+          "oid": "f9d2775912b169fcbc2ee69225097c2ccc152305"
+        },
+        "state": "MERGED"
+      }
+    },
+    {
+      "wp": "WP-B-02",
+      "head": "1b1746b7a69461e9d85e47faa4aaaa1c9e42a972",
+      "pr": "https://github.com/example/fixture-linux/pull/4",
+      "merge": {
+        "headRefOid": "1b1746b7a69461e9d85e47faa4aaaa1c9e42a972",
+        "mergeCommit": {
+          "oid": "254b41432728d223fa44760c744ca52c93d50e04"
+        },
+        "state": "MERGED"
+      }
+    },
+    {
+      "wp": "WP-A-03",
+      "head": "f1458faf52eba818feb4d4868f699243061b95e6",
+      "pr": "https://github.com/example/fixture-linux/pull/5",
+      "merge": {
+        "headRefOid": "f1458faf52eba818feb4d4868f699243061b95e6",
+        "mergeCommit": {
+          "oid": "51c9ebc10da70ad5948bbbba51316772538f58b1"
+        },
+        "state": "MERGED"
+      }
+    }
+  ],
+  "stops": [
+    [
+      {
+        "state": "exited"
+      },
+      {
+        "state": "exited"
+      }
+    ],
+    [
+      {
+        "state": "exited"
+      },
+      {
+        "state": "exited"
+      }
+    ]
+  ],
+  "declines": [
+    {
+      "method": "item/fileChange/requestApproval",
+      "id": 14,
+      "params": {
+        "threadId": "01a18f94-9315-7710-8ccf-bd551950ccc7",
+        "turnId": "01a18f97-d3d9-7633-89dc-7fb714ecf0ce",
+        "itemId": "exec-3d396477-c3a5-4df6-b4ff-3f50724b98cf",
+        "startedAtMs": 1793410457955,
+        "reason": null,
+        "grantRoot": null
+      }
+    }
+  ],
+  "assignments": {
+    "6735411e-3125-42f6-925b-c85860b0b3ad": {
+      "id": "6735411e-3125-42f6-925b-c85860b0b3ad",
+      "wp": "WP-A-02",
+      "session": "codex:01a18f94-9315-7710-8ccf-bd551950ccc7",
+      "state": "completed",
+      "generation": 1,
+      "coordinator": "01a18f94-9710-7720-a7a3-3c8d920d450d",
+      "branch": "gate/a/wp-a-02",
+      "previous_branch": "gate/a/seed",
+      "worktree": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+      "previous_head": "474b3f378be192ed08031c7a6d6c251dc61f29b8",
+      "created_at": 1793410274.1699574,
+      "locks": [],
+      "started_at": 1793410292.379972
+    },
+    "662b7a84-32c3-4982-b1a4-1372914cf121": {
+      "id": "662b7a84-32c3-4982-b1a4-1372914cf121",
+      "wp": "WP-B-02",
+      "session": "codex:01a18f94-95fb-7e62-84ab-510f812bef1e",
+      "state": "started",
+      "generation": 1,
+      "coordinator": "01a18f94-9710-7720-a7a3-3c8d920d450d",
+      "branch": "gate/b/wp-b-02",
+      "previous_branch": "gate/b/seed",
+      "worktree": "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed",
+      "previous_head": "a01e93222e987c3b710c9f622f8f423b8fbe10d3",
+      "created_at": 1793410275.8063016,
+      "locks": [],
+      "started_at": 1793410290.0280418
+    },
+    "9ba5a4ad-ee19-49e7-b3ac-066f02c1b4ec": {
+      "id": "9ba5a4ad-ee19-49e7-b3ac-066f02c1b4ec",
+      "wp": "WP-A-03",
+      "session": "codex:01a18f94-9315-7710-8ccf-bd551950ccc7",
+      "state": "started",
+      "generation": 2,
+      "coordinator": "01a18f94-9710-7720-a7a3-3c8d920d450d",
+      "branch": "gate/a/wp-a-03",
+      "previous_branch": "gate/a/wp-a-02",
+      "worktree": "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed",
+      "previous_head": "a71c9167d8e3fbd6febe5de0f04e96b098d79a06",
+      "created_at": 1793410404.9594917,
+      "locks": [],
+      "started_at": 1793410422.6356077
+    }
+  },
+  "native_turns_started": 28,
+  "runtime_stopped": true,
+  "repository_archived": true,
+  "auth_removed": true
+}

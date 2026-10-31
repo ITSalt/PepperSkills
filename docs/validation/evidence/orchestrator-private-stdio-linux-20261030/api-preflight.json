@@ -1,0 +1,571 @@
+{
+  "environment": {
+    "os": "Linux",
+    "kernel": "6.8.0-147-generic",
+    "python": "3.12.3",
+    "native_binary": "/OPT/CODEX/codex",
+    "native_sha256": "c06a67fd8ac76508dc78bd99ce20c9f317b8d568beda59485f3f4134df9962d5",
+    "cli": {
+      "argv": [
+        "/OPT/CODEX/codex",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "codex-cli 0.165.0\n",
+      "stderr": ""
+    },
+    "path_codex": {
+      "argv": [
+        "bash",
+        "-c",
+        "type -a codex"
+      ],
+      "returncode": 0,
+      "stdout": "codex is /REDACTED/HOME/.local/bin/codex\ncodex is /REDACTED/HOME/.nvm/versions/node/v24.21.0/bin/codex\n",
+      "stderr": ""
+    },
+    "owner_code_sha256": "ff6f225271609aa4dbb21b4d272ff7c4e6a9d754bb3bcc3de87866bb8161b5e4",
+    "owner": "/PROTECTED/OWNER",
+    "config": "approval_policy = \"on-request\"\napprovals_reviewer = \"user\"\nsandbox_mode = \"workspace-write\"\nmodel_reasoning_effort = \"high\"\nweb_search = \"disabled\"\n[sandbox_workspace_write]\nnetwork_access = true\n[features]\napps = false\nplugins = false\nremote_plugin = false\nbrowser_use = false\ncomputer_use = false\nimage_generation = false\nmulti_agent = false\nhooks = false\nshell_snapshot = false\ndaemon_auto_start = false\nskip_host_skill_discovery = true\n"
+  },
+  "model": null,
+  "model_turns_requested": 0,
+  "events": [
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "owner_to_native",
+      "message": {
+        "id": "owner-1",
+        "method": "initialize",
+        "params": {
+          "clientInfo": {
+            "name": "pepper_stdio_gate",
+            "version": "1"
+          },
+          "capabilities": {
+            "experimentalApi": true
+          }
+        }
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "native_to_owner",
+      "message": {
+        "id": "owner-1",
+        "result": {
+          "userAgent": "pepper_stdio_gate/0.165.0 (Ubuntu 24.4.0; x86_64) unknown (pepper_stdio_gate; 1)",
+          "codexHome": "/PROTECTED/OWNER/codex-home",
+          "platformFamily": "unix",
+          "platformOs": "linux"
+        }
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "native_to_owner",
+      "message": {
+        "method": "remoteControl/status/changed",
+        "params": {
+          "status": "disabled",
+          "serverName": "fixture-server",
+          "installationId": "fixture-installation",
+          "environmentId": null
+        },
+        "emittedAtMs": 1793367202615
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "owner_to_native",
+      "message": {
+        "method": "initialized"
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "owner_to_native",
+      "message": {
+        "id": "owner-2",
+        "method": "remoteControl/disable",
+        "params": {}
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "native_to_owner",
+      "message": {
+        "error": {
+          "code": -32600,
+          "message": "remote control requires ChatGPT authentication"
+        },
+        "id": "owner-2"
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "owner_to_native",
+      "message": {
+        "id": "owner-3",
+        "method": "remoteControl/status/read",
+        "params": {}
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "native_to_owner",
+      "message": {
+        "id": "owner-3",
+        "result": {
+          "status": "disabled",
+          "serverName": "fixture-server",
+          "installationId": "fixture-installation",
+          "environmentId": null
+        }
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "owner_to_native",
+      "message": {
+        "id": "owner-4",
+        "method": "item/tool/call",
+        "params": {
+          "threadId": "forged",
+          "turnId": "forged",
+          "tool": "pepper_context",
+          "arguments": {},
+          "callId": "forged"
+        }
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "native_to_owner",
+      "message": {
+        "error": {
+          "code": -32600,
+          "message": "Invalid request: unknown variant `item/tool/call`, expected one of `initialize`, `server/diagnostics`, `userVerification/status`, `userVerification/enroll`, `userVerification/delete`, `userVerification/verify`, `userVerification/cancel`, `thread/start`, `thread/resume`, `thread/fork`, `thread/sample`, `thread/sample/cancel`, `thread/archive`, `thread/delete`, `thread/unsubscribe`, `thread/increment_elicitation`, `thread/decrement_elicitation`, `thread/name/set`, `thread/prediction/request`, `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`, `thread/queue/add`, `thread/queue/list`, `thread/queue/update`, `thread/queue/delete`, `thread/queue/reorder`, `thread/queue/start`, `thread/metadata/update`, `thread/attachment/add`, `thread/attachment/list`, `thread/attachmentOwner/list`, `thread/attachment/remove`, `thread/section/move`, `thread/settings/update`, `thread/memoryMode/set`, `thread/memory/read`, `memory/status`, `memory/reset`, `rollout/compress`, `thread/unarchive`, `thread/compact/start`, `thread/shellCommand`, `thread/approveGuardianDeniedAction`, `thread/backgroundTerminals/clean`, `thread/backgroundTerminals/list`, `thread/backgroundTerminals/terminate`, `thread/revert`, `thread/list`, `project/list`, `project/read`, `project/create`, `project/import`, `project/update`, `project/move`, `project/delete`, `threadSection/list`, `threadSection/create`, `threadSection/update`, `threadSection/delete`, `thread/search`, `thread/searchOccurrences`, `thread/loaded/list`, `thread/read`, `thread/readState/update`, `thread/turns/list`, `thread/items/list`, `thread/items/read`, `thread/inject_items`, `skills/list`, `skills/extraRoots/set`, `hooks/list`, `marketplace/add`, `marketplace/remove`, `marketplace/upgrade`, `plugin/list`, `plugin/search`, `plugin/installed`, `plugin/reconcile`, `plugin/read`, `plugin/skill/read`, `plugin/share/save`, `plugin/share/updateTargets`, `plugin/share/list`, `plugin/share/checkout`, `plugin/share/delete`, `app/read`, `app/list`, `app/installed`, `fs/readFile`, `fs/writeFile`, `fs/createDirectory`, `fs/getMetadata`, `fs/readDirectory`, `fs/remove`, `fs/copy`, `fs/watch`, `fs/unwatch`, `skills/config/write`, `plugin/install`, `plugin/uninstall`, `turn/start`, `turn/settings/update`, `turn/steer`, `turn/interrupt`, `thread/realtime/start`, `thread/realtime/appendAudio`, `thread/realtime/appendText`, `thread/realtime/appendSpeech`, `thread/realtime/stop`, `thread/timeline/list`, `thread/realtime/listVoices`, `review/start`, `model/list`, `account/gatewayOAuth/read`, `account/gatewayOAuth/login`, `account/gatewayOAuth/cancel`, `modelProvider/capabilities/read`, `experimentalFeature/list`, `permissionProfile/list`, `experimentalFeature/enablement/set`, `remoteControl/enable`, `remoteControl/disable`, `remoteControl/status/read`, `remoteControl/pairing/start`, `remoteControl/pairing/status`, `remoteControl/client/list`, `remoteControl/client/revoke`, `collaborationMode/list`, `mock/experimentalMethod`, `environment/add`, `environment/info`, `environment/status`, `mcpServer/oauth/login`, `config/mcpServer/reload`, `mcpServerStatus/list`, `mcpServer/resource/read`, `mcpServer/event/stream/start`, `mcpServer/event/stream/stop`, `mcpServer/tool/call`, `windowsSandbox/setupStart`, `windowsSandbox/readiness`, `account/login/start`, `account/bedrock/discover`, `account/bedrock/setup`, `account/bedrock/checkGovCloudRequirements`, `account/login/cancel`, `account/logout`, `account/rateLimits/read`, `account/rateLimitResetCredit/consume`, `account/usage/read`, `account/workspaceMessages/read`, `account/sendAddCreditsNudgeEmail`, `feedback/upload`, `feedback/save`, `command/exec`, `command/exec/write`, `command/exec/terminate`, `command/exec/resize`, `process/spawn`, `process/writeStdin`, `process/kill`, `process/resizePty`, `config/read`, `externalAgentConfig/detect`, `externalAgentConfig/import`, `externalAgentConfig/import/recordHistory`, `externalAgentConfig/import/readHistories`, `config/value/write`, `config/batchWrite`, `configRequirements/read`, `account/read`, `getConversationSummary`, `gitDiffToRemote`, `getAuthStatus`, `fuzzyFileSearch`, `fuzzyFileSearch/sessionStart`, `fuzzyFileSearch/sessionUpdate`, `fuzzyFileSearch/sessionStop`"
+        },
+        "id": "owner-4"
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "owner_to_native",
+      "message": {
+        "id": "owner-5",
+        "method": "thread/start",
+        "params": {
+          "cwd": "/PROTECTED/OWNER",
+          "sandbox": "workspace-write",
+          "approvalPolicy": "on-request",
+          "ephemeral": true,
+          "dynamicTools": [
+            {
+              "type": "function",
+              "name": "pepper_context",
+              "description": "Read-only identity of this native call. Only empty arguments are accepted.",
+              "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "native_to_owner",
+      "message": {
+        "id": "owner-5",
+        "result": {
+          "thread": {
+            "id": "01a18d03-db89-7f90-a9c6-c42068af97fc",
+            "environments": [
+              {
+                "environmentId": "local",
+                "cwd": "/PROTECTED/OWNER",
+                "runtimeWorkspaceRoots": [
+                  "/PROTECTED/OWNER"
+                ]
+              }
+            ],
+            "extra": null,
+            "sessionId": "01a18d03-db89-7f90-a9c6-c42068af97fc",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "",
+            "ephemeral": true,
+            "section": null,
+            "sectionEnteredAt": null,
+            "projectId": null,
+            "historyMode": "paginated",
+            "modelProvider": "openai",
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "high",
+            "createdAt": 1793367202,
+            "updatedAt": 1793367202,
+            "recencyAt": 1793367202,
+            "status": {
+              "type": "idle"
+            },
+            "path": null,
+            "cwd": "/PROTECTED/OWNER",
+            "cliVersion": "0.165.0",
+            "originator": "pepper_stdio_gate",
+            "source": "vscode",
+            "canAcceptDirectInput": true,
+            "threadSource": null,
+            "agentNickname": null,
+            "agentRole": null,
+            "gitInfo": null,
+            "name": null,
+            "daybreakEnabled": null,
+            "turns": []
+          },
+          "model": "gpt-6.1-sol",
+          "modelProvider": "openai",
+          "serviceTier": null,
+          "disabledPluginIds": [],
+          "cwd": "/PROTECTED/OWNER",
+          "runtimeWorkspaceRoots": [
+            "/PROTECTED/OWNER"
+          ],
+          "instructionSources": [],
+          "approvalPolicy": "on-request",
+          "approvalsReviewer": "user",
+          "sandbox": {
+            "type": "workspaceWrite",
+            "writableRoots": [],
+            "networkAccess": true,
+            "excludeTmpdirEnvVar": false,
+            "excludeSlashTmp": false
+          },
+          "activePermissionProfile": null,
+          "reasoningEffort": "high",
+          "multiAgentMode": "explicitRequestOnly"
+        }
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "native_to_owner",
+      "message": {
+        "method": "thread/started",
+        "params": {
+          "thread": {
+            "id": "01a18d03-db89-7f90-a9c6-c42068af97fc",
+            "environments": [
+              {
+                "environmentId": "local",
+                "cwd": "/PROTECTED/OWNER",
+                "runtimeWorkspaceRoots": [
+                  "/PROTECTED/OWNER"
+                ]
+              }
+            ],
+            "extra": null,
+            "sessionId": "01a18d03-db89-7f90-a9c6-c42068af97fc",
+            "forkedFromId": null,
+            "parentThreadId": null,
+            "preview": "",
+            "ephemeral": true,
+            "section": null,
+            "sectionEnteredAt": null,
+            "projectId": null,
+            "historyMode": "paginated",
+            "modelProvider": "openai",
+            "model": "gpt-6.1-sol",
+            "reasoningEffort": "high",
+            "createdAt": 1793367202,
+            "updatedAt": 1793367202,
+            "recencyAt": 1793367202,
+            "status": {
+              "type": "idle"
+            },
+            "path": null,
+            "cwd": "/PROTECTED/OWNER",
+            "cliVersion": "0.165.0",
+            "originator": "pepper_stdio_gate",
+            "source": "vscode",
+            "canAcceptDirectInput": true,
+            "threadSource": null,
+            "agentNickname": null,
+            "agentRole": null,
+            "gitInfo": null,
+            "name": null,
+            "daybreakEnabled": null,
+            "turns": []
+          }
+        },
+        "emittedAtMs": 1793367202846
+      }
+    },
+    {
+      "epoch": "20cc91c4a2734e8f9188b061c1afcde6",
+      "direction": "native_to_owner",
+      "message": {
+        "method": "warning",
+        "params": {
+          "threadId": "01a18d03-db89-7f90-a9c6-c42068af97fc",
+          "message": "Under-development features enabled: skip_host_skill_discovery. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /PROTECTED/OWNER/codex-home/config.toml."
+        },
+        "emittedAtMs": 1793367202846
+      }
+    }
+  ],
+  "verdicts": {
+    "API": "PASS",
+    "caller_binding": "INCONCLUSIVE",
+    "RPC_FD_isolation": "INCONCLUSIVE",
+    "host_integrity": "INCONCLUSIVE",
+    "approvals": "INCONCLUSIVE",
+    "recovery": "INCONCLUSIVE",
+    "Git_preparation": "INCONCLUSIVE"
+  },
+  "schema": {
+    "ThreadStartParams": {
+      "sha256": "80a40a7fac15b4bf70efb7f893fb353acc0a0d30c68f54aee4f01923deca85de",
+      "properties": [
+        "allowProviderModelFallback",
+        "approvalPolicy",
+        "approvalsReviewer",
+        "baseInstructions",
+        "config",
+        "cwd",
+        "daybreakEnabled",
+        "developerInstructions",
+        "dynamicTools",
+        "environments",
+        "ephemeral",
+        "experimentalRawEvents",
+        "historyMode",
+        "mockExperimentalField",
+        "model",
+        "modelProvider",
+        "multiAgentMode",
+        "permissions",
+        "personality",
+        "projectId",
+        "runtimeWorkspaceRoots",
+        "sandbox",
+        "selectedCapabilityRoots",
+        "serviceName",
+        "serviceTier",
+        "sessionStartSource",
+        "threadSource"
+      ],
+      "required": []
+    },
+    "ThreadResumeParams": {
+      "sha256": "8152ea774ace4eb5623081abd64a1135f28cbff1e73ca641cfb80ac16f6eed32",
+      "properties": [
+        "approvalPolicy",
+        "approvalsReviewer",
+        "baseInstructions",
+        "config",
+        "cwd",
+        "developerInstructions",
+        "excludeTurns",
+        "history",
+        "initialTurnsPage",
+        "model",
+        "modelProvider",
+        "path",
+        "permissions",
+        "personality",
+        "runtimeWorkspaceRoots",
+        "sandbox",
+        "serviceTier",
+        "threadId"
+      ],
+      "required": [
+        "threadId"
+      ]
+    },
+    "DynamicToolCallParams": {
+      "sha256": "401bba20cfbd95762bef0467d840430c46be53369093ad9f26425ba757e34efc",
+      "properties": [
+        "arguments",
+        "callId",
+        "namespace",
+        "threadId",
+        "tool",
+        "turnId"
+      ],
+      "required": [
+        "arguments",
+        "callId",
+        "threadId",
+        "tool",
+        "turnId"
+      ]
+    },
+    "DynamicToolCallResponse": {
+      "sha256": "abb082cad67f11fcc98ba75f2eff75d7d1723af0c657655329b83ff160451a02",
+      "properties": [
+        "contentItems",
+        "success"
+      ],
+      "required": [
+        "contentItems",
+        "success"
+      ]
+    },
+    "CommandExecutionRequestApprovalParams": {
+      "sha256": "c9728280b8f3204fd729d0fb3d1ca7bb05b1150de26b3653f7163e6a9bd941e7",
+      "properties": [
+        "additionalPermissions",
+        "approvalId",
+        "availableDecisions",
+        "command",
+        "commandActions",
+        "cwd",
+        "environmentId",
+        "itemId",
+        "kind",
+        "networkApprovalContext",
+        "proposedExecpolicyAmendment",
+        "proposedNetworkPolicyAmendments",
+        "reason",
+        "startedAtMs",
+        "threadId",
+        "turnId"
+      ],
+      "required": [
+        "itemId",
+        "startedAtMs",
+        "threadId",
+        "turnId"
+      ]
+    },
+    "InitializeParams": {
+      "sha256": "b55124e7c0f36a1789396daa5578217a92be67f053903696236686e59f6f212e",
+      "properties": [
+        "capabilities",
+        "clientInfo"
+      ],
+      "required": [
+        "clientInfo"
+      ]
+    },
+    "ServerRequest_sha256": "3d7bc481f84dc042984a74420e65c5a8d3c423f37a91b7d5df2365c903a12ac6"
+  },
+  "remote_disable": {
+    "error": {
+      "code": -32600,
+      "message": "remote control requires ChatGPT authentication"
+    },
+    "id": "owner-2"
+  },
+  "remote_status": {
+    "id": "owner-3",
+    "result": {
+      "status": "disabled",
+      "serverName": "fixture-server",
+      "installationId": "fixture-installation",
+      "environmentId": null
+    }
+  },
+  "client_tool_injection": {
+    "error": {
+      "code": -32600,
+      "message": "Invalid request: unknown variant `item/tool/call`, expected one of `initialize`, `server/diagnostics`, `userVerification/status`, `userVerification/enroll`, `userVerification/delete`, `userVerification/verify`, `userVerification/cancel`, `thread/start`, `thread/resume`, `thread/fork`, `thread/sample`, `thread/sample/cancel`, `thread/archive`, `thread/delete`, `thread/unsubscribe`, `thread/increment_elicitation`, `thread/decrement_elicitation`, `thread/name/set`, `thread/prediction/request`, `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`, `thread/queue/add`, `thread/queue/list`, `thread/queue/update`, `thread/queue/delete`, `thread/queue/reorder`, `thread/queue/start`, `thread/metadata/update`, `thread/attachment/add`, `thread/attachment/list`, `thread/attachmentOwner/list`, `thread/attachment/remove`, `thread/section/move`, `thread/settings/update`, `thread/memoryMode/set`, `thread/memory/read`, `memory/status`, `memory/reset`, `rollout/compress`, `thread/unarchive`, `thread/compact/start`, `thread/shellCommand`, `thread/approveGuardianDeniedAction`, `thread/backgroundTerminals/clean`, `thread/backgroundTerminals/list`, `thread/backgroundTerminals/terminate`, `thread/revert`, `thread/list`, `project/list`, `project/read`, `project/create`, `project/import`, `project/update`, `project/move`, `project/delete`, `threadSection/list`, `threadSection/create`, `threadSection/update`, `threadSection/delete`, `thread/search`, `thread/searchOccurrences`, `thread/loaded/list`, `thread/read`, `thread/readState/update`, `thread/turns/list`, `thread/items/list`, `thread/items/read`, `thread/inject_items`, `skills/list`, `skills/extraRoots/set`, `hooks/list`, `marketplace/add`, `marketplace/remove`, `marketplace/upgrade`, `plugin/list`, `plugin/search`, `plugin/installed`, `plugin/reconcile`, `plugin/read`, `plugin/skill/read`, `plugin/share/save`, `plugin/share/updateTargets`, `plugin/share/list`, `plugin/share/checkout`, `plugin/share/delete`, `app/read`, `app/list`, `app/installed`, `fs/readFile`, `fs/writeFile`, `fs/createDirectory`, `fs/getMetadata`, `fs/readDirectory`, `fs/remove`, `fs/copy`, `fs/watch`, `fs/unwatch`, `skills/config/write`, `plugin/install`, `plugin/uninstall`, `turn/start`, `turn/settings/update`, `turn/steer`, `turn/interrupt`, `thread/realtime/start`, `thread/realtime/appendAudio`, `thread/realtime/appendText`, `thread/realtime/appendSpeech`, `thread/realtime/stop`, `thread/timeline/list`, `thread/realtime/listVoices`, `review/start`, `model/list`, `account/gatewayOAuth/read`, `account/gatewayOAuth/login`, `account/gatewayOAuth/cancel`, `modelProvider/capabilities/read`, `experimentalFeature/list`, `permissionProfile/list`, `experimentalFeature/enablement/set`, `remoteControl/enable`, `remoteControl/disable`, `remoteControl/status/read`, `remoteControl/pairing/start`, `remoteControl/pairing/status`, `remoteControl/client/list`, `remoteControl/client/revoke`, `collaborationMode/list`, `mock/experimentalMethod`, `environment/add`, `environment/info`, `environment/status`, `mcpServer/oauth/login`, `config/mcpServer/reload`, `mcpServerStatus/list`, `mcpServer/resource/read`, `mcpServer/event/stream/start`, `mcpServer/event/stream/stop`, `mcpServer/tool/call`, `windowsSandbox/setupStart`, `windowsSandbox/readiness`, `account/login/start`, `account/bedrock/discover`, `account/bedrock/setup`, `account/bedrock/checkGovCloudRequirements`, `account/login/cancel`, `account/logout`, `account/rateLimits/read`, `account/rateLimitResetCredit/consume`, `account/usage/read`, `account/workspaceMessages/read`, `account/sendAddCreditsNudgeEmail`, `feedback/upload`, `feedback/save`, `command/exec`, `command/exec/write`, `command/exec/terminate`, `command/exec/resize`, `process/spawn`, `process/writeStdin`, `process/kill`, `process/resizePty`, `config/read`, `externalAgentConfig/detect`, `externalAgentConfig/import`, `externalAgentConfig/import/recordHistory`, `externalAgentConfig/import/readHistories`, `config/value/write`, `config/batchWrite`, `configRequirements/read`, `account/read`, `getConversationSummary`, `gitDiffToRemote`, `getAuthStatus`, `fuzzyFileSearch`, `fuzzyFileSearch/sessionStart`, `fuzzyFileSearch/sessionUpdate`, `fuzzyFileSearch/sessionStop`"
+    },
+    "id": "owner-4"
+  },
+  "preflight_thread": {
+    "thread": {
+      "id": "01a18d03-db89-7f90-a9c6-c42068af97fc",
+      "environments": [
+        {
+          "environmentId": "local",
+          "cwd": "/PROTECTED/OWNER",
+          "runtimeWorkspaceRoots": [
+            "/PROTECTED/OWNER"
+          ]
+        }
+      ],
+      "extra": null,
+      "sessionId": "01a18d03-db89-7f90-a9c6-c42068af97fc",
+      "forkedFromId": null,
+      "parentThreadId": null,
+      "preview": "",
+      "ephemeral": true,
+      "section": null,
+      "sectionEnteredAt": null,
+      "projectId": null,
+      "historyMode": "paginated",
+      "modelProvider": "openai",
+      "model": "gpt-6.1-sol",
+      "reasoningEffort": "high",
+      "createdAt": 1793367202,
+      "updatedAt": 1793367202,
+      "recencyAt": 1793367202,
+      "status": {
+        "type": "idle"
+      },
+      "path": null,
+      "cwd": "/PROTECTED/OWNER",
+      "cliVersion": "0.165.0",
+      "originator": "pepper_stdio_gate",
+      "source": "vscode",
+      "canAcceptDirectInput": true,
+      "threadSource": null,
+      "agentNickname": null,
+      "agentRole": null,
+      "gitInfo": null,
+      "name": null,
+      "daybreakEnabled": null,
+      "turns": []
+    },
+    "model": "gpt-6.1-sol",
+    "modelProvider": "openai",
+    "serviceTier": null,
+    "disabledPluginIds": [],
+    "cwd": "/PROTECTED/OWNER",
+    "runtimeWorkspaceRoots": [
+      "/PROTECTED/OWNER"
+    ],
+    "instructionSources": [],
+    "approvalPolicy": "on-request",
+    "approvalsReviewer": "user",
+    "sandbox": {
+      "type": "workspaceWrite",
+      "writableRoots": [],
+      "networkAccess": true,
+      "excludeTmpdirEnvVar": false,
+      "excludeSlashTmp": false
+    },
+    "activePermissionProfile": null,
+    "reasoningEffort": "high",
+    "multiAgentMode": "explicitRequestOnly"
+  },
+  "final_stop": {
+    "pid": 75050,
+    "returncode": 0,
+    "waited": true,
+    "reader_stopped": true
+  },
+  "cleanup": {
+    "auth_copy_removed": true,
+    "no_runtime_left": true
+  },
+  "overall": "BLOCKED / AUTONOMY_NOT_RUN",
+  "acceptance_eligible": false,
+  "provenance": {
+    "source_head": "1776a223f977d40e10da45d1b59147f1a0ab54e6",
+    "raw_report_sha256": "74ca1f30a5e0e63752c5d3e042aa0281146c1ffa76459038d74024497c906285",
+    "redactions": [
+      "owner, native, home and fixture path aliases",
+      "server name and installation ID",
+      "account telemetry omitted",
+      "network socket peers omitted"
+    ],
+    "model_turn_start_requests": 0,
+    "native_token_usage_notifications": 0
+  }
+}

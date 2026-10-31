@@ -1,0 +1,44 @@
+{
+  "full_check": "NOT PASS / environment blocked: missing shell zsh",
+  "system_python_attempt": "missing h11; resolved only in temporary venv",
+  "venv_command": "PYTHON=/tmp/pepper-stdio-check-venv/bin/python bash scripts/check.sh",
+  "installed_dependencies": [
+    "attrs==26.1.0",
+    "h11==0.16.0",
+    "jsonschema==4.25.1",
+    "jsonschema-specifications==2025.9.1",
+    "PyYAML==6.0.3",
+    "referencing==0.37.0",
+    "rpds-py==2026.9.1",
+    "typing_extensions==4.16.0"
+  ],
+  "requirements_build_sha256": "04942a6351e64cf85817887dcd2e9eabc329cee42b4343a3120f8baa56e510dc",
+  "passed": {
+    "main_orchestrator_selftest": true,
+    "runtime": 11,
+    "reliability": 19,
+    "autonomy": 41,
+    "historical_mcp_probe": 3,
+    "private_stdio_probe": 11
+  },
+  "not_run_after_failure": [
+    "test-install-docs",
+    "test-install-skill",
+    "build-skills",
+    "build-plugins",
+    "sync-compat-archives",
+    "test-packages",
+    "test-plugin-components",
+    "test-build-readonly"
+  ],
+  "logs": {
+    "offline-checks-system-python.log": {
+      "raw_sha256": "5aa4184d029741ca9539d2f3af6dafeb784a6501e23789ad100e2d158a6cf970",
+      "exit_code": 1
+    },
+    "offline-checks-venv.log": {
+      "raw_sha256": "56b4378c82bfd3c4a7fac74a112b7e276d88b8d5e1c65795bb8ef1ddb5edc5e5",
+      "exit_code": 1
+    }
+  }
+}

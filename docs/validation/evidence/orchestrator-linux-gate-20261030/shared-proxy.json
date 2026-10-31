@@ -1,0 +1,16 @@
+{
+  "macos": {
+    "scope": "isolated CODEX_HOME, no user threads resumed, no model call",
+    "cli": "codex-cli 0.154.0",
+    "acceptance_endpoint": "explicit Unix socket",
+    "shared_proxy_available": false,
+    "error": "TransportError: App Server closed before answering: initialize"
+  },
+  "linux": {
+    "scope": "isolated CODEX_HOME, no user threads resumed, no model call",
+    "cli": "codex-cli 0.165.0",
+    "acceptance_endpoint": "explicit Unix socket",
+    "shared_proxy_available": false,
+    "error": "TransportError: App Server closed before answering: initialize"
+  }
+}

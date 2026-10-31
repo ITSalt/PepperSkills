@@ -89,7 +89,7 @@ def main():
             for document in [root / 'LICENSE', root / 'NOTICE.md', skill_root / 'SKILL.md']:
                 if document.is_file():
                     check_document_paths(document, root)
-            for script_name in ('selftest.py', 'runtime_selftest.py', 'reliability_selftest.py', 'autonomy_selftest.py',
+            for script_name in ('selftest.py', 'runtime_selftest.py', 'reliability_selftest.py', 'autonomy_selftest.py', 'owner_selftest.py',
                                 'test_modernization.py', 'test_report_quality.py', 'test_network_evidence.py', 'run_evals.py'):
                 script = skill_root / 'scripts' / script_name
                 if script.is_file():
@@ -100,6 +100,9 @@ def main():
             codex_script = root / 'codex/skills/pepper-orchestrator/scripts/autonomy_selftest.py'
             if is_plugin and codex_script.is_file():
                 subprocess.run([sys.executable, str(codex_script)], cwd=codex_script.parent,
+                               check=True, stdout=subprocess.DEVNULL)
+                owner_test = codex_script.with_name('owner_selftest.py')
+                subprocess.run([sys.executable, str(owner_test)], cwd=owner_test.parent,
                                check=True, stdout=subprocess.DEVNULL)
             print(f'PASS package {archive.relative_to(ROOT)}')
 

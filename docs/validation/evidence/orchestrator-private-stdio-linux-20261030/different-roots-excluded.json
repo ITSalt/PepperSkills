@@ -1,0 +1,158 @@
+{
+  "environment": {
+    "os": "Linux",
+    "kernel": "6.8.0-147-generic",
+    "python": "3.12.3",
+    "native_binary": "/OPT/CODEX/codex",
+    "native_sha256": "c06a67fd8ac76508dc78bd99ce20c9f317b8d568beda59485f3f4134df9962d5",
+    "cli": {
+      "argv": [
+        "/OPT/CODEX/codex",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "codex-cli 0.165.0\n",
+      "stderr": ""
+    },
+    "path_codex": {
+      "argv": [
+        "bash",
+        "-c",
+        "type -a codex"
+      ],
+      "returncode": 0,
+      "stdout": "codex is /REDACTED/HOME/.local/bin/codex\ncodex is /REDACTED/HOME/.nvm/versions/node/v24.21.0/bin/codex\n",
+      "stderr": ""
+    },
+    "owner_code_sha256": "7856f95ebd7a1c72a80c80db505b551b2faeaf6a4c824a3fd5dc9b3c4f4f388d",
+    "owner": "/PROTECTED/OWNER",
+    "config": "approval_policy = \"on-request\"\napprovals_reviewer = \"user\"\nsandbox_mode = \"workspace-write\"\nmodel_reasoning_effort = \"high\"\nweb_search = \"disabled\"\n[sandbox_workspace_write]\nnetwork_access = true\n[features]\napps = false\nplugins = false\nremote_plugin = false\nbrowser_use = false\ncomputer_use = false\nimage_generation = false\nmulti_agent = false\nhooks = false\nshell_snapshot = false\ndaemon_auto_start = false\nskip_host_skill_discovery = true\n"
+  },
+  "model": "gpt-6.1-sol",
+  "model_turns_requested": 4,
+  "threads": {
+    "coordinator": {
+      "cwd": "/FIXTURE/WORK/coordinator",
+      "runtimeWorkspaceRoots": [
+        "/FIXTURE/WORK"
+      ],
+      "sandbox": {
+        "type": "workspaceWrite",
+        "writableRoots": [
+          "/FIXTURE/WORK",
+          "/tmp"
+        ],
+        "networkAccess": true,
+        "excludeTmpdirEnvVar": true,
+        "excludeSlashTmp": false
+      },
+      "approvalPolicy": "on-request",
+      "approvalsReviewer": "user"
+    },
+    "module": {
+      "cwd": "/FIXTURE/WORK/module",
+      "runtimeWorkspaceRoots": [
+        "/FIXTURE/WORK"
+      ],
+      "sandbox": {
+        "type": "workspaceWrite",
+        "writableRoots": [
+          "/FIXTURE/WORK",
+          "/tmp"
+        ],
+        "networkAccess": true,
+        "excludeTmpdirEnvVar": true,
+        "excludeSlashTmp": false
+      },
+      "approvalPolicy": "on-request",
+      "approvalsReviewer": "user"
+    }
+  },
+  "cleanup": {
+    "auth_copy_removed": true,
+    "no_runtime_left": true
+  },
+  "shell_result": {
+    "git": [
+      {
+        "argv": [
+          "git",
+          "rev-parse",
+          "--absolute-git-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/FIXTURE/WORK/remote.git/worktrees/module\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "git",
+          "rev-parse",
+          "--path-format=absolute",
+          "--git-common-dir"
+        ],
+        "returncode": 0,
+        "stdout": "/FIXTURE/WORK/remote.git\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "git",
+          "remote",
+          "-v"
+        ],
+        "returncode": 0,
+        "stdout": "origin\t/FIXTURE/WORK/remote.git (fetch)\norigin\t/FIXTURE/WORK/remote.git (push)\n",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "git",
+          "fetch",
+          "origin"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "From /FIXTURE/WORK/remote\n * branch            HEAD       -> FETCH_HEAD\n"
+      },
+      {
+        "argv": [
+          "git",
+          "switch",
+          "-c",
+          "gate-prepared"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "Switched to a new branch 'gate-prepared'\n"
+      }
+    ],
+    "setup": {
+      "ok": true,
+      "value": 19
+    }
+  },
+  "raw_reported_verdicts": {
+    "API": "PASS",
+    "caller_binding": "PASS",
+    "RPC_FD_isolation": "INCONCLUSIVE",
+    "host_integrity": "PASS",
+    "approvals": "PASS",
+    "recovery": "PASS",
+    "Git_preparation": "PASS"
+  },
+  "acceptance_eligible": false,
+  "reason": "Umbrella runtimeWorkspaceRoots, instead of each worktree. Git PASS disqualified; no acceptance claim.",
+  "provenance": {
+    "source_head": "1776a223f977d40e10da45d1b59147f1a0ab54e6",
+    "raw_report_sha256": "8d564df1ff9d5e0071bcb825c2a589fb90d556b56a49020e573bc26c5c648435",
+    "redactions": [
+      "owner, native, home and fixture path aliases",
+      "server name and installation ID",
+      "account telemetry omitted",
+      "network socket peers omitted"
+    ],
+    "model_turn_start_requests": 4,
+    "native_token_usage_notifications": 9
+  }
+}

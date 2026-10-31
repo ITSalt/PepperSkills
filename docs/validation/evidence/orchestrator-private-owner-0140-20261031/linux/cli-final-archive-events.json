@@ -1,0 +1,574 @@
+[
+  {
+    "ordinal": 0,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-1",
+      "method": "initialize",
+      "params": {
+        "clientInfo": {
+          "name": "pepper_private_owner",
+          "version": "1"
+        },
+        "capabilities": {
+          "experimentalApi": true
+        }
+      }
+    }
+  },
+  {
+    "ordinal": 1,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-1",
+      "result": {
+        "userAgent": "pepper_private_owner/0.165.0 (Ubuntu 24.4.0; x86_64) unknown (pepper_private_owner; 1)",
+        "codexHome": "/FIXTURE/owner-data/codex-home",
+        "platformFamily": "unix",
+        "platformOs": "linux"
+      }
+    }
+  },
+  {
+    "ordinal": 3,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-2",
+      "method": "remoteControl/disable",
+      "params": {}
+    }
+  },
+  {
+    "ordinal": 5,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-2",
+      "result": {
+        "status": "disabled",
+        "serverName": "fixture-host-linux",
+        "installationId": "8d0620b1-07af-4ab2-b6d0-83a4d9f617c3",
+        "environmentId": null
+      }
+    }
+  },
+  {
+    "ordinal": 6,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-3",
+      "method": "remoteControl/status/read",
+      "params": {}
+    }
+  },
+  {
+    "ordinal": 7,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-3",
+      "result": {
+        "status": "disabled",
+        "serverName": "fixture-host-linux",
+        "installationId": "8d0620b1-07af-4ab2-b6d0-83a4d9f617c3",
+        "environmentId": null
+      }
+    }
+  },
+  {
+    "ordinal": 8,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-4",
+      "method": "mcpServerStatus/list",
+      "params": {}
+    }
+  },
+  {
+    "ordinal": 9,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-4",
+      "result": {
+        "data": [],
+        "nextCursor": null
+      }
+    }
+  },
+  {
+    "ordinal": 10,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-5",
+      "method": "config/read",
+      "params": {
+        "includeLayers": true
+      }
+    }
+  },
+  {
+    "ordinal": 11,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-5",
+      "result": {
+        "config": {
+          "model": null,
+          "review_model": null,
+          "model_context_window": null,
+          "model_auto_compact_token_limit": null,
+          "model_auto_compact_token_limit_scope": null,
+          "model_provider": null,
+          "approval_policy": "on-request",
+          "approvals_reviewer": "user",
+          "sandbox_mode": "workspace-write",
+          "sandbox_workspace_write": {
+            "writable_roots": [],
+            "network_access": true,
+            "exclude_tmpdir_env_var": false,
+            "exclude_slash_tmp": false
+          },
+          "forced_chatgpt_workspace_id": null,
+          "forced_login_method": null,
+          "web_search": "disabled",
+          "tools": null,
+          "instructions": null,
+          "developer_instructions": null,
+          "compact_prompt": null,
+          "model_reasoning_effort": "high",
+          "model_reasoning_summary": null,
+          "model_verbosity": null,
+          "service_tier": null,
+          "analytics": null,
+          "apps": null,
+          "browser_use": null,
+          "computer_use": null,
+          "desktop": null,
+          "include_collaboration_mode_instructions": true,
+          "mcp_oauth_credentials_store": "auto",
+          "orchestrator": null,
+          "tui": null,
+          "include_apps_instructions": true,
+          "include_environment_context": true,
+          "memories": null,
+          "apps_mcp_product_sku": null,
+          "experimental_realtime_start_instructions": null,
+          "experimental_thread_store_endpoint": null,
+          "check_for_update_on_startup": null,
+          "disable_paste_burst": null,
+          "plan_mode_reasoning_effort": null,
+          "cloud": null,
+          "personality": null,
+          "chatgpt_base_url": "https://chatgpt.com/backend-api/",
+          "experimental_compact_prompt_file": null,
+          "hide_agent_reasoning": false,
+          "experimental_realtime_webrtc_call_base_url": null,
+          "shell_environment_policy": {
+            "inherit": null,
+            "ignore_default_excludes": null,
+            "exclude": null,
+            "set": null,
+            "include_only": null,
+            "filters": null,
+            "experimental_use_profile": null
+          },
+          "hooks": null,
+          "profiles": {},
+          "experimental_realtime_ws_startup_context": null,
+          "skills": null,
+          "features": {
+            "network_proxy": null,
+            "apps": false,
+            "browser_use": false,
+            "computer_use": false,
+            "daemon_auto_start": false,
+            "hooks": false,
+            "image_generation": false,
+            "multi_agent": false,
+            "plugins": false,
+            "remote_plugin": false,
+            "request_permissions_tool": true,
+            "shell_snapshot": false,
+            "skip_host_skill_discovery": true,
+            "api_key_cyber_access_programs": true,
+            "api_key_model_discovery": true,
+            "auth_elicitation": true,
+            "background_paginated_rollout_migration": false,
+            "codex_apps_mcp_2026_07_28": false,
+            "mcp_2026_07_28": false,
+            "memories": false,
+            "mentions_v2": true,
+            "remote_control": false,
+            "tool_suggest": true,
+            "windows_sandbox_service": false
+          },
+          "otel": null,
+          "experimental_use_unified_exec_tool": null,
+          "daybreak": null,
+          "notice": null,
+          "allow_login_shell": true,
+          "log_dir": null,
+          "model_instructions_file": null,
+          "history": {
+            "persistence": "save-all",
+            "max_bytes": null
+          },
+          "js_repl_node_path": null,
+          "show_raw_agent_reasoning": null,
+          "oss_provider": null,
+          "allow_symlinked_codex_home": null,
+          "notify": null,
+          "experimental_realtime_ws_backend_prompt": null,
+          "marketplaces": {},
+          "project_doc_fallback_filenames": [],
+          "mcp_oauth_callback_port": null,
+          "ghost_snapshot": null,
+          "suppress_unstable_features_warning": null,
+          "profile": null,
+          "audio": null,
+          "projects": {
+            "/FIXTURE/coordinator": {
+              "trust_level": "untrusted"
+            },
+            "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed": {
+              "trust_level": "untrusted"
+            },
+            "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed": {
+              "trust_level": "untrusted"
+            }
+          },
+          "project_doc_max_bytes": 32768,
+          "plugins": {},
+          "feedback": null,
+          "goals": null,
+          "sqlite_home": null,
+          "thread_unload_delay_secs": null,
+          "experimental_realtime_ws_model": null,
+          "tool_output_token_limit": null,
+          "responses_api_metadata": null,
+          "experimental_realtime_ws_base_url": null,
+          "default_permissions": null,
+          "permissions": null,
+          "include_environment_context_time": true,
+          "model_post_turn_compact_threshold_percent": null,
+          "model_providers": {},
+          "js_repl_node_module_dirs": null,
+          "realtime": null,
+          "project_root_markers": [],
+          "tool_suggest": null,
+          "auto_review": null,
+          "openai_base_url": null,
+          "mcp_oauth_callback_url": null,
+          "cli_auth_credentials_store": "file",
+          "mcp_optional_startup_grace_ms": null,
+          "experimental_thread_store": null,
+          "background_terminal_max_timeout": 300000,
+          "include_permissions_instructions": true,
+          "file_opener": "vscode",
+          "agents": null,
+          "mcp_servers": {},
+          "windows": null,
+          "model_catalog_json": null,
+          "mcp_enterprise_managed_auth": null
+        },
+        "origins": {
+          "model_reasoning_effort": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.shell_snapshot": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "sandbox_mode": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.skip_host_skill_discovery": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.daemon_auto_start": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.apps": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.remote_plugin": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.browser_use": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.hooks": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "approvals_reviewer": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.request_permissions_tool": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.computer_use": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "approval_policy": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.plugins": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.image_generation": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "projects./FIXTURE/app/.pepper-worktrees/wp-a-01-seed.trust_level": {
+            "name": {
+              "type": "sessionFlags"
+            },
+            "version": "sha256:9e1389c70f8256341f5289a8dd2c4b357d7db1115f16597ce6357adf08506443"
+          },
+          "web_search": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "sandbox_workspace_write.network_access": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "features.multi_agent": {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33"
+          },
+          "projects./FIXTURE/app/.pepper-worktrees/wp-b-01-seed.trust_level": {
+            "name": {
+              "type": "sessionFlags"
+            },
+            "version": "sha256:9e1389c70f8256341f5289a8dd2c4b357d7db1115f16597ce6357adf08506443"
+          },
+          "projects./FIXTURE/coordinator.trust_level": {
+            "name": {
+              "type": "sessionFlags"
+            },
+            "version": "sha256:9e1389c70f8256341f5289a8dd2c4b357d7db1115f16597ce6357adf08506443"
+          }
+        },
+        "layers": [
+          {
+            "name": {
+              "type": "sessionFlags"
+            },
+            "version": "sha256:9e1389c70f8256341f5289a8dd2c4b357d7db1115f16597ce6357adf08506443",
+            "config": {
+              "project_root_markers": [],
+              "projects": {
+                "/FIXTURE/app/.pepper-worktrees/wp-a-01-seed": {
+                  "trust_level": "untrusted"
+                },
+                "/FIXTURE/app/.pepper-worktrees/wp-b-01-seed": {
+                  "trust_level": "untrusted"
+                },
+                "/FIXTURE/coordinator": {
+                  "trust_level": "untrusted"
+                }
+              }
+            }
+          },
+          {
+            "name": {
+              "type": "user",
+              "file": "/FIXTURE/owner-data/codex-home/config.toml",
+              "profile": null
+            },
+            "version": "sha256:d3733d86e9f219e5fe7cfe4210ee79e638a628b856f6704545c5f6b6591d4e33",
+            "config": {
+              "approval_policy": "on-request",
+              "approvals_reviewer": "user",
+              "sandbox_mode": "workspace-write",
+              "model_reasoning_effort": "high",
+              "web_search": "disabled",
+              "sandbox_workspace_write": {
+                "network_access": true
+              },
+              "features": {
+                "request_permissions_tool": true,
+                "apps": false,
+                "plugins": false,
+                "remote_plugin": false,
+                "browser_use": false,
+                "computer_use": false,
+                "image_generation": false,
+                "multi_agent": false,
+                "hooks": false,
+                "shell_snapshot": false,
+                "daemon_auto_start": false,
+                "skip_host_skill_discovery": true
+              }
+            }
+          },
+          {
+            "name": {
+              "type": "system",
+              "file": "/etc/codex/config.toml"
+            },
+            "version": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "config": {}
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ordinal": 12,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-6",
+      "method": "thread/archive",
+      "params": {
+        "threadId": "01a18f94-9315-7710-8ccf-bd551950ccc7"
+      }
+    }
+  },
+  {
+    "ordinal": 13,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-6",
+      "result": {}
+    }
+  },
+  {
+    "ordinal": 14,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-7",
+      "method": "thread/archive",
+      "params": {
+        "threadId": "01a18f94-95fb-7e62-84ab-510f812bef1e"
+      }
+    }
+  },
+  {
+    "ordinal": 16,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-7",
+      "result": {}
+    }
+  },
+  {
+    "ordinal": 18,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "owner_to_native",
+    "message": {
+      "id": "owner-8",
+      "method": "thread/archive",
+      "params": {
+        "threadId": "01a18f94-9710-7720-a7a3-3c8d920d450d"
+      }
+    }
+  },
+  {
+    "ordinal": 19,
+    "epoch": "f9d782a84a20424290ed3a5c150a5432",
+    "direction": "native_to_owner",
+    "message": {
+      "id": "owner-8",
+      "result": {}
+    }
+  }
+]

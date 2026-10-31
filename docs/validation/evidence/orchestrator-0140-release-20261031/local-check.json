@@ -1,0 +1,10 @@
+{
+  "command": "PYTHON=<isolated-build-python> TMPDIR=<protected-temp> bash scripts/check.sh",
+  "exit_code": 0,
+  "log_sha256": "d7334ae068dce3f4412f15be466b27df4a77831329d0f2503e51bca47e89fac5",
+  "owner_suite_runs": 4,
+  "owner_tests_per_run": 20,
+  "autonomy_suite_runs": 4,
+  "autonomy_tests_per_run": 41,
+  "verdict": "PASS"
+}

@@ -11,6 +11,20 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+_git_observer = ContextVar('pepper_git_observer', default=None)
+
+
+@contextmanager
+def git_observations(observer):
+    """Optional owner-bound reader; the portable core does not depend on it."""
+    token = _git_observer.set(observer)
+    try:
+        yield
+    finally:
+        _git_observer.reset(token)
 
 KINDS = ('area', 'domain', 'repo')
 MERGE_POLICIES = ('sequential', 'free')
@@ -648,6 +662,9 @@ def wp_meta(path, module):
 # ---------------------------------------------------------------- git helpers
 
 def git(root, *args):
+    reader = _git_observer.get()
+    if reader is not None:
+        return reader(root, *args)
     # --no-optional-locks: never race a session's own git for index.lock in its worktree.
     return subprocess.run(['git', '--no-optional-locks', '-C', str(root), *args], encoding='utf-8', errors='replace',
                           capture_output=True)

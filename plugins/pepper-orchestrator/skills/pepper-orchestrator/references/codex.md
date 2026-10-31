@@ -1,4 +1,9 @@
-# Codex CLI adapter and common runtime (0.13.0)
+# Codex CLI adapter and common runtime (0.14.0 preview)
+
+For explicit private-STDIO owner launch on Linux/macOS, follow
+[private owner setup and recovery](private-owner.md) ([Русский](private-owner.ru.md)).
+Use its typed tools rather than detached shell commands for active owner operations.
+Linux/macOS private-owner live acceptance passed with native Codex 0.165.0; measured profiles, artifact hashes and limits are recorded in the repository validation reports.
 
 The owner launches independent module sessions. One coordinator writes `status.md`
 and decisions; module sessions implement WPs in their own Git worktrees. Preserve
@@ -141,3 +146,23 @@ from an old client or another session's message.
 
 Run the common CLI with `--help` for exact argument placement. Runtime and concurrency
 contracts and external ID integration: [runtime.md](runtime.md).
+
+
+## Historical Linux observation and rejected MCP bridge
+
+Legacy Linux autonomy remains unavailable in the historical workspace-write/on-request observation profile; the explicit private owner is a separate mode.
+A hidden PID namespace can report ENOENT for a live host process; denied access is
+not evidence of exit. Cancellation now distinguishes live, positively proven exited
+and unavailable observation. The last state retains the assignment, outbox, slot and
+locks. Old Linux confirmations lack PID-namespace evidence: reattach/recover explicitly;
+do not force-cancel or use lease expiry as a substitute for observation.
+
+A maintainer's isolated STDIO prototype found thread/turn metadata in CLI 0.154.0 and
+0.165.0, but that metadata is not a session credential. In the macOS test profile a
+module shell could reach the same App Server and use `mcpServer/tool/call` with forged
+metadata naming the coordinator. The MCP process still had the correct native parent.
+No privileged bridge is shipped. A safe caller-binding API/boundary must be proven
+before host operations are implemented. Do not relax sandbox/approvals, enable legacy
+Landlock, expose raw RPC, or start a second resume process to work around this refusal.
+The explicit paid repository probe is `scripts/probe-orchestrator-codex-mcp.py`;
+it exposes only a read-only metadata tool and never dispatches work.

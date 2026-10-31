@@ -31,6 +31,10 @@ def main():
         assert caps['available'] and caps['app_server'], caps
         # Initialize/dispatch JSON-RPC on native Windows without starting a turn.
         with transport.server() as api:
+            with Path(api.proc.args[0]).open('rb') as executable:
+                magic = executable.read(4)
+            assert magic.startswith(b'MZ') or magic in (b'\x7fELF', b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf',
+                                                       b'\xca\xfe\xba\xbe', b'\xbe\xba\xfe\xca'), 'App Server PID belongs to a wrapper rather than the native executable'
             result = api.call('thread/list', {'limit': 1})
             assert isinstance(result['data'], list), result
             if args.expected_plugin:

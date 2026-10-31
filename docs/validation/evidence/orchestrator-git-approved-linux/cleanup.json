@@ -1,0 +1,52 @@
+{
+  "trial1_archive": [
+    {
+      "threadId": "01a18e86-09e7-7e52-8af9-1ce135af8f40",
+      "response": {
+        "error": {
+          "code": -32600,
+          "message": "no rollout found for thread id 01a18e86-09e7-7e52-8af9-1ce135af8f40"
+        },
+        "id": "owner-2"
+      }
+    },
+    {
+      "threadId": "01a18e86-0c5c-7da2-9be2-70c93223ccbd",
+      "response": {
+        "id": "owner-3",
+        "result": {}
+      }
+    }
+  ],
+  "cleanup_server_stopped": {
+    "pid": 2645324,
+    "returncode": 0,
+    "waited": true,
+    "reader_stopped": true
+  },
+  "model_turns": 0,
+  "owners": [
+    {
+      "owner": "/PROTECTED/TRIAL1",
+      "auth_copy_absent": true,
+      "known_pids_exist": {
+        "2535787": false,
+        "2536457": false,
+        "2537069": false
+      }
+    },
+    {
+      "owner": "/PROTECTED/TRIAL2",
+      "auth_copy_absent": true,
+      "known_pids_exist": {
+        "2605900": false,
+        "2606551": false,
+        "2607092": false,
+        "2610636": false
+      }
+    }
+  ],
+  "owned_fixture_cwd_processes": [],
+  "metadata_only_scan": true,
+  "raw_report_sha256": "b3f3e1c943c0417afeac7730b6dfe80f2f2328d903ed035ef6a62f54eee0f9fb"
+}

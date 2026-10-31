@@ -1,0 +1,28 @@
+{
+  "source_head": "1776a223f977d40e10da45d1b59147f1a0ab54e6",
+  "os_release": {
+    "ID": "ubuntu",
+    "PRETTY_NAME": "Ubuntu 24.04.5 LTS",
+    "VERSION_ID": "24.04"
+  },
+  "initial_git_status": "clean main; no uncommitted changes; stash empty",
+  "required_ancestors": {
+    "1776a22": true,
+    "35b3626": true,
+    "6d59bfa": true
+  },
+  "model": "gpt-6.1-sol",
+  "explicit_turn_start_requests_total": 8,
+  "accepted_profile_turns": 4,
+  "different_roots_excluded_turns": 4,
+  "preflight_and_bootstrap_turns": 0,
+  "native_token_usage_notifications_total": 18,
+  "internal_provider_request_count": "not instrumented",
+  "runtime_integration": "none; read-only gate only; steps 3-7 not started",
+  "remaining_blockers": [
+    "RPC/FD tool-surface and transfer audit incomplete",
+    "unchanged-profile Git preparation denied",
+    "macOS negative probes before common host operations",
+    "same-archive Linux/macOS lifecycle acceptance not run"
+  ]
+}

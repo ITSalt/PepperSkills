@@ -1,0 +1,52 @@
+{
+  "model": "gpt-6.1-sol",
+  "model_turns_requested": 0,
+  "error": "CalledProcessError: Command '['git', 'config', '--worktree', 'core.hooksPath', '/dev/null']' returned non-zero exit status 128.",
+  "cleanup": {
+    "auth_copy_removed": true,
+    "no_runtime_left": true
+  },
+  "environment": {
+    "os": "Linux",
+    "kernel": "6.8.0-147-generic",
+    "python": "3.12.3",
+    "native_binary": "/OPT/CODEX/codex",
+    "native_sha256": "c06a67fd8ac76508dc78bd99ce20c9f317b8d568beda59485f3f4134df9962d5",
+    "cli": {
+      "argv": [
+        "/OPT/CODEX/codex",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "codex-cli 0.165.0\n",
+      "stderr": ""
+    },
+    "path_codex": {
+      "argv": [
+        "bash",
+        "-c",
+        "type -a codex"
+      ],
+      "returncode": 0,
+      "stdout": "codex is /REDACTED/HOME/.local/bin/codex\ncodex is /REDACTED/HOME/.nvm/versions/node/v24.21.0/bin/codex\n",
+      "stderr": ""
+    },
+    "owner_code_sha256": "ff6f225271609aa4dbb21b4d272ff7c4e6a9d754bb3bcc3de87866bb8161b5e4",
+    "owner": "/PROTECTED/OWNER",
+    "config": "approval_policy = \"on-request\"\napprovals_reviewer = \"user\"\nsandbox_mode = \"workspace-write\"\nmodel_reasoning_effort = \"high\"\nweb_search = \"disabled\"\n[sandbox_workspace_write]\nnetwork_access = true\n[features]\napps = false\nplugins = false\nremote_plugin = false\nbrowser_use = false\ncomputer_use = false\nimage_generation = false\nmulti_agent = false\nhooks = false\nshell_snapshot = false\ndaemon_auto_start = false\nskip_host_skill_discovery = true\n"
+  },
+  "acceptance_eligible": false,
+  "reason": "Bootstrap failed before any model turn; NOT sandbox evidence",
+  "provenance": {
+    "source_head": "1776a223f977d40e10da45d1b59147f1a0ab54e6",
+    "raw_report_sha256": "9474818b294413a1baf84e0daf296983adc663c6ed66564b082345f0417ff3db",
+    "redactions": [
+      "owner, native, home and fixture path aliases",
+      "server name and installation ID",
+      "account telemetry omitted",
+      "network socket peers omitted"
+    ],
+    "model_turn_start_requests": 0,
+    "native_token_usage_notifications": 0
+  }
+}

@@ -4,6 +4,7 @@ Markdown owns WP state. This registry owns routing, reservations and delivery on
 All writes use the existing transaction journal; external observations happen first.
 """
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -90,26 +91,67 @@ def process_identity(pid):
         class BSDInfo(ctypes.Structure):
             _fields_ = [('prefix', ctypes.c_byte * 120), ('seconds', ctypes.c_uint64), ('microseconds', ctypes.c_uint64)]
         info = BSDInfo()
-        lib = ctypes.CDLL('/usr/lib/libproc.dylib')
+        lib = ctypes.CDLL('/usr/lib/libproc.dylib', use_errno=True)
         if lib.proc_pidinfo(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info)) != ctypes.sizeof(info):
-            raise AutonomyError(f'process {pid} is not observable; reconfirm after recovery')
+            code = ctypes.get_errno()
+            raise AutonomyError(f'process {pid} is not observable; reconfirm after recovery') from OSError(code, os.strerror(code))
         return {'host': socket.gethostname(), 'pid': pid, 'started': f'{info.seconds}.{info.microseconds:06d}'}
     if sys.platform.startswith('linux'):
         try:
             fields = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
             boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-            return {'host': socket.gethostname(), 'pid': pid, 'started': boot + ':' + fields[19]}
+            return {'host': socket.gethostname(), 'pid': pid, 'started': boot + ':' + fields[19],
+                    'pid_namespace': os.readlink('/proc/self/ns/pid')}
         except (OSError, IndexError) as error:
             raise AutonomyError(f'process {pid} is not observable; reconfirm after recovery') from error
     if os.name == 'nt':
         r = subprocess.run(['powershell', '-NoProfile', '-Command',
-                            f'(Get-CimInstance Win32_Process -Filter "ProcessId = {pid}").CreationDate.ToUniversalTime().ToString("o")'],
+                            '$ErrorActionPreference = "Stop"; '
+                            f'$p = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}"; '
+                            'if ($null -eq $p) { "ABSENT" } else { $p.CreationDate.ToUniversalTime().ToString("o") }'],
                            capture_output=True, text=True, timeout=10)
     else:
         raise AutonomyError('precise process identity is unsupported on this platform; autonomy is unavailable')
     if r.returncode or not r.stdout.strip():
         raise AutonomyError(f'process {pid} is not observable; reconfirm after recovery')
+    if r.stdout.strip() == 'ABSENT':
+        raise AutonomyError(f'process {pid} has exited') from ProcessLookupError(errno.ESRCH, 'process absent')
     return {'host': socket.gethostname(), 'pid': pid, 'started': r.stdout.strip()}
+
+
+def process_observation(proof):
+    """Only positively observed absence/replacement proves the confirmed writer exited.
+
+    ENOENT in a hidden PID namespace, EACCES and observation failures are unknown.
+    Old Linux confirmations lack the namespace proof and require owner reattachment.
+    """
+    try:
+        if not isinstance(proof, dict) or proof.get('host') != socket.gethostname():
+            raise AutonomyError('missing confirmation or different host')
+        if type(proof.get('pid')) is not int or proof['pid'] <= 0 or not isinstance(proof.get('started'), str):
+            raise AutonomyError('invalid process confirmation')
+        if sys.platform.startswith('linux'):
+            if proof.get('pid_namespace') != os.readlink('/proc/self/ns/pid'):
+                raise AutonomyError('PID namespace is unconfirmed or changed')
+            if proof['started'].split(':', 1)[0] != Path('/proc/sys/kernel/random/boot_id').read_text().strip():
+                raise AutonomyError('host boot changed; reconfirm after recovery')
+        try:
+            current = process_identity(proof['pid'])
+        except AutonomyError as error:
+            cause = error.__cause__
+            if not isinstance(cause, OSError) or cause.errno not in (errno.ENOENT, errno.ESRCH):
+                raise
+            if os.name != 'nt':
+                try:
+                    os.kill(proof['pid'], 0)
+                except ProcessLookupError:
+                    pass
+                else:
+                    raise AutonomyError('PID exists but identity is unavailable')
+            return {'state': 'exited'}
+        return {'state': 'live' if current == proof else 'exited'}
+    except (AutonomyError, OSError, KeyError, ValueError, subprocess.TimeoutExpired) as error:
+        return {'state': 'unavailable', 'reason': str(error)}
 
 
 def parent_pid(pid):
@@ -208,6 +250,7 @@ def compatible(ws, instance, thread, meta):
 
 
 def owner(data, thread, generation):
+    codex_transport.check_native_operation()
     current = data.get('coordinator') or {}
     if not thread or current.get('thread_id') != thread or current.get('generation') != generation or current.get('released'):
         raise AutonomyError('coordinator ownership/generation mismatch; claim or recover ownership first')
@@ -580,6 +623,16 @@ def reserve(ws, wp, thread, generation, plan=None):
 
 def task_message(ws, assignment, module):
     wp = assignment['wp']; path = ws.wp_path(ws.wp_rows()[wp]['wp']).resolve()
+    if not is_claude(ws) and codex_transport.private_mode():
+        return (f'[{ws.tag}] TASK {wp} assignment_id={assignment["id"]}\n'
+            f'Read the full package {path}. This is private owner mode. '
+            'Call pepper_orchestrator with operation=prepare and assignment=' + assignment['id'] + '. '
+            'Request the exact native filesystem permissions it returns; wait for the owner decision. '
+            'After a grant, run its finite command exactly once, then call operation=prepared with the same assignment. '
+            'Echo the returned STARTED acknowledgement before implementing. Never run the legacy shell transition. '
+            'Implement only this package in your current worktree; commit and return READY with full HEAD. '
+            'A repeated assignment is the same work. Never retry unknown setup, spawn another executor, '
+            'edit coordinator files, merge, deploy, change permissions or write to a database.')
     script = str(Path(__file__).with_name('orch.py'))
     if is_claude(ws):
         import session_settings
@@ -783,7 +836,8 @@ def transition(ws, aid, thread):
             if streams.has_remote(module.repo):
                 r = streams.git(directory, 'fetch', 'origin', module.repo.base)
                 if r.returncode:
-                    raise AutonomyError('cannot fetch current base; transition retained')
+                    detail = re.sub(r'(https?://)[^/@\s]+@', r'\1<redacted>@', r.stderr.strip())
+                    raise AutonomyError('cannot fetch current base; transition retained: ' + detail)
             base_ref = streams.base_ref(module.repo)
             resolved = streams.git(directory, 'rev-parse', '--verify', base_ref + '^{commit}')
             if resolved.returncode:
@@ -966,6 +1020,15 @@ def run_watcher(ws, token, stdout=False):
 
 def start_watcher(ws):
     path = watch_path(ws)
+    if not is_claude(ws) and codex_transport.private_mode():
+        # Private STDIO cannot be shared with a detached CLI. The explicit owner
+        # drives watch_tick in-process; no new endpoint or model poll is created.
+        with state_io.transaction(path.parent):
+            previous = read_watch(ws)
+            state = {**previous, 'mode': 'private-owner', 'stopped': False}
+            if state != previous:
+                write_watch(ws, state)
+        return {'watcher': 'private-owner', 'mode': 'in-process'}
     if is_claude(ws):
         # Claude: the coordinator itself runs the watcher under its Monitor tool,
         # so lines wake that same session. No detached process is created here.
@@ -1038,6 +1101,25 @@ def cmd_dispatch(args):
     return 0 if result['result'] in ('reuse_candidate', 'assigned', 'queued', 'started', 'send_required') else 2
 
 
+def consume(ws, signal, coordinator, generation, evidence=None):
+    """Consume once, then recompute; shared by CLI and private native tools."""
+    with state_io.transaction(ws.root):
+        _, data = registry(ws); owner(data, coordinator, generation)
+        with state_io.transaction(watch_path(ws).parent):
+            state = read_watch(ws)
+            pending = state.get('pending') or {}
+            if pending.get('id') != signal:
+                raise AutonomyError('signal is missing, consumed or belongs to an old coordinator')
+            if pending.get('generation') != generation and not evidence:
+                raise AutonomyError('old-coordinator signal requires explicit reconciliation evidence')
+            state.update(pending=None, last_consumed=signal)
+            if evidence:
+                state['signal_reconciliation'] = evidence
+            write_watch(ws, state)
+    fresh = runtime.api().Workspace(ws.root)
+    return public_plan(next_actions(fresh)) if data['autonomy']['enabled'] and not fresh.closed else {'enabled': False, 'actions': []}
+
+
 def cmd_autonomy(args):
     ws = runtime.workspace(args)
     action = args.action
@@ -1062,7 +1144,10 @@ def cmd_autonomy(args):
         if ws.config.get('client', 'claude') not in ('codex', 'claude') or (ws.config.get('sessions') or 'local') != 'local':
             raise AutonomyError('autonomy is available to local Codex or Claude Code programs only')
         live = observe_thread(ws, args.coordinator)
-        if not live.get('cwd') or Path(live['cwd']).resolve() not in (ws.root.resolve(), Path(ws.git_top).resolve()):
+        private_binding = codex_transport.private_coordinator(args.coordinator, live.get('cwd'), args.pid)
+        if codex_transport.private_mode() and not private_binding:
+            raise AutonomyError('coordinator does not match protected private-owner registration')
+        if not private_binding and (not live.get('cwd') or Path(live['cwd']).resolve() not in (ws.root.resolve(), Path(ws.git_top).resolve())):
             raise AutonomyError('coordinator thread must belong to this program workspace/checkout')
         if live.get('pid') and live['pid'] != args.pid:
             raise AutonomyError('PID does not belong to the live coordinator session')
@@ -1083,21 +1168,7 @@ def cmd_autonomy(args):
                       'lease_until': time.time() + 1800}
             data['coordinator'] = result; persist(ws, data)
     elif action == 'consume':
-        with state_io.transaction(ws.root):
-            _, data = registry(ws); owner(data, args.coordinator, args.generation)
-            with state_io.transaction(watch_path(ws).parent):
-                state = read_watch(ws)
-                pending = state.get('pending') or {}
-                if pending.get('id') != args.signal:
-                    raise AutonomyError('signal is missing, consumed or belongs to an old coordinator')
-                if pending.get('generation') != args.generation and not args.evidence:
-                    raise AutonomyError('old-coordinator signal requires explicit reconciliation evidence')
-                state.update(pending=None, last_consumed=args.signal)
-                if args.evidence:
-                    state['signal_reconciliation'] = args.evidence
-                write_watch(ws, state)
-        fresh = runtime.api().Workspace(ws.root)
-        result = public_plan(next_actions(fresh)) if data['autonomy']['enabled'] and not fresh.closed else {'enabled': False, 'actions': []}
+        result = consume(ws, args.signal, args.coordinator, args.generation, args.evidence)
     else:
         with state_io.transaction(ws.root):
             _, data = registry(ws)
@@ -1234,11 +1305,10 @@ def cmd_session(args):
             raise AutonomyError('cancel requires concrete evidence that the recipient writer was stopped')
         instance = before['instances'][assignment['session']]
         proof = instance.get('confirmation') or {}
-        try:
-            still_live = process_identity(proof['process']['pid']) == proof['process']
-        except AutonomyError:
-            still_live = False
-        if still_live:
+        observation = process_observation(proof.get('process'))
+        if observation['state'] == 'unavailable':
+            raise AutonomyError('recipient process observation unavailable; retain reservation: ' + observation['reason'])
+        if observation['state'] == 'live':
             raise AutonomyError('confirmed recipient process still exists; stop/reconcile it before cancellation')
         live = observe_thread(ws, instance['thread_id'])
         if live.get('status', {}).get('type') not in ('idle', 'notLoaded'):

@@ -1,0 +1,39 @@
+{
+  "verdict": "STRUCTURAL_ONLY",
+  "os": "Darwin",
+  "cli": "codex-cli 0.154.0",
+  "native_sha256": "4f85982624b3898c8991cb80c0981b2aa71070e3537046c9a95950318a95afcc",
+  "model_turns": 0,
+  "sandbox": "workspace-write",
+  "approval_policy": "on-request",
+  "transport": "stdio://",
+  "initialize_accepted": true,
+  "dynamic_tools_thread_start_accepted": true,
+  "returned_approval_policy": "on-request",
+  "returned_sandbox": {
+    "type": "workspaceWrite",
+    "writableRoots": [],
+    "networkAccess": false,
+    "excludeTmpdirEnvVar": false,
+    "excludeSlashTmp": false
+  },
+  "ephemeral_thread_created": true,
+  "client_dynamic_call_rejected": true,
+  "client_dynamic_call_error_code": -32600,
+  "client_dynamic_call_error_message": "Invalid request: unknown variant `item/tool/call` (remaining method list omitted)",
+  "limitations": [
+    "No model turn or sandbox escape probe was run.",
+    "Schema acceptance is not caller authentication proof.",
+    "Linux 0.165 and macOS live negative probes remain required."
+  ],
+  "schema_generation": "codex app-server generate-json-schema --experimental --out SCHEMA_DIR",
+  "resume_dynamic_tools_field_present": false,
+  "reproduction": [
+    "Use an empty disposable CODEX_HOME; no auth copy or turn/start is needed.",
+    "Spawn the recorded native CLI with app-server --listen stdio:// and stdin/stdout pipes.",
+    "initialize with clientInfo and capabilities.experimentalApi=true, then initialized.",
+    "thread/start with ephemeral=true, sandbox=workspace-write, approvalPolicy=on-request and a function dynamicTool pepper_context with empty-object inputSchema.",
+    "Send a client item/tool/call with forged threadId/turnId/callId, tool=pepper_context and arguments={}; record rejection.",
+    "Close stdin and wait for the process; delete the disposable CODEX_HOME."
+  ]
+}

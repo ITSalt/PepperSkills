@@ -1,0 +1,55 @@
+{
+  "label": "macos",
+  "exporter_sha256": "6dda3ea9dde1c839a661d4f2b217b682c9f493bf86c95dfcf1ed9e74ac25fbbe",
+  "sources": [
+    {
+      "source": "cli-final-archive-events.jsonl",
+      "raw_sha256": "fec5d60f7d7e5f3c50d9cc9f527ceb2eea8eb0e13d899503f689b8c459256ce5",
+      "records_original": 21,
+      "records_exported": 16,
+      "export": "cli-final-archive-events.json",
+      "export_sha256": "83ab67f0bb3394805c808edc30568535f62afac531c552182aa28abb462a692b"
+    },
+    {
+      "source": "cli-unarchive-events.jsonl",
+      "raw_sha256": "9d5ef3c318ff74ace25f3c45cd35db69367a3c2887d5146839c4083bba39115f",
+      "records_original": 21,
+      "records_exported": 16,
+      "export": "cli-unarchive-events.json",
+      "export_sha256": "97fcf1a0f061ceca03e2f296bdcda8c8eac172868c337420c9266491b06aeb7f"
+    },
+    {
+      "source": "events-b69c78be088841b48d15ea0889549e8a.jsonl",
+      "raw_sha256": "cb7ea43b868fbc31cdf8f217175268edacdc520528d484855513ab6b2f2d292c",
+      "records_original": 151,
+      "records_exported": 58,
+      "export": "events-b69c78be088841b48d15ea0889549e8a.json",
+      "export_sha256": "b3db591c30be682cb86121b02232f46a43b8d0cd0ff665245cc1c1d5a446d12b"
+    },
+    {
+      "source": "native-events-1.jsonl",
+      "raw_sha256": "31885ce8a8a9da3b83442d9cea8c65d3020ed500c352cef837c97bb013abac62",
+      "records_original": 3697,
+      "records_exported": 293,
+      "export": "native-events-1.json",
+      "export_sha256": "b350a449c89d1dc80cf1d29bd1708467d10dee911b4ea1d06bf06c2c4ba9c659"
+    },
+    {
+      "source": "native-events-2.jsonl",
+      "raw_sha256": "c5b5764514776dd91efb92db8e1cc22b7e46ac3393ccc25aae54a5ce8f8fc916",
+      "records_original": 3359,
+      "records_exported": 226,
+      "export": "native-events-2.json",
+      "export_sha256": "87f3c6a3694d4225ecd0b86995f363011e22975713157a6e1a1646ac69474b32"
+    },
+    {
+      "source": "events.jsonl",
+      "raw_sha256": "3995053e404e0e701051839169b2a9c54ac26f6034e956e99855776e2aebba22",
+      "records_original": 33,
+      "records_exported": 26,
+      "export": "project-config-events.json",
+      "export_sha256": "f124386d527c21d82d788f8a9e01391529ea619759325c1f5adc51d4a99e076e"
+    }
+  ],
+  "redactions": "Fixture, home, native, repository, host and boot identifiers aliased; reasoning, account and usage telemetry omitted. Event ordinals, native envelopes, commands, results and errno retained."
+}

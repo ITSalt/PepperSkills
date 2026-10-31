@@ -1,5 +1,12 @@
 # Changelog
 
+## pepper-orchestrator 0.14.0 — 2026-10-31, public preview
+
+- Explicit private-owner launch connects the portable scheduler to its own Codex App Server on Linux/macOS, with typed role-bound tools and fixed coordinator/module threads. Native Codex 0.165.0 is required for this opt-in mode.
+- Preserve workspace-write/on-request approvals. Modules perform finite Git preparation inside the sandbox after exact turn-scoped owner grants. Protected code/configuration, native command provenance and safe Git observations fence assignments.
+- Live Linux/macOS acceptance covers parallel dispatch, same-thread reuse after squash merge, compaction, pause, recovery across a pending wake-up and negative isolation probes; Claude Code Linux regression also passed.
+- Public packaging, hashes and the distinction from the live-tested archive are recorded in the [release report](docs/validation/pepper-orchestrator-0.14.0-release.md). See the [plugin changelog](plugins/pepper-orchestrator/CHANGELOG.md) for details.
+
 ## pepper-orchestrator 0.13.0 — 2026-10-30, public preview
 
 - Opt-in local autonomy for Codex CLI and Claude Code: the coordinator itself dispatches READY

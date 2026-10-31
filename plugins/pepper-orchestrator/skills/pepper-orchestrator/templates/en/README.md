@@ -23,3 +23,6 @@ Only the orchestrator session (`{{COORDINATOR}}`) writes here. Module sessions w
 code in their own repositories and report through PRs. Irreversible actions (merge,
 deploy, production, database writes, permissions) are done only by the owner, from
 ready one-line commands in the owner queue of `status.md`.
+
+
+If process observation is denied or a PID is hidden, retain assignments/outbox/slots/locks and request owner recovery. Do not infer exit, relax sandbox/approvals, expose raw App Server RPC or install an unverified MCP host bridge.
