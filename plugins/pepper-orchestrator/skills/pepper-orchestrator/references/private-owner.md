@@ -116,8 +116,10 @@ preserving native histories. No persistent service or detached watcher remains.
 To restart, use the same command with `--resume`: the launcher requires positive
 exit of the previous native identity, identical code/native/config, no unknown
 command lifetime, and persisted tools in the exact same thread IDs. It reattaches
-those threads, recovers the generation and rescans current state. It never
-replaces an executor or silently retries unknown deliveries. A lease timeout or
+those threads, recovers the generation and rescans current state. An old pending wake-up is retired only with a matching protected ownership
+history and positive previous-runtime exit; the watcher then rescans with a fresh
+signal. Assignment IDs, reservations and unknown delivery outbox remain intact.
+It never replaces an executor or silently retries unknown deliveries. A lease timeout or
 inaccessible process is insufficient. Code/config upgrades require explicit
 owner migration, not `--resume` over changed bytes.
 

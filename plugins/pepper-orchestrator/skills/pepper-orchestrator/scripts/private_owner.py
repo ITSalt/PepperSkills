@@ -60,6 +60,22 @@ TOOL = {'type': 'function', 'name': 'pepper_orchestrator',
         'required': ['operation'], 'additionalProperties': False}}
 
 
+def retire_recovered_signal(state, previous, current, observation):
+    """Retire only a stale wake-up, never an assignment or delivery outbox."""
+    pending = state.get('pending') or {}
+    if (not pending or pending.get('generation') == current.get('generation')
+            or previous.get('generation') != pending.get('generation')
+            or previous.get('thread_id') != pending.get('thread')
+            or current.get('thread_id') != pending.get('thread')
+            or observation.get('state') != 'exited'):
+        raise OwnerError('stale signal requires matching explicit recovery and positive old-runtime exit')
+    evidence = {'pending': pending, 'previous_process': previous['process'], 'observation': observation,
+        'generation': current['generation']}
+    return {**state, 'pending': None, 'fingerprint': None, 'next_due': 0,
+        'retired_signals': [*state.get('retired_signals', []), evidence][-64:],
+        'signal_reconciliation': 'Explicit owner recovery after positive previous runtime exit; fresh scan required.'}
+
+
 class PrivateOwner:
     @staticmethod
     def validate_recovery(directory, native, workspace):
@@ -284,6 +300,22 @@ class PrivateOwner:
             ws = self.workspace_now(); _, data = autonomy.registry(ws)
             autonomy.owner(data, self.coordinator, generation)
             self.api.check_configuration()
+            state = autonomy.read_watch(ws); pending = state.get('pending') or {}
+            if pending and pending.get('generation') != generation:
+                previous = next((row for row in reversed(data.get('ownership_history', []))
+                    if row.get('generation') == pending.get('generation') and row.get('thread_id') == pending.get('thread')), {})
+                observed = autonomy.process_observation(previous.get('process'))
+                # Observe outside short locks, then recheck owner/CAS. Retiring a
+                # notification lets the watcher rescan; it never resends a TASK.
+                with state_io.transaction(ws.root):
+                    _, fresh = autonomy.registry(ws); autonomy.owner(fresh, self.coordinator, generation)
+                    if fresh.get('coordinator') != data.get('coordinator') or previous not in fresh.get('ownership_history', []):
+                        raise OwnerError('ownership changed during signal recovery')
+                    with state_io.transaction(autonomy.watch_path(ws).parent):
+                        latest = autonomy.read_watch(ws)
+                        if latest.get('pending') != pending:
+                            raise OwnerError('pending signal changed during recovery; reconcile before proceeding')
+                        autonomy.write_watch(ws, retire_recovered_signal(latest, previous, fresh['coordinator'], observed))
         self.isolated_config = state_io.digest(self.api.home / 'config.toml')
         self.generation = generation; self.save_manifest()
 

@@ -393,9 +393,29 @@ def main():
                 # Intentionally lose the notification hint. The fresh scan after
                 # recovery must discover merged dependencies without user dispatch.
                 result['checks']['lost_notification'] = 'No notification/hint was sent for owner merges; watcher was paused and its process then stopped. Recovery uses a fresh state scan.'
+                held, unblock = threading.Event(), threading.Event()
+                retained_request = []; prior_handler = owner.handle
+                def hold_recovery_signal(request):
+                    if request.get('params', {}).get('arguments', {}).get('operation') == 'consume' and not held.is_set():
+                        retained_request.append(request); held.set()
+                        if not unblock.wait(90): raise RuntimeError('recovery signal barrier timed out')
+                    return prior_handler(request)
+                owner.handle = hold_recovery_signal; action('resume')
+                wake_deadline=time.monotonic()+120
+                while not held.is_set() and time.monotonic()<wake_deadline:
+                    owner.tick(); held.wait(.2)
+                if not held.is_set(): raise RuntimeError('no real pending signal at restart barrier')
+                action('pause')
+                pending_before=autonomy.read_watch(orch.Workspace(program))['pending']
+                if pending_before['id'] != retained_request[0]['params']['arguments']['signal']:
+                    raise RuntimeError('restart barrier did not retain the actual native signal')
+                assignment_ids_before=set(autonomy.registry(orch.Workspace(program))[1]['assignments'])
                 owner.save_manifest(); old_api = api; old_roles = dict(owner.roles)
                 old_processes = descendants()
-                owner.stop(); old_api.close(); all_events.extend(old_api.events)
+                owner.worker_stop.set()
+                try: old_api.close()
+                finally: unblock.set(); owner.stop()
+                all_events.extend(old_api.events)
                 result.setdefault('stops', []).append(check_stopped(old_processes))
                 saved = private_owner.PrivateOwner.validate_recovery(data, a.native, program)
                 new_owner(saved); owner.start()
@@ -413,6 +433,14 @@ def main():
                         autonomy.cmd_autonomy(argparse.Namespace(action='recover', workspace=str(program), coordinator=owner.coordinator,
                             pid=api.proc.pid, evidence='same protected native registration', previous_stopped='positive previous native exit and verified code/config'))
                     owner.bind_generation(json.loads(capture.getvalue())['generation'])
+                recovered_watch=autonomy.read_watch(orch.Workspace(program))
+                retired=recovered_watch.get('retired_signals', [])
+                if recovered_watch.get('pending') or not retired or retired[-1]['pending']['id'] != pending_before['id']:
+                    raise RuntimeError('old wake-up latch was not reconciled after positive exit')
+                if set(autonomy.registry(orch.Workspace(program))[1]['assignments']) != assignment_ids_before:
+                    raise RuntimeError('notification recovery changed assignment/outbox identity')
+                result['checks']['pending_signal_recovery']={'pending_before':pending_before,'retired':retired[-1],
+                    'assignment_ids_unchanged':True,'fresh_scan_required':recovered_watch['next_due']==0}
                 result['checks']['recovery'] = {'same_threads': set(old_roles) == set(owner.roles),
                     'previous_exited': old_api.proc.returncode is not None, 'generation': owner.generation,
                     'lost_notification': True}

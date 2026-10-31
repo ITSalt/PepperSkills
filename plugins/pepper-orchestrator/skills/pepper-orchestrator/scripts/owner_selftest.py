@@ -107,6 +107,27 @@ class OwnerArchiveTests(unittest.TestCase):
 
 
 class NativeAuthorizationTests(unittest.TestCase):
+    def test_recovery_retires_only_a_matching_stale_notification(self):
+        state={'pending':{'id':'signal','generation':1,'thread':'coordinator','state':'outcome_unknown'},
+            'fingerprint':'old','next_due':9999999999}
+        old={'generation':1,'thread_id':'coordinator','process':{'pid':123}}
+        current={'generation':2,'thread_id':'coordinator'}
+        result=private_owner.retire_recovered_signal(state,old,current,{'state':'exited'})
+        self.assertIsNone(result['pending']);self.assertEqual(result['next_due'],0)
+        self.assertEqual(result['retired_signals'][0]['pending'],state['pending'])
+        self.assertEqual(state['pending']['state'],'outcome_unknown')
+
+    def test_unavailable_live_or_wrong_owner_cannot_retire_notification(self):
+        state={'pending':{'id':'signal','generation':1,'thread':'coordinator'}}
+        old={'generation':1,'thread_id':'coordinator','process':{'pid':123}}
+        current={'generation':2,'thread_id':'coordinator'}
+        for observed in ({'state':'live'},{'state':'unavailable'}):
+            with self.assertRaises(private_owner.OwnerError):
+                private_owner.retire_recovered_signal(state,old,current,observed)
+        with self.assertRaises(private_owner.OwnerError):
+            private_owner.retire_recovered_signal(state,old,{**current,'thread_id':'other'},{'state':'exited'})
+        self.assertIsNotNone(state['pending'])
+
     def test_post_bootstrap_native_config_drift_blocks_before_workspace_operations(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); (root / 'orch.yaml').write_text('fixture')
