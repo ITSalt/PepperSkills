@@ -60,7 +60,10 @@ Remove `--preflight` to launch explicitly. The launcher copies only local
 `auth.json` into a private isolated Codex home with mode 0600 and removes that
 copy on exit; `--auth-home` can select its local source. Never transfer auth to
 another machine or include it in evidence. The owner's ordinary Codex config
-and sessions are not modified. One process holds the program identity lock.
+and sessions are not modified. Native bootstrap may add project trust records
+inside the isolated home; the exact resulting config hash is pinned before work
+and required on recovery. Subsequent config drift blocks operation. One process
+holds the program identity lock.
 Only one private server and one fixed executor per module are active.
 
 The effective profile is workspace-write/on-request, reviewer=user, network=true,

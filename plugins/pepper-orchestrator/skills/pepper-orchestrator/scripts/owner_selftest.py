@@ -66,11 +66,15 @@ class OwnerArchiveTests(unittest.TestCase):
             root = Path(temp); workspace = root / 'workspace'; workspace.mkdir()
             (workspace / 'orch.yaml').write_text('program: fixture\n')
             native = root / 'native'; native.write_bytes(b'fixture native')
+            home = root / 'codex-home'; home.mkdir()
+            config = home / 'config.toml'
+            config.write_text(owner_main.CONFIG + '\n[projects."/fixture"]\ntrust_level = "trusted"\n')
             log = root / 'events.jsonl'; log.write_text('')
             child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
             try:
                 saved = {'workspace': str(workspace.resolve()), 'process': autonomy.process_identity(child.pid),
                     'native_sha256': codex_transport.file_sha256(native),
+                    'codex_home': str(home), 'isolated_config_sha256': state_io.digest(config),
                     'code_sha256': {p.name: state_io.digest(p) for p in Path(private_owner.__file__).parent.glob('*.py')},
                     'config_sha256': state_io.digest(workspace / 'orch.yaml'), 'event_log': str(log)}
                 (root / 'roles.json').write_text(json.dumps(saved))
@@ -86,6 +90,10 @@ class OwnerArchiveTests(unittest.TestCase):
             event['message']['method'] = 'item/completed'; event['message']['params']['item'].update(status='completed', exitCode=0)
             log.write_text(json.dumps(event) + '\n')
             self.assertEqual(private_owner.PrivateOwner.validate_recovery(root, native, workspace)['process'], saved['process'])
+            config.write_text(config.read_text() + '# even an unrelated post-bootstrap change\n')
+            with self.assertRaisesRegex(private_owner.OwnerError, 'native configuration changed'):
+                private_owner.PrivateOwner.validate_recovery(root, native, workspace)
+            config.write_text(owner_main.CONFIG + '\n[projects."/fixture"]\ntrust_level = "trusted"\n')
             event['message']['params']['item'].update(status='failed', exitCode=1)
             log.write_text(json.dumps(event) + '\n')
             self.assertEqual(private_owner.PrivateOwner.validate_recovery(root, native, workspace)['process'], saved['process'])
@@ -99,6 +107,18 @@ class OwnerArchiveTests(unittest.TestCase):
 
 
 class NativeAuthorizationTests(unittest.TestCase):
+    def test_post_bootstrap_native_config_drift_blocks_before_workspace_operations(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); (root / 'orch.yaml').write_text('fixture')
+            config = root / 'config.toml'; config.write_text(owner_main.CONFIG)
+            owner = private_owner.PrivateOwner.__new__(private_owner.PrivateOwner)
+            owner.workspace = root; owner.config = state_io.digest(root / 'orch.yaml')
+            owner.api = SimpleNamespace(home=root, closed=False, failure=None)
+            owner.isolated_config = state_io.digest(config)
+            config.write_text(owner_main.CONFIG + '# unconfirmed drift\n')
+            with self.assertRaisesRegex(private_owner.OwnerError, 'native config drift'):
+                owner.workspace_now()
+
     def fixture(self, role='module'):
         owner = private_owner.PrivateOwner.__new__(private_owner.PrivateOwner)
         owner.api = SimpleNamespace(epoch='epoch', active={'module': 'turn'}, items={('module', 'turn', 'call')})

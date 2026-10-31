@@ -20,7 +20,9 @@ linked worktree; действуют обычные проверки accepted hea
 Первый owner-data должен быть пустым и отдельным от actor/workspace/installation.
 `--preflight` проверяет архив и пути без модели; уберите флаг для явного запуска.
 Локальная копия auth имеет режим 0600 и удаляется при выходе. Не переносите её между
-машинами. Пользовательские config и сессии не меняются.
+машинами. Пользовательские config и сессии не меняются. Native bootstrap может добавить
+trust-записи проектов внутри изолированного home; точный hash итогового config
+закрепляется до работы и проверяется при recovery. Последующий drift блокируется.
 
 Профиль: workspace-write/on-request, reviewer=user, network=true, один runtime root
 на actor, без дополнительных базовых writable roots, MCP и remote ingress. В этом

@@ -79,6 +79,8 @@ class PrivateOwner:
             raise OwnerError('installed runtime changed; explicit owner migration required')
         if state_io.digest(Path(workspace) / 'orch.yaml') != saved.get('config_sha256'):
             raise OwnerError('program configuration changed during recovery')
+        if state_io.digest(Path(saved['codex_home']) / 'config.toml') != saved.get('isolated_config_sha256'):
+            raise OwnerError('isolated native configuration changed during recovery')
         # Native command launch rights can survive a turn. Unknown terminals are
         # never assumed dead just because their parent App Server stopped.
         log = Path(saved['event_log'])
@@ -100,6 +102,7 @@ class PrivateOwner:
         self.directory = Path(directory).resolve(strict=True)
         self.workspace = Path(workspace).resolve(strict=True)
         self.config = state_io.digest(self.workspace / 'orch.yaml')
+        self.isolated_config = None  # Pin after native bootstrap adds its project trust records.
         self.code = Path(__file__).resolve().parent
         outside_repository(self.code)
         self.roles = {}
@@ -139,6 +142,8 @@ class PrivateOwner:
             raise OwnerError('owner runtime unavailable; retain assignments and recover explicitly')
         if state_io.digest(self.workspace / 'orch.yaml') != self.config:
             raise OwnerError('program config drift; explicit owner reconfirmation required')
+        if self.isolated_config and state_io.digest(self.api.home / 'config.toml') != self.isolated_config:
+            raise OwnerError('isolated native config drift; stop and recover explicitly')
         if any(state_io.digest(p) != sha for p, sha in self.code_hashes.items()):
             raise OwnerError('installed owner code drift; stop and recover explicitly')
         # The protected program tree must never redirect host reads/writes elsewhere.
@@ -224,6 +229,8 @@ class PrivateOwner:
             'process': autonomy.process_identity(self.api.proc.pid), 'workspace': str(self.workspace),
             'code_sha256': {Path(p).name: sha for p, sha in self.code_hashes.items()},
             'config_sha256': self.config, 'native': self.api.native,
+            'codex_home': str(self.api.home),
+            'isolated_config_sha256': self.isolated_config or state_io.digest(self.api.home / 'config.toml'),
             'native_sha256': self.api.native_sha256,
             'event_log': str(Path(self.api.log.name).resolve()),
             'roles': self.roles, 'generation': self.generation}, indent=2).encode(), 0o600)
@@ -269,6 +276,8 @@ class PrivateOwner:
         with self.core():
             ws = self.workspace_now(); _, data = autonomy.registry(ws)
             autonomy.owner(data, self.coordinator, generation)
+            self.api.check_configuration()
+        self.isolated_config = state_io.digest(self.api.home / 'config.toml')
         self.generation = generation; self.save_manifest()
 
     def authorize(self, request):

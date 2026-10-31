@@ -217,7 +217,7 @@ def main():
         home = directory / 'codex-home'; home.mkdir(exist_ok=a.resume)
         config = home / 'config.toml'
         if a.resume:
-            if config.read_text(encoding='utf-8') != CONFIG:
+            if saved['codex_home'] != str(home) or state_io.digest(config) != saved.get('isolated_config_sha256'):
                 raise RuntimeError('isolated owner configuration drift')
         else:
             config.write_text(CONFIG, encoding='utf-8')
