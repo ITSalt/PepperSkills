@@ -38,11 +38,36 @@ def python_command():
     return [sys.executable] if os.name == 'nt' else ['python3']
 
 
+def current_permissions():
+    """Read this coordinator's effective turn policy, including command-line YOLO."""
+    thread = os.environ.get('CODEX_THREAD_ID')
+    if not thread or not re.fullmatch(r'[a-f0-9-]{36}', thread):
+        return {}
+    home = Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))
+    matches = list((home / 'sessions').glob('**/*' + thread + '*.jsonl'))
+    if len(matches) != 1:
+        return {}
+    context = {}
+    with matches[0].open(encoding='utf-8') as history:
+        for line in history:
+            try:
+                item = json.loads(line)
+            except ValueError:
+                continue  # A concurrently appended final line may be incomplete.
+            if item.get('type') == 'turn_context':
+                context = item.get('payload', {})
+    sandbox = (context.get('sandbox_policy') or {}).get('type')
+    policy = context.get('approval_policy')
+    if sandbox in ('read-only', 'workspace-write', 'danger-full-access') and policy in ('never', 'on-request', 'untrusted', 'on-failure'):
+        return {'approval_policy': policy, 'sandbox_mode': sandbox}
+    return {}
+
+
 def descriptor(ws, name, module=None):
     config = ws.config.get('codex') or {}
     policy, sandbox = config.get('approval_policy', 'on-request'), config.get('sandbox_mode', 'workspace-write')
-    if policy not in ('on-request', 'never') or sandbox not in ('read-only', 'workspace-write'):
-        raise streams.StreamError('codex settings: use on-request|never and read-only|workspace-write')
+    if policy not in ('on-request', 'never', 'untrusted', 'on-failure') or sandbox not in ('read-only', 'workspace-write', 'danger-full-access'):
+        raise streams.StreamError('codex settings: unsupported approval policy or sandbox mode')
     flags = ['--sandbox', sandbox, '--ask-for-approval', policy,
              '--add-dir', str(state_io.runtime_dir()), '-c', 'features.multi_agent=true']
     for server in sorted(session_settings._prod_servers(ws.config)):

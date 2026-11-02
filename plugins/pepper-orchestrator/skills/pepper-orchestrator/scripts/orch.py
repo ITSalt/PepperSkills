@@ -571,12 +571,16 @@ def cmd_init(args):
             if args.client == 'codex' and rel == 'orchestration/bootstrap-prompt.md':
                 text = ('# Codex coordinator bootstrap\n\nRead README.md, PLAN.md, orch.yaml, status.md, '
                         'decisions.md and protocol.md. Use the Codex adapter. Coordinate independent '
-                        'owner-launched module sessions; delegate only research/review/verification. '
+                        'module sessions with the saved automatic/manual continuation choice. '
                         'Run orch.py settings all and use its generated Codex start command.\n')
             safe_edit.create(root / rel, text)
         config_text = render_config(base, modules, repos, areas, in_repo, args.sessions, args.cloud_environment)
         if args.client == 'codex':
-            config_text = 'client: codex\ncodex:\n  approval_policy: on-request\n  sandbox_mode: workspace-write\n' + config_text
+            permissions = codex_adapter.current_permissions()
+            policy = args.approval_policy or permissions.get('approval_policy', 'on-request')
+            sandbox = args.sandbox_mode or permissions.get('sandbox_mode', 'workspace-write')
+            config_text = (f'client: codex\ncodex:\n  approval_policy: {policy}\n  sandbox_mode: {sandbox}\n'
+                           f"continuation: {args.continuation or 'undecided'}\n" + config_text)
             config_text = re.sub(r'(?m)^permission_mode: .*\n', '', config_text)
             config_text = config_text.replace('branch_prefix: ' + program + '/', 'branch_prefix: codex/')
         if args.sessions == 'local':
@@ -598,14 +602,20 @@ def cmd_init(args):
         if args.client == 'claude':
             ws.journal(f'permission mode: {args.permission_mode}, confirmed by the owner', evidence='orch.py init')
         else:
-            ws.journal('client Codex; local launch policy defaults in orch.yaml', evidence='orch.py init --client codex')
+            ws.journal('client Codex; effective launch policy recorded in orch.yaml', evidence='orch.py init --client codex')
         print(f'workspace: {root}')
         for line in write_settings(ws, 'all'):
             print(line)
-        for proposal in worktreeinclude_proposals(ws):
+        for proposal in (worktreeinclude_proposals(ws) if args.client == 'claude' else []):
             cmd_owner(argparse.Namespace(workspace=str(ws.root), action='add', target='P', text=proposal,
                                          where='orch.py init', quiet=True))
             print(f'owner question: {proposal}')
+    if args.client == 'codex':
+        choice = ws.config.get('continuation', 'undecided')
+        print(f'continuation: {choice}; running: false')
+        if choice == 'undecided':
+            print('Ask the owner whether to continue automatically after plan approval or wait for a launch command.')
+        print(f'Next in this chat: plan the program at {root}; then approve its plan and start ready packages.')
     if not running_in_cloud():
         print(orchestrator_start(ws))
     if in_repo and in_repo['override']:
@@ -4674,6 +4684,9 @@ def build_parser():
     p.add_argument('--sessions', choices=('local', 'cloud'),
                    help='required, the owner\'s explicit choice: module sessions run locally (recommended) or in the cloud')
     p.add_argument('--client', choices=('claude', 'codex'), default='claude')
+    p.add_argument('--continuation', choices=('auto', 'manual'), help='owner choice after plan approval')
+    p.add_argument('--approval-policy', choices=('on-request', 'never', 'untrusted', 'on-failure'))
+    p.add_argument('--sandbox-mode', choices=('read-only', 'workspace-write', 'danger-full-access'))
     p.add_argument('--cloud-environment', '--cloud-env', dest='cloud_environment', metavar='NAME',
                    help='name of the owner\'s cloud environment, required with --sessions cloud (no variable values)')
     p.add_argument('--shell', choices=session_settings.SHELLS,

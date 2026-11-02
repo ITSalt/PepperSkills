@@ -1,3 +1,5 @@
+For ordinary local Codex, [local continuation](../local-continuation.md) governs automatic launches, research work and responses. After an execution request, continue available work in the same turn. A plan-only request ends with the exact approval/start prompt.
+
 # Mode: plan
 
 Turn a request into facts, a plan, work packages and owner questions. Argument: the task in

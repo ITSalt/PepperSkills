@@ -655,7 +655,8 @@ def wp_meta(path, module):
         value = (ticks(field(key)) or [(field(key) or '').strip()])[0]
         return value if value and value not in ('—', '-', 'none', 'нет') else None
 
-    return {'paths': paths, 'shared': ticks(field('shared')), 'resources': ticks(field('resources')),
+    return {'execution': (header.get('Execution') or header.get('Исполнение') or 'code').strip('` ').lower(),
+            'paths': paths, 'shared': ticks(field('shared')), 'resources': ticks(field('resources')),
             'depends': depends, 'branch': branch, 'model': plain('model'), 'effort': plain('effort')}
 
 
