@@ -1,11 +1,15 @@
-# Codex CLI adapter and common runtime (0.14.0 preview)
+Read [local continuation](local-continuation.md) first for ordinary local Codex.
+It governs init choices, permission inheritance, automatic executor creation,
+research lifecycle and actionable responses. Private owner is an explicit alternative.
+
+# Codex CLI adapter and common runtime (0.15.0 preview)
 
 For explicit private-STDIO owner launch on Linux/macOS, follow
 [private owner setup and recovery](private-owner.md) ([Русский](private-owner.ru.md)).
 Use its typed tools rather than detached shell commands for active owner operations.
 Linux/macOS private-owner live acceptance passed with native Codex 0.165.0; measured profiles, artifact hashes and limits are recorded in the repository validation reports.
 
-The owner launches independent module sessions. One coordinator writes `status.md`
+In automatic mode the coordinator starts independent module sessions. In manual mode it gives the owner the launch command. One coordinator writes `status.md`
 and decisions; module sessions implement WPs in their own Git worktrees. Preserve
 the common methodology: evidence before verdicts, owner authority, no module code
 edits by the coordinator, no merge/production/database/permission operations by
@@ -25,7 +29,7 @@ See [portable plugin component discovery](https://developers.openai.com/plugins/
 
 Follow [local autonomy](autonomy.md) (Codex transport) for ownership, discovery/attachment,
 reuse, automatic dispatch, observation, start acknowledgements and recovery.
-Existing programs remain opt-out until the owner enables autonomy. When enabled,
+Existing programs without a saved continuation choice ask on first resume. When enabled,
 resume and lifecycle events run `next --json`; dispatch eligible packages yourself.
 For a new terminal, reserve through `dispatch --owner-launch` and give the owner
 the generated launch command. Do not ask the owner to invoke /dispatch.

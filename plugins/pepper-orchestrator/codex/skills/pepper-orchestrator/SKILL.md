@@ -1,8 +1,8 @@
 ---
 name: pepper-orchestrator
-description: Coordinate owner-launched Codex CLI module sessions, work packages, independent review and verification, and the owner queue across repositories or Git worktrees. Keep state in files; preserve Claude programs and project instructions.
+description: Coordinate local Codex module sessions with explicit automatic or manual continuation, work packages, independent review and verification, and the owner queue across repositories or Git worktrees. Keep state in files; preserve Claude programs and project instructions.
 metadata:
-  version: 0.14.0
+  version: 0.15.0
 ---
 
 # Pepper Orchestrator for Codex CLI
@@ -16,6 +16,9 @@ the coordinator may deliver only through the shared CLI under explicit D-n deleg
 Use the bundled common CLI at `../../../skills/pepper-orchestrator/scripts/orch.py`.
 In an installed archive the build supplies the same scripts, templates and
 references inside this skill directory; no separate editable core exists.
+
+Research packages, partial acceptance, stalled work and the control tick follow the shared
+[research contract](../../../skills/pepper-orchestrator/references/research.md): every wakeup ends in a decision.
 
 Modes: `init`, `plan`, `dispatch`, `review`, `verify`, `resume`, `owner`, `decide`,
 `close`, `reopen`, `report`, `deliver`, `release`. Select the mode from the user's intent or arguments.

@@ -19,6 +19,8 @@ import uuid
 import claude_adapter
 import codex_adapter
 import codex_transport
+import research
+import stall
 import runtime_commands as runtime
 import state_io
 import streams
@@ -26,6 +28,9 @@ import streams
 
 class AutonomyError(streams.StreamError):
     pass
+
+
+OWNER_REPEAT = 6  # Owner-only waits are re-raised every sixth interval (one hour by default).
 
 
 def digest(value):
@@ -44,10 +49,12 @@ def registry(ws):
     data.setdefault('outbox', {})
     data.setdefault('instances', {})
     data.setdefault('assignments', {})
+    data.setdefault('launches', {})
     data.setdefault('revision', 0)
     data.setdefault('generation', 0)
     data.setdefault('autonomy', {'enabled': False, 'session_reuse': 'auto',
                                  'interval_seconds': 600, 'max_parallel_sessions': 2})
+    data['autonomy'].setdefault('stall_minutes', 45)
     for wp, old in data['sessions'].items():
         key = old['client'] + ':' + old['thread_id']
         if key not in data['instances']:
@@ -392,7 +399,10 @@ def candidates(ws, module, meta, data, observed):
 
 
 def active_slots(ws, data, observed):
-    active = {wp for wp, row in ws.wp_rows().items() if row['status'] in streams.ACTIVE}
+    cycles = data.get('research', {})
+    active = {wp for wp, row in ws.wp_rows().items() if row['status'] in streams.ACTIVE
+              and cycles.get(wp, {}).get('phase') not in ('partial', 'blocked', 'accepted')}
+    active.update(wp for wp, cycle in cycles.items() if cycle['phase'] == 'collecting')
     for assignment in data['assignments'].values():
         if assignment['state'] in ('completed', 'cancelled'):
             continue
@@ -444,7 +454,7 @@ def dependency_cycles(ws):
     return [list(c) for c in sorted(cycles)]
 
 
-def next_actions(ws, observed=None):
+def next_actions(ws, observed=None, now=None):
     _, data = registry(ws)
     version = runtime.state_version(ws)
     observed = observations(ws, data) if observed is None else observed
@@ -453,6 +463,39 @@ def next_actions(ws, observed=None):
     capacity = max(0, settings['max_parallel_sessions'] - active_slots(ws, data, observed))
     for wp, row in sorted(ws.wp_rows().items()):
         status = row['status']
+        _, _, meta = runtime.api().wp_context(ws, wp)
+        launch = data['launches'].get(wp)
+        is_research = meta.get('execution') == 'research'
+        record = data.get('research', {}).get(wp)
+        if launch and status in ('READY', 'DISPATCHING', 'IN_PROGRESS', 'REVISE'):
+            if launch.get('state') != 'started':
+                actions.append({'kind': 'owner', 'wp': wp, 'reason': 'launch outcome requires reconciliation',
+                                'launch': launch})
+            else:
+                fact = observed['sessions'].get('codex:' + launch['thread_id'], {})
+                turns = fact.get('thread', {}).get('turns', [])
+                completed = next((t for t in turns if t.get('id') == launch.get('turn_id')), {})
+                if completed.get('status') in ('completed', 'failed', 'interrupted'):
+                    actions.append({'kind': 'review_research' if is_research else 'review_result', 'wp': wp,
+                                    'thread_id': launch['thread_id'], 'turn_id': launch['turn_id']})
+            continue
+        if is_research:
+            if status in ('READY', 'IN_PROGRESS', 'REVISE') and settings['enabled'] and not ws.closed:
+                missing = [d for d in meta['depends'] if ws.wp_rows().get(d, {}).get('status') not in ('DONE', 'ACCEPTED')]
+                if missing or (status == 'READY' and capacity <= 0):
+                    waiting.append({'wp': wp, 'reasons': ['research dependencies or parallel limit', *missing]})
+                else:
+                    kind = research.action(record)
+                    if kind:
+                        actions.append({'kind': kind, 'wp': wp, 'research': record,
+                                        'report': str(ws.root / 'reports' / (wp + '.md'))})
+                        if status == 'READY':
+                            capacity -= 1
+                    else:
+                        waiting.append({'wp': wp, 'reasons': ['research ' + record['phase']]})
+            elif status in ('REVIEW', 'ACCEPTED'):
+                actions.append({'kind': 'review_research' if status == 'REVIEW' else 'finalize_research', 'wp': wp})
+            continue
         if status == 'READY':
             problems, _, _, _, module = runtime.api().dispatch_problems(ws, wp)
             _, _, meta = runtime.api().wp_context(ws, wp)
@@ -474,9 +517,10 @@ def next_actions(ws, observed=None):
                 waiting.append({'wp': wp, 'reasons': problems, 'sessions': rejected})
                 continue
             if not available or settings['session_reuse'] != 'auto':
-                actions.append({'kind': 'owner', 'wp': wp, 'reason': 'new terminal required' if not available else 'session_reuse=' + settings['session_reuse'],
+                actions.append({'kind': 'launch' if not is_claude(ws) and ws.config.get('continuation') == 'auto' and (not available or settings['session_reuse'] == 'never') else 'owner', 'wp': wp, 'reason': 'new terminal required' if not available else 'session_reuse=' + settings['session_reuse'],
                                 'launch': adapter(ws).launch(ws, module, wp, meta), 'sessions': rejected,
                                 'candidate': available[0] if available else None})
+                selected.append(wp); capacity -= 1
                 continue
             key = available[0]
             actions.append({'kind': 'dispatch', 'wp': wp, 'session': key})
@@ -501,6 +545,8 @@ def next_actions(ws, observed=None):
                 and ws.wp_rows().get(instance.get('wp'), {}).get('status') in ('DISPATCHING', 'IN_PROGRESS')):
             actions.append({'kind': 'reconcile', 'wp': assignment.get('wp') or instance.get('wp'), 'session': key,
                             'assignment_id': assignment.get('id'), 'state': assignment.get('state')})
+    if settings['enabled'] and not ws.closed:
+        actions.extend(stall.scan(ws, data, observed, time.time() if now is None else now, runtime.api().wp_context))
     if ws.has_table(ws.status, 'owner'):
         for item in ws.table(ws.status, 'owner')[2]:
             if item['closed'] in ('', '—', '-'):
@@ -516,7 +562,7 @@ def next_actions(ws, observed=None):
     external = {'prs': observed['prs'], 'sessions': {k: {'error': f.get('error'), 'git': f.get('git'),
                 'thread': {n: f.get('thread', {}).get(n) for n in ('id', 'createdAt', 'model', 'reasoningEffort', 'status', 'turns')}}
                 for k, f in observed['sessions'].items()}}
-    return {'actions': actions, 'waiting': waiting, 'fingerprint': digest([version, external, actions, waiting]),
+    return {'actions': actions, 'waiting': waiting, 'fingerprint': digest([external, actions, waiting]),
             'situation': 'paused' if not settings['enabled'] or ws.closed else 'deadlock' if cycles else
                          'observation_error' if any(w.get('kind') == 'observation_error' for w in waiting) else
                          'actionable' if actions else 'waiting' if waiting else 'quiet',
@@ -895,7 +941,7 @@ def watch_tick(ws, state, clock=None):
     if current.get('released') or not current.get('thread_id'):
         raise AutonomyError('no active coordinator; resume after ownership recovery')
     owner(data, current['thread_id'], current['generation'])
-    plan = next_actions(ws)
+    plan = next_actions(ws, now=now)
     signal = state.get('pending')
     if signal:
         # The coordinator consumes the signal explicitly; neither timeout nor an
@@ -903,6 +949,10 @@ def watch_tick(ws, state, clock=None):
         state['coalesced'] = plan['fingerprint']
         return state, None
     actionable = bool(plan['actions']) or any(w.get('kind') == 'observation_error' for w in plan['waiting'])
+    # Proactive control: a changed fact signals at once; an unchanged, still unhandled
+    # action is raised again after the recheck interval. Own commits do not change the
+    # fingerprint. Items waiting only on the owner are repeated less often.
+    repeat = plan['next_check_seconds'] * (OWNER_REPEAT if all(a['kind'] == 'owner' for a in plan['actions']) else 1)
     if not actionable or (state.get('fingerprint') == plan['fingerprint'] and now < state.get('next_due', 0)):
         return state, None
     live = observe_thread(ws, current['thread_id'])
@@ -918,12 +968,14 @@ def watch_tick(ws, state, clock=None):
         *codex_adapter.python_command(), str(Path(__file__).with_name('orch.py')),
         '--workspace', str(ws.root), 'autonomy', 'consume', '--signal', sid,
         '--coordinator', current['thread_id'], '--generation', str(current['generation'])], ws.config.get('shell'))
-    return {**state, 'fingerprint': plan['fingerprint'], 'next_due': now + plan['next_check_seconds'],
+    return {**state, 'fingerprint': plan['fingerprint'], 'next_due': now + repeat,
             'pending': {'id': sid, 'state': 'sending', 'generation': current['generation'],
                         'thread': current['thread_id']}}, (
                 f'[{ws.tag}] AUTONOMY signal_id={sid}. Inspect current state, not this stale notification. '
                 f'Run: {consume}\n'
-                'If enabled, follow next actions and dispatch compatible READY packages yourself. '
+                'Control tick: check each active package against its criteria and round budget, handle stalled work, '
+                'then decide: accept, accept partially, scoped revise, or launch compatible READY packages yourself. '
+                'A tick never opens a research wave beyond the recorded budget. '
                 'Reconcile unknown assignments first. Preserve all delivery gates and owner decisions.')
 
 
@@ -1086,8 +1138,10 @@ def cmd_next(args):
 def cmd_dispatch(args):
     ws = runtime.workspace(args)
     plan = next_actions(ws)
-    chosen = next((a for a in plan['actions'] if a.get('wp') == args.wp and a['kind'] in ('dispatch', 'owner')), None)
-    if args.dry_run:
+    chosen = next((a for a in plan['actions'] if a.get('wp') == args.wp and a['kind'] in ('dispatch', 'owner', 'launch')), None)
+    if chosen and chosen['kind'] == 'launch' and not args.dry_run:
+        result = launch_local(ws, args.wp, args.coordinator, args.generation)
+    elif args.dry_run:
         result = {'result': 'reuse_candidate' if chosen and chosen['kind'] == 'dispatch' else 'needs_new_session' if chosen else 'blocked',
                   'wp': args.wp, 'candidate': chosen, 'plan': public_plan(plan)}
     elif not chosen or chosen['kind'] != 'dispatch':
@@ -1120,14 +1174,154 @@ def consume(ws, signal, coordinator, generation, evidence=None):
     return public_plan(next_actions(fresh)) if data['autonomy']['enabled'] and not fresh.closed else {'enabled': False, 'actions': []}
 
 
+def reconcile_launch(ws, wp, coordinator, generation, evidence):
+    _, data = registry(ws)
+    owner(data, coordinator, generation)
+    launch = data['launches'].get(wp)
+    if not launch or not evidence:
+        raise AutonomyError('reconcile-launch requires a recorded --wp and --evidence')
+    tid = launch.get('thread_id')
+    if not tid:
+        return {'result': 'owner_required', 'launch': launch,
+                'next': 'Inspect the owning runtime thread list and the launch process. Keep this reservation until the creation outcome is established.'}
+    live = observe_thread(ws, tid, history=True)
+    turns = live.get('turns', [])
+    matching = [t for t in turns if t.get('id') == launch.get('turn_id') or
+                launch['request_id'] in json.dumps(t, ensure_ascii=False)]
+    if len(matching) != 1:
+        return {'result': 'owner_required', 'launch': launch,
+                'next': 'Read this thread and identify the assignment turn. No replacement has been started.'}
+    with state_io.transaction(ws.root):
+        _, current = registry(ws); owner(current, coordinator, generation)
+        if current['launches'].get(wp) != launch:
+            raise AutonomyError('launch changed during observation; inspect again')
+        current['launches'][wp].update(state='started', turn_id=matching[0]['id'],
+                                      generation=generation, coordinator=coordinator, recovery_evidence=evidence)
+        persist(ws, current)
+    return {'result': 'reconciled', 'wp': wp, 'thread_id': tid, 'turn_id': matching[0]['id'],
+            'next': 'Run next --json and inspect the actual result before acceptance.'}
+
+
+def launch_local(ws, wp, coordinator, generation):
+    """Reserve before external side effects. An uncertain launch is never retried."""
+    if is_claude(ws) or codex_transport.private_mode() or ws.config.get('continuation') != 'auto':
+        raise AutonomyError('automatic local launch requires Codex continuation: auto')
+    plan = next_actions(ws)
+    action = next((a for a in plan['actions'] if a.get('wp') == wp and a['kind'] in ('launch', 'continue_research')), None)
+    if not action:
+        raise AutonomyError('launch blocked; inspect next --json and reconcile existing launches')
+    row, module, meta = runtime.api().wp_context(ws, wp)
+    research = meta.get('execution') == 'research'
+    config = ws.config.get('codex') or {}
+    if not config.get('sandbox_mode') or not config.get('approval_policy'):
+        raise AutonomyError('record effective coordinator sandbox_mode and approval_policy in orch.yaml, then run settings all')
+    runtime.check_capabilities(ws)
+    codex_adapter.descriptor(ws, module.id, module)  # Validate explicit permissions before reserving.
+    request = str(uuid.uuid4())
+    with state_io.transaction(ws.root):
+        fresh = runtime.api().Workspace(ws.root)
+        _, data = registry(fresh)
+        require_enabled(fresh, data); owner(data, coordinator, generation)
+        if wp in data['launches'] or runtime.state_version(fresh) != plan['state_version'] or data['revision'] != plan['registry_revision']:
+            raise AutonomyError('state changed or launch already exists; inspect next --json')
+        if not research:
+            problems, wanted, _, _, _ = runtime.api().dispatch_problems(fresh, wp)
+            if problems:
+                raise AutonomyError('; '.join(problems))
+            for lock in wanted:
+                if runtime.api().acquire(fresh, module.repo, lock, wp, 'automatic local launch'):
+                    raise AutonomyError('lock changed during launch')
+        if research:
+            record = data.get('research', {}).get(wp)
+            tasks = [{'id': request + ':' + criterion, 'criterion': criterion,
+                      'missing_fact': record['contract']['criteria'][criterion]['evidence_standard'],
+                      'decision': record['contract']['decision']} for criterion in record['open']]
+            import research as research_cycle
+            data['research'][wp] = research_cycle.update(fresh, record, 'start', {'id': request, 'tasks': tasks})
+        data['launches'][wp] = {'request_id': request, 'state': 'preparing', 'wp': wp,
+                                'generation': generation, 'coordinator': coordinator}
+        persist(fresh, data)
+        runtime.api().cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status',
+                                                text='DISPATCHING', quiet=True, evidence='launch ' + request))
+    # Preparation failure remains visible and reserved for explicit reconciliation.
+    directory = module.repo.local if research else Path(codex_adapter.prepare(ws, wp))
+    prompt = (f'Read {ws.wp_path(row["wp"])} and both project instruction files. '
+              f'Assignment {request}. ')
+    if research:
+        prompt += ('Perform the research package, resume from its saved reports, and return evidence and acceptance results. '
+                   'Preserve source scope and honor explicitly authorized testbed operations. The coordinator saves the report and accepts it.')
+    else:
+        prompt += ('Implement this work package in the current worktree. Return READY with PR URL, exact head and test evidence. '
+                   'The coordinator handles review and delivery.')
+    prompt += ' Do not edit the program workspace.'
+    with state_io.transaction(ws.root):
+        fresh = runtime.api().Workspace(ws.root)
+        _, data = registry(fresh)
+        require_enabled(fresh, data); owner(data, coordinator, generation)
+    with codex_transport.server(shared=True, remote=endpoint(ws)) as api:
+        flags = codex_adapter.descriptor(ws, module.id, module)['argv']
+        native_config = {flags[i + 1].split('=', 1)[0]: json.loads(flags[i + 1].split('=', 1)[1])
+                         for i, flag in enumerate(flags) if flag == '-c'}
+        result = api.call('thread/start', {'cwd': str(directory), 'config': native_config, 'sandbox': config['sandbox_mode'],
+                          'approvalPolicy': config['approval_policy'],
+                          **({'model': meta['model']} if meta.get('model') else {})})
+        tid = result['thread']['id']
+        key = 'codex:' + tid
+        with state_io.transaction(ws.root):
+            fresh = runtime.api().Workspace(ws.root)
+            _, data = registry(fresh); owner(data, coordinator, generation)
+            data['launches'][wp].update(state='sending', thread_id=tid, worktree=str(directory))
+            data['instances'][key] = {'key': key, 'client': 'codex', 'thread_id': tid, 'wp': wp,
+                                     'module': module.id, 'worktree': str(directory), 'branch': meta['branch'],
+                                     'state': 'running', 'history': [wp], 'assignment_id': None}
+            data['sessions'][wp] = {**data['instances'][key], 'program': ws.config['program']}
+            persist(ws, data)
+            require_enabled(fresh, data)
+        turn = api.call('turn/start', {'threadId': tid, 'input': [{'type': 'text', 'text': prompt}],
+                        **({'effort': meta['effort']} if meta.get('effort') else {})})['turn']
+        with state_io.transaction(ws.root):
+            _, data = registry(ws); owner(data, coordinator, generation)
+            data['launches'][wp].update(state='started', turn_id=turn['id'])
+            persist(ws, data)
+            runtime.api().cmd_set(argparse.Namespace(workspace=str(ws.root), wp=wp, column='status',
+                                                    text='IN_PROGRESS', quiet=True, evidence='thread ' + tid + ' turn ' + turn['id']))
+    return {'result': 'started', 'wp': wp, 'thread_id': tid, 'turn_id': turn['id'], 'request_id': request}
+
+
 def cmd_autonomy(args):
     ws = runtime.workspace(args)
     action = args.action
+    if action == 'configure':
+        if not args.continuation or not args.evidence:
+            raise AutonomyError('configure requires --continuation auto|manual and --evidence of the owner choice')
+        import safe_edit
+        path = ws.root / 'orch.yaml'
+        old = path.read_text(encoding='utf-8')
+        value = 'continuation: ' + args.continuation
+        new = re.sub(r'(?m)^continuation:.*$', value, old) if re.search(r'(?m)^continuation:', old) else old + '\n' + value + '\n'
+        with state_io.transaction(ws.root):
+            safe_edit.replace_once(path, old, new)
+            if args.continuation == 'manual':
+                _, data = registry(ws)
+                data['autonomy']['enabled'] = False
+                persist(ws, data)
+            ws.journal('continuation: ' + args.continuation, evidence=args.evidence)
+        print(json.dumps({'continuation': args.continuation, 'running': False,
+                          'next': 'claim this coordinator, then enable and inspect next --json' if args.continuation == 'auto' else 'wait for the owner launch command'}))
+        return 0
+    if action == 'reconcile-launch':
+        print(json.dumps(reconcile_launch(ws, args.wp, args.coordinator, args.generation, args.evidence), ensure_ascii=False, indent=2))
+        return 0
+    if action == 'launch':
+        print(json.dumps(launch_local(ws, args.wp, args.coordinator, args.generation), ensure_ascii=False, indent=2))
+        return 0
     if action == 'watch':
         if not args.token:
             raise AutonomyError('watch is managed by autonomy enable/resume')
         return run_watcher(ws, args.token, stdout=getattr(args, 'stdout', False))
     if action in ('enable', 'resume'):
+        if ws.config.get('continuation') == 'manual':
+            raise AutonomyError('manual continuation selected; configure auto with the owner choice before enabling')
         if is_claude(ws):
             claude_adapter.capabilities()
             if observe_thread(ws, args.coordinator)['status']['type'] == 'notLoaded':
@@ -1139,7 +1333,22 @@ def cmd_autonomy(args):
             observe_thread(ws, args.coordinator)  # Prove access to the owning shared server before writes.
     if action == 'status':
         _, data = registry(ws)
-        result = {'settings': data['autonomy'], 'coordinator': data.get('coordinator'), 'watcher': read_watch(ws)}
+        state = read_watch(ws)
+        result = {'settings': data['autonomy'], 'coordinator': data.get('coordinator'), 'watcher': state,
+                  'continuation': ws.config.get('continuation', 'undecided'),
+                  'running': bool(data['autonomy']['enabled'] and not state.get('error') and not state.get('stopped') and
+                                  (watcher_alive(state) or state.get('mode') == 'private-owner'))}
+        if result['running'] and not is_claude(ws):
+            try:
+                live = observe_thread(ws, data['coordinator']['thread_id'])
+                if live.get('status', {}).get('type') == 'notLoaded':
+                    result.update(running=False, observation_error='coordinator is not loaded')
+            except (OSError, ValueError, subprocess.TimeoutExpired, codex_transport.TransportError) as error:
+                result.update(running=False, observation_error=str(error))
+        if not result['running'] and not is_claude(ws):
+            result['recovery_command'] = codex_adapter.shell_join([
+                'codex', '--cd', str(ws.git_top), *codex_adapter.descriptor(ws, 'orchestrator')['argv'],
+                f'Resume the program at {ws.root}. Reconcile existing assignments, recover this coordinator and continue the authorized work.'])
     elif action in ('claim', 'recover'):
         if ws.config.get('client', 'claude') not in ('codex', 'claude') or (ws.config.get('sessions') or 'local') != 'local':
             raise AutonomyError('autonomy is available to local Codex or Claude Code programs only')
@@ -1147,8 +1356,12 @@ def cmd_autonomy(args):
         private_binding = codex_transport.private_coordinator(args.coordinator, live.get('cwd'), args.pid)
         if codex_transport.private_mode() and not private_binding:
             raise AutonomyError('coordinator does not match protected private-owner registration')
-        if not private_binding and (not live.get('cwd') or Path(live['cwd']).resolve() not in (ws.root.resolve(), Path(ws.git_top).resolve())):
-            raise AutonomyError('coordinator thread must belong to this program workspace/checkout')
+        allowed = {ws.root.resolve(), Path(ws.git_top).resolve()}
+        allowed.update(m.repo.local.resolve() for m in ws.streams()[1].values())
+        if not private_binding and (not live.get('cwd') or Path(live['cwd']).resolve() not in allowed):
+            raise AutonomyError('coordinator cwd must be the program checkout or a configured module repository')
+        if live.get('status', {}).get('type') == 'notLoaded':
+            raise AutonomyError('coordinator must be loaded in the owning Codex runtime')
         if live.get('pid') and live['pid'] != args.pid:
             raise AutonomyError('PID does not belong to the live coordinator session')
         proof = process_identity(args.pid)
@@ -1183,16 +1396,20 @@ def cmd_autonomy(args):
                 if ws.config.get('client', 'claude') not in ('codex', 'claude') or (ws.config.get('sessions') or 'local') != 'local':
                     raise AutonomyError('autonomy requires a local Codex or Claude Code program')
                 settings = data['autonomy']
-                for name in ('max_parallel_sessions', 'interval_seconds', 'session_reuse'):
+                for name in ('max_parallel_sessions', 'interval_seconds', 'session_reuse', 'stall_minutes'):
                     value = getattr(args, name, None)
                     if value is not None:
                         settings[name] = value
-                if settings['max_parallel_sessions'] < 1 or settings['interval_seconds'] < 10:
-                    raise AutonomyError('positive parallel limit and interval >= 10 seconds are required')
+                if settings['max_parallel_sessions'] < 1 or settings['interval_seconds'] < 10 or settings['stall_minutes'] < 5:
+                    raise AutonomyError('positive parallel limit, interval >= 10 seconds and stall >= 5 minutes are required')
                 settings['enabled'] = True
             result = data['autonomy']; persist(ws, data)
         if action in ('enable', 'resume'):
             result = {**result, **start_watcher(ws)}
+            state = read_watch(ws)
+            result['running'] = bool(not state.get('error') and not state.get('stopped') and
+                                     (watcher_alive(state) or state.get('mode') == 'private-owner'))
+            result['next'] = 'Inspect autonomy status and next --json. Continue only after observation succeeds.'
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -1410,14 +1627,17 @@ def compact_claude(ws, args):
 
 
 def add_parsers(sub, common):
+    research.add_parser(sub, common)
     p = sub.add_parser('next', parents=[common], help='read-only deterministic lifecycle actions and compatible dispatch wave')
     p.add_argument('--json', action='store_true'); p.set_defaults(func=cmd_next)
     p = sub.add_parser('autonomy', parents=[common], help='opt-in Codex/Claude coordinator ownership and local observation')
-    p.add_argument('action', choices=('status', 'claim', 'recover', 'release', 'enable', 'pause', 'resume', 'watch', 'consume'))
+    p.add_argument('action', choices=('status', 'configure', 'launch', 'reconcile-launch', 'claim', 'recover', 'release', 'enable', 'pause', 'resume', 'watch', 'consume'))
     p.add_argument('--coordinator'); p.add_argument('--generation', type=int); p.add_argument('--pid', type=int)
+    p.add_argument('--continuation', choices=('auto', 'manual')); p.add_argument('--wp')
     p.add_argument('--evidence'); p.add_argument('--previous-stopped')
     p.add_argument('--session-reuse', choices=('auto', 'ask', 'never'))
     p.add_argument('--max-parallel-sessions', type=int); p.add_argument('--interval-seconds', type=int)
+    p.add_argument('--stall-minutes', type=int, help='no executor activity for this long raises a stalled action (default 45)')
     p.add_argument('--signal'); p.add_argument('--token')
     p.add_argument('--stdout', action='store_true', help='Claude: print signals for the coordinator Monitor')
     p.set_defaults(func=cmd_autonomy)

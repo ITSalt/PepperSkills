@@ -1,3 +1,7 @@
+Research packages follow the [research contract](../research.md) for every client. Freeze scope, decide after each wave (accept, accept partially, scoped revise), move adjacent questions to their owning WP; a timer tick ends in a decision.
+
+For ordinary local Codex, [local continuation](../local-continuation.md) governs automatic launches, research work and responses. After an execution request, continue available work in the same turn. A plan-only request ends with the exact approval/start prompt.
+
 # Mode: plan
 
 Turn a request into facts, a plan, work packages and owner questions. Argument: the task in

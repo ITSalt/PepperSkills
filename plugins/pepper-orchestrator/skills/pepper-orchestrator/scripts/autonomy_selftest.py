@@ -206,8 +206,11 @@ class AutonomyTests(unittest.TestCase):
         state['pending'] = None
         _, message = a.watch_tick(self.ws, state, clock=101)
         self.assertIsNone(message)
+        self.ws.journal('coordinator note', evidence='own commit')  # Own writes are not a new fact.
+        _, message = a.watch_tick(orch.Workspace(self.root), state, clock=650)
+        self.assertIsNone(message)
         _, message = a.watch_tick(self.ws, state, clock=701)
-        self.assertIsNotNone(message)
+        self.assertIsNotNone(message)  # Proactive: an unhandled action is raised again after the interval.
         real = self.live
         with patch.object(a, 'observe_thread', side_effect=lambda ws, tid, history=False:
                           {**real(ws, tid, history), 'status': {'type': 'active', 'activeFlags': []}} if tid == 'coord' else real(ws, tid, history)):
@@ -227,7 +230,6 @@ class AutonomyTests(unittest.TestCase):
 
     def test_empty_tick_no_model_or_writes_and_observation_error_is_distinct(self):
         self.h.cli('--workspace', self.root, 'set', 'WP-A-02', 'status', 'DRAFT')
-        self.h.cli('--workspace', self.root, 'owner', 'close', 'P-1', 'fixture decision: no ignored settings')
         ws = orch.Workspace(self.root); before = runtime.state_version(ws)
         with patch.object(codex_transport, 'send') as send:
             state, message = a.watch_tick(ws, {}, clock=100)
@@ -405,7 +407,6 @@ class AutonomyTests(unittest.TestCase):
         plan = a.next_actions(orch.Workspace(self.root))
         self.assertTrue(any(x['kind'] == 'release' for x in plan['actions']))
         self.h.cli('--workspace', self.root, 'set', 'WP-A-02', 'status', 'DONE')
-        self.h.cli('--workspace', self.root, 'owner', 'close', 'P-1', 'fixture completion decision')
         plan = a.next_actions(orch.Workspace(self.root))
         self.assertTrue(any('work packages complete' in x.get('reason', '') for x in plan['actions']))
 

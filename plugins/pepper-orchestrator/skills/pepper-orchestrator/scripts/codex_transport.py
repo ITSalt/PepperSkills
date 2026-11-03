@@ -585,6 +585,22 @@ class Server:
         self.proc.stdin.close(); self.proc.stdout.close()
 
 
+def daemon_endpoint():
+    """Use only the endpoint announced by the local CLI, never start another server."""
+    result = subprocess.run([*command(), 'app-server', 'daemon', 'version'],
+                            capture_output=True, text=True, timeout=15)
+    if result.returncode:
+        return None  # Older CLIs use the existing proxy protocol.
+    try:
+        info = json.loads(result.stdout)
+    except ValueError as error:
+        raise TransportError('Cannot read local daemon address: ' + result.stdout[:200]) from error
+    path = info.get('socketPath')
+    if info.get('status') == 'running' and isinstance(path, str) and Path(path).is_absolute():
+        return 'unix://' + path
+    raise TransportError('Local Codex daemon is unavailable. In a terminal run: codex --yolo resume')
+
+
 @contextmanager
 def server(shared=False, remote=None):
     bound = _owner.get()
@@ -593,7 +609,7 @@ def server(shared=False, remote=None):
             raise TransportError('private owner cannot use another endpoint')
         yield bound
         return
-    instance = Server(shared=shared, remote=remote)
+    instance = Server(shared=shared, remote=remote or (daemon_endpoint() if shared else None))
     try:
         yield instance
     finally:
@@ -676,6 +692,7 @@ def send(thread_id, message, remote=None):
     if not caps['queue']:
         return {'delivered': False, 'fallback': message, 'reason': 'codex queue unavailable'}
     try:
+        remote = remote or daemon_endpoint()
         r = subprocess.run([*command(), 'queue', '--thread', thread_id, '--message', message,
                             *(['--remote', remote] if remote else [])],
                            capture_output=True, text=True, encoding='utf-8', timeout=30)

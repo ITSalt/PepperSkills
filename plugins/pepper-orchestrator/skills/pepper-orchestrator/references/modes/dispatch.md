@@ -1,3 +1,5 @@
+For ordinary local Codex, [local continuation](../local-continuation.md) governs automatic launches, research work and responses. After an execution request, continue available work in the same turn. A plan-only request ends with the exact approval/start prompt.
+
 # Mode: dispatch
 
 Codex private-owner mode follows [its dedicated lifecycle](../private-owner.md).

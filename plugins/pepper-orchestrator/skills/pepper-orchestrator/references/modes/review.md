@@ -1,3 +1,5 @@
+Research packages follow the [research contract](../research.md) for every client. Freeze scope, decide after each wave (accept, accept partially, scoped revise), move adjacent questions to their owning WP; a timer tick ends in a decision.
+
 # Mode: review
 
 Verify a module session's delivery (concept section 8): automatic findings, a reviewer on the first
