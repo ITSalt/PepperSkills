@@ -1,5 +1,11 @@
 # Changelog
 
+## pepper-orchestrator 0.15.0 — 2026-11-03, public preview
+
+- Research packages (`Execution: research`) with a frozen contract of at most 8 criteria, two collection waves and a verdict on every criterion. A `partial` verdict hands each unresolved criterion to its owning WP, so dependents continue instead of waiting on an endless collection.
+- Proactive control: changed facts wake the coordinator at once, unhandled actions are raised again on the timer, the coordinator's own commits are not facts, and every wakeup is a control tick that ends in a decision. Stall detection (#45) reports idle executors and unrecorded research collections.
+- Ordinary local Codex sessions continue a program automatically after a saved owner choice; Claude Code uses `/goal`, `/loop` and `ScheduleWakeup` with measurable conditions and package limits. See the [release report](docs/validation/pepper-orchestrator-0.15.0-release.md) and the [plugin changelog](plugins/pepper-orchestrator/CHANGELOG.md).
+
 ## pepper-orchestrator 0.14.0 — 2026-10-31, public preview
 
 - Explicit private-owner launch connects the portable scheduler to its own Codex App Server on Linux/macOS, with typed role-bound tools and fixed coordinator/module threads. Native Codex 0.165.0 is required for this opt-in mode.

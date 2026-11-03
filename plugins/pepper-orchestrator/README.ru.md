@@ -1,10 +1,12 @@
 # Pepper Orchestrator
 
-> Новое в 0.14.0: явный запуск private owner для автономного scheduler Codex на Linux/macOS с workspace-write и approvals on-request. См. [установку, права и recovery](skills/pepper-orchestrator/references/private-owner.ru.md) и [отчёт приёмки](../../docs/validation/pepper-orchestrator-0.14.0-private-owner.ru.md). Для этого режима требуется native Codex 0.165.0.
+> Новое в 0.15.0: исследовательские пакеты с ограниченным сбором и частичной приёмкой, проактивный watcher с повтором необработанных действий, детектор простоя и автоматическое продолжение программы в обычных локальных сессиях Codex. См. [исследования и контрольный тик](skills/pepper-orchestrator/references/research.md) и [локальное продолжение](skills/pepper-orchestrator/references/local-continuation.md).
+
+> С 0.14.0: явный запуск private owner для автономного scheduler Codex на Linux/macOS с workspace-write и approvals on-request. См. [установку, права и recovery](skills/pepper-orchestrator/references/private-owner.ru.md) и [отчёт приёмки](../../docs/validation/pepper-orchestrator-0.14.0-private-owner.ru.md). Для этого режима требуется native Codex 0.165.0.
 
 > Переиспользование сессий и автоматический dispatch включаются явно. Обычный CLI/manual и Claude Code workflow сохранены; Windows имеет только core/native smoke-покрытие. См. [CHANGELOG](CHANGELOG.md).
 
-> **Preview (0.14.0).** Режимы `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
+> **Preview (0.15.0).** Режимы `init`, `plan`, `dispatch`, `review`, `verify`, `deliver`, `release`, `resume`, `owner`, `decide`,
 > `close`, `reopen`, `report`;
 > потоки в одном репозитории с worktree и замками; облачные сессии; сгенерированные настройки сессий.
 > Форматы и команды могут измениться до 1.0.0.
@@ -24,13 +26,13 @@ PROD и запись в БД остаются за владельцем — в �
 
 ## Codex private owner на Linux/macOS
 
-Скачайте [релиз 0.14.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.14.0) и сверьте ZIP с `SHA256SUMS`. По [инструкции private owner](skills/pepper-orchestrator/references/private-owner.ru.md) установите skill вне module worktree, объявите фиксированные coordinator/modules и выполните zero-model preflight перед запуском. Launcher явно запускает собственный App Server; к существующему desktop-чату он не подключается.
+Скачайте [релиз 0.15.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.15.0) и сверьте ZIP с `SHA256SUMS`. Живая приёмка private owner записана для 0.14.0; в 0.15.0 изменён общий scheduler, он прошёл offline-наборы тестов. По [инструкции private owner](skills/pepper-orchestrator/references/private-owner.ru.md) установите skill вне module worktree, объявите фиксированные coordinator/modules и выполните zero-model preflight перед запуском. Launcher явно запускает собственный App Server; к существующему desktop-чату он не подключается.
 
 Git preparation остаётся внутри sandbox модуля. Владелец разрешает точный native запрос через консоль owner; права действуют в пределах turn. Review, merge, deploy и production остаются за владельцем. Перед обновлением работающего owner его нужно остановить и явно мигрировать; `--resume` требует неизменных code/config.
 
 ## Codex CLI в Windows
 
-[Релиз 0.14.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.14.0).
+[Релиз 0.15.0 preview](https://github.com/ITSalt/PepperSkills/releases/tag/pepper-orchestrator-v0.15.0).
 Нужны Python 3.12+, Git, GitHub CLI (`gh`) и Codex CLI (проверена версия 0.154.0).
 Установка из PowerShell:
 
@@ -48,7 +50,7 @@ codex plugin list --json
 
 Для обновления: `codex plugin marketplace upgrade pepperskills`, затем
 `codex plugin add pepper-orchestrator@pepperskills`. Перезапустите Codex и проверьте
-версию 0.14.0. Пользовательские настройки сохраняйте. Установка из ZIP и сценарий
+версию 0.15.0. Пользовательские настройки сохраняйте. Установка из ZIP и сценарий
 проверки на вашей машине описаны в [Windows guide](WINDOWS.md).
 
 ## Использование
@@ -71,7 +73,7 @@ codex plugin list --json
 | `/pepper-orchestrator:report [что]` | сообщить о дефекте плагина: обезличенная запись, Issue после вашего «да» |
 | `/pepper-orchestrator:decide <текст>` | решение D-n / допущение A-n / вопрос Q-n или вопрос владельцу P-n |
 
-Версия 0.14.0 — preview (этапы 2a–2e, 3a, 3b, 3e, 3c, 3d). Модуль — весь репозиторий либо раздел или домен одного
+Версия 0.15.0 — preview (этапы 2a–2e, 3a, 3b, 3e, 3c, 3d). Модуль — весь репозиторий либо раздел или домен одного
 репозитория: каждый поток работает в своём worktree (`claude -w`), общие пути и ресурсы держатся
 замками, слияния в один репозиторий идут очередью. `review` на первой сдаче запускает агента-рецензента
 (только чтение, одноразовый клон), на пересдачах читает дифф ревизии. `verify` проверяет стенд и прод по

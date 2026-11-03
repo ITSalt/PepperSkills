@@ -1,12 +1,14 @@
 # Changelog
 
-## Unreleased — bounded research and proactive control
+## 0.15.0 — 2026-11-03, public preview: bounded research, proactive control and local continuation
 
 - Research packages (`Execution: research`) for both clients and both executors: frozen contract with at most 8 criteria, two waves at most, a verdict on every criterion after each wave (`orch.py research`). Shared contract in `references/research.md`.
 - Partial acceptance: a `partial` verdict names, for each unresolved criterion, the WP that owns it and the condition that resolves it; the package then becomes ACCEPTED/DONE and its dependents continue instead of waiting forever.
 - Proactive watcher: a changed fact signals at once, an unhandled action is raised again after `interval_seconds` (owner-only waits every sixth interval), the coordinator's own commits are not facts. Every wakeup is a control tick that ends in a decision.
 - Stall detection (#45): `stalled` actions for packages waiting on an executor without file, commit, index or push activity for `--stall-minutes` (default 45) while the session is not busy, and for research collections whose results were never recorded.
+- Ordinary local Codex sessions continue a program without manual nudges: `init --continuation auto|manual` (asked once, saved across /clear and restart), inherited coordinator permissions including explicit `danger-full-access`, automatic executor creation and a ready-to-paste approval prompt after a plan. See `references/local-continuation.md`.
 - Claude Code: `/goal`, `/loop` and `ScheduleWakeup` are management tools with a measurable condition and a limit taken from the package; resume reconciles active goals, cron jobs and research rounds.
+- Validation: offline suites only (research 12, autonomy 41, continuation 10, runtime, reliability, owner, private-stdio). The live private-owner acceptance of 0.14.0 was not repeated; the live local-continuation driver `scripts/test-orchestrator-local-continuation.py` needs a running Codex server and is not part of CI.
 
 ## 0.14.0 — 2026-10-31, public preview: private owner on Linux/macOS
 

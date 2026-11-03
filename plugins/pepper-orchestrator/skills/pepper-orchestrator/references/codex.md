@@ -2,7 +2,7 @@ Read [local continuation](local-continuation.md) first for ordinary local Codex.
 It governs init choices, permission inheritance, automatic executor creation,
 research lifecycle and actionable responses. Private owner is an explicit alternative.
 
-# Codex CLI adapter and common runtime (0.14.0 preview)
+# Codex CLI adapter and common runtime (0.15.0 preview)
 
 For explicit private-STDIO owner launch on Linux/macOS, follow
 [private owner setup and recovery](private-owner.md) ([Русский](private-owner.ru.md)).
