@@ -1,3 +1,5 @@
+Research packages follow the finite collection and acceptance contract in [local continuation](../local-continuation.md#bounded-collection-and-acceptance). Freeze scope, submit after each wave and transfer adjacent questions to their owning WP.
+
 # Mode: review
 
 Verify a module session's delivery (concept section 8): automatic findings, a reviewer on the first

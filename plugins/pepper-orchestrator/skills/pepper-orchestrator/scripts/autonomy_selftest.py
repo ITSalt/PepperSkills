@@ -207,7 +207,7 @@ class AutonomyTests(unittest.TestCase):
         _, message = a.watch_tick(self.ws, state, clock=101)
         self.assertIsNone(message)
         _, message = a.watch_tick(self.ws, state, clock=701)
-        self.assertIsNotNone(message)
+        self.assertIsNone(message)  # Elapsed time alone does not justify more work.
         real = self.live
         with patch.object(a, 'observe_thread', side_effect=lambda ws, tid, history=False:
                           {**real(ws, tid, history), 'status': {'type': 'active', 'activeFlags': []}} if tid == 'coord' else real(ws, tid, history)):

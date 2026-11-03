@@ -16,6 +16,7 @@ import autonomy_selftest
 import codex_adapter
 import codex_transport as transport
 import orch
+import research
 
 
 class ContinuationTests(unittest.TestCase):
@@ -37,6 +38,11 @@ class ContinuationTests(unittest.TestCase):
         pos = s.index('\n', s.index('\n|'))
         p.write_text(s[:pos] + '\n| Execution | research |' + s[pos:])
         self.ws = orch.Workspace(self.root)
+        _, data = a.registry(self.ws)
+        data.setdefault('research', {})[wp] = research.update(self.ws, None, 'contract', {
+            'question': 'read fixture', 'decision': 'accept fixture', 'artifact': 'reports/result.md',
+            'criteria': {'source': {'evidence_standard': 'exact text', 'unknown_allowed': False}}})
+        a.persist(self.ws, data)
 
     def test_permissions_capture_yolo_and_explicit_descriptor(self):
         home = self.h.root / 'capture'
@@ -71,6 +77,9 @@ class ContinuationTests(unittest.TestCase):
         self.research()
         self.h.cli('--workspace', self.root, 'set', 'WP-A-02', 'status', 'IN_PROGRESS')
         self.assertIn('continue_research', [x['kind'] for x in a.next_actions(orch.Workspace(self.root))['actions']])
+        _, data = a.registry(self.ws)
+        data['research']['WP-A-02']['phase'] = 'accepted'
+        a.persist(self.ws, data)
         self.h.cli('--workspace', self.root, 'set', 'WP-A-02', 'status', 'ACCEPTED')
         actions = a.next_actions(orch.Workspace(self.root))['actions']
         self.assertTrue(any(x['kind'] == 'finalize_research' for x in actions))

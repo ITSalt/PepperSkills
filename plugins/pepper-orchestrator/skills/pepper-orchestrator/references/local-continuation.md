@@ -75,19 +75,48 @@ operation attempted and its result. Check `autonomy status` after enable/resume.
 Claim running continuation only after the watcher is alive and observation succeeds.
 Manual mode waits for the requested step and always supplies the next ready prompt.
 
-## Continue the current turn
+## Bounded collection and acceptance
 
-After execution is authorized, keep the coordinator's current turn alive while
-there is useful in-scope work. Wait for active research agents, receive their
-reports, validate evidence and issue follow-up tasks for gaps. A saved interim
-report or completed subagent is a checkpoint, not the end of the program.
-A watcher connection failure does not block ongoing foreground coordination.
-Continue research while diagnosing it, and finish the turn only for the program
-goal, a real user decision, an exhausted explicit resource limit or an operation
-whose failure actually prevents the next task. Never require another “continue”
-after every checkpoint. Describe a user-visible running state only while a worker
-or continuation mechanism is actually active.
+Continue the current turn toward the frozen deliverable. Every research package
+has one question, the reader's decision, one primary artifact and finite criteria
+with sufficient evidence and explicitly permitted unknowns. Each requirement has
+one owning WP. Corpus/oracle/baseline and experiment preparation budgets belong to
+the experimental package, not a mandatory precondition of static findings.
 
-Read later owner messages as updates to earlier authorization. A scoped request
-for diagnostics restricts that diagnostic response. A subsequent instruction to
-resume work restores execution authorization without another permission question.
+Use `orch.py research EVENT --wp WP --file JSON_PATH`. `status --wp WP` is read-only.
+The existing sessions registry persists contracts, rounds, outstanding tasks,
+returned results and verdicts across /clear and restart. JSON input files may be
+temporary. The saved registry is the authoritative cycle, not the temporary file.
+
+* `contract` payload contains question, decision, artifact and criteria. Each
+  criterion has evidence_standard and boolean unknown_allowed. The contract is
+  frozen. A scope expansion needs a separately decided package.
+* `start` contains a stable id and tasks with id, criterion, missing_fact and
+  decision. Start the ordinary subagents only after recording the tasks. Native
+  `autonomy launch` records its collection automatically. One initial wave and
+  one scoped correction are the default maximum.
+* `result` contains stable id, task and an evidence path. Save the returned result
+  or native turn transcript in the workspace first, then record it through this
+  same event for either executor type. Register every expected task. Once all
+  results return, next proposes review_research, not another investigation.
+* `verdict` contains stable id, verdict accepted/revise/partial/blocked and an
+  assessment of every frozen criterion with status satisfied/unknown/blocked,
+  reason and evidence path. Unknown is acceptable only where the contract allows
+  it. Independent review may request corrections only against frozen criteria.
+  After the second wave submit the available result or blocked remainder. Do not
+  extend the scope or reset the round counter. Mark a fully accepted research WP
+  ACCEPTED then DONE through the existing state commands.
+* `unblock` identifies a blocked criterion and a new evidence path with a stable
+  id. It returns to review. Other ready packages continue independently.
+
+After every wave make a submission decision. An interesting adjacent question
+becomes a note for its owning WP and does not extend the current collection.
+A graph timeout or unknown experimental budget affects that experiment; submit
+available static conclusions with their limitations. Do not claim acceleration
+without measurement. Commits, cosmetic report edits and interval expiry alone
+never justify another wave or watcher wakeup. Genuine defects require a scoped
+correction. A paused owner remains paused until explicit authorization to resume.
+No instruction to continue authorizes endless research or spending beyond limits.
+
+A scoped diagnostic request applies to its response. Later owner instructions
+update the authorized scope without an additional permission ritual.

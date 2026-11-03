@@ -19,6 +19,7 @@ import uuid
 import claude_adapter
 import codex_adapter
 import codex_transport
+import research
 import runtime_commands as runtime
 import state_io
 import streams
@@ -393,7 +394,10 @@ def candidates(ws, module, meta, data, observed):
 
 
 def active_slots(ws, data, observed):
-    active = {wp for wp, row in ws.wp_rows().items() if row['status'] in streams.ACTIVE}
+    cycles = data.get('research', {})
+    active = {wp for wp, row in ws.wp_rows().items() if row['status'] in streams.ACTIVE
+              and cycles.get(wp, {}).get('phase') not in ('partial', 'blocked', 'accepted')}
+    active.update(wp for wp, cycle in cycles.items() if cycle['phase'] == 'collecting')
     for assignment in data['assignments'].values():
         if assignment['state'] in ('completed', 'cancelled'):
             continue
@@ -456,7 +460,8 @@ def next_actions(ws, observed=None):
         status = row['status']
         _, _, meta = runtime.api().wp_context(ws, wp)
         launch = data['launches'].get(wp)
-        research = meta.get('execution') == 'research'
+        is_research = meta.get('execution') == 'research'
+        record = data.get('research', {}).get(wp)
         if launch and status in ('READY', 'DISPATCHING', 'IN_PROGRESS', 'REVISE'):
             if launch.get('state') != 'started':
                 actions.append({'kind': 'owner', 'wp': wp, 'reason': 'launch outcome requires reconciliation',
@@ -466,19 +471,23 @@ def next_actions(ws, observed=None):
                 turns = fact.get('thread', {}).get('turns', [])
                 completed = next((t for t in turns if t.get('id') == launch.get('turn_id')), {})
                 if completed.get('status') in ('completed', 'failed', 'interrupted'):
-                    actions.append({'kind': 'review_research' if research else 'review_result', 'wp': wp,
+                    actions.append({'kind': 'review_research' if is_research else 'review_result', 'wp': wp,
                                     'thread_id': launch['thread_id'], 'turn_id': launch['turn_id']})
             continue
-        if research:
+        if is_research:
             if status in ('READY', 'IN_PROGRESS', 'REVISE') and settings['enabled'] and not ws.closed:
                 missing = [d for d in meta['depends'] if ws.wp_rows().get(d, {}).get('status') not in ('DONE', 'ACCEPTED')]
                 if missing or (status == 'READY' and capacity <= 0):
                     waiting.append({'wp': wp, 'reasons': ['research dependencies or parallel limit', *missing]})
                 else:
-                    actions.append({'kind': 'continue_research', 'wp': wp,
-                                    'report': str(ws.root / 'reports' / (wp + '.md'))})
-                    if status == 'READY':
-                        capacity -= 1
+                    kind = research.action(record)
+                    if kind:
+                        actions.append({'kind': kind, 'wp': wp, 'research': record,
+                                        'report': str(ws.root / 'reports' / (wp + '.md'))})
+                        if status == 'READY':
+                            capacity -= 1
+                    else:
+                        waiting.append({'wp': wp, 'reasons': ['research ' + record['phase']]})
             elif status in ('REVIEW', 'ACCEPTED'):
                 actions.append({'kind': 'review_research' if status == 'REVIEW' else 'finalize_research', 'wp': wp})
             continue
@@ -546,7 +555,7 @@ def next_actions(ws, observed=None):
     external = {'prs': observed['prs'], 'sessions': {k: {'error': f.get('error'), 'git': f.get('git'),
                 'thread': {n: f.get('thread', {}).get(n) for n in ('id', 'createdAt', 'model', 'reasoningEffort', 'status', 'turns')}}
                 for k, f in observed['sessions'].items()}}
-    return {'actions': actions, 'waiting': waiting, 'fingerprint': digest([version, external, actions, waiting]),
+    return {'actions': actions, 'waiting': waiting, 'fingerprint': digest([external, actions, waiting]),
             'situation': 'paused' if not settings['enabled'] or ws.closed else 'deadlock' if cycles else
                          'observation_error' if any(w.get('kind') == 'observation_error' for w in waiting) else
                          'actionable' if actions else 'waiting' if waiting else 'quiet',
@@ -933,7 +942,7 @@ def watch_tick(ws, state, clock=None):
         state['coalesced'] = plan['fingerprint']
         return state, None
     actionable = bool(plan['actions']) or any(w.get('kind') == 'observation_error' for w in plan['waiting'])
-    if not actionable or (state.get('fingerprint') == plan['fingerprint'] and now < state.get('next_due', 0)):
+    if not actionable or state.get('fingerprint') == plan['fingerprint']:
         return state, None
     live = observe_thread(ws, current['thread_id'])
     if live.get('status', {}).get('type') == 'notLoaded':
@@ -1209,6 +1218,13 @@ def launch_local(ws, wp, coordinator, generation):
             for lock in wanted:
                 if runtime.api().acquire(fresh, module.repo, lock, wp, 'automatic local launch'):
                     raise AutonomyError('lock changed during launch')
+        if research:
+            record = data.get('research', {}).get(wp)
+            tasks = [{'id': request + ':' + criterion, 'criterion': criterion,
+                      'missing_fact': record['contract']['criteria'][criterion]['evidence_standard'],
+                      'decision': record['contract']['decision']} for criterion in record['open']]
+            import research as research_cycle
+            data['research'][wp] = research_cycle.update(fresh, record, 'start', {'id': request, 'tasks': tasks})
         data['launches'][wp] = {'request_id': request, 'state': 'preparing', 'wp': wp,
                                 'generation': generation, 'coordinator': coordinator}
         persist(fresh, data)
@@ -1598,6 +1614,7 @@ def compact_claude(ws, args):
 
 
 def add_parsers(sub, common):
+    research.add_parser(sub, common)
     p = sub.add_parser('next', parents=[common], help='read-only deterministic lifecycle actions and compatible dispatch wave')
     p.add_argument('--json', action='store_true'); p.set_defaults(func=cmd_next)
     p = sub.add_parser('autonomy', parents=[common], help='opt-in Codex/Claude coordinator ownership and local observation')

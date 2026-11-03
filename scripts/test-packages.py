@@ -89,7 +89,7 @@ def main():
             for document in [root / 'LICENSE', root / 'NOTICE.md', skill_root / 'SKILL.md']:
                 if document.is_file():
                     check_document_paths(document, root)
-            for script_name in ('selftest.py', 'runtime_selftest.py', 'reliability_selftest.py', 'autonomy_selftest.py', 'owner_selftest.py',
+            for script_name in ('selftest.py', 'runtime_selftest.py', 'reliability_selftest.py', 'autonomy_selftest.py', 'continuation_selftest.py', 'research_selftest.py', 'owner_selftest.py',
                                 'test_modernization.py', 'test_report_quality.py', 'test_network_evidence.py', 'run_evals.py'):
                 script = skill_root / 'scripts' / script_name
                 if script.is_file():

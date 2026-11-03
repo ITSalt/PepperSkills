@@ -28,6 +28,7 @@ def main():
     import autonomy
     import codex_transport
     import orch
+    import research
     import runtime_selftest
 
     fixture = runtime_selftest.RuntimeTests()
@@ -61,6 +62,10 @@ def main():
         workspace = orch.Workspace(root)
         _, registry = autonomy.registry(workspace)
         generation = registry['coordinator']['generation']
+        registry['research'] = {wp: research.update(workspace, None, 'contract', {
+            'question': 'read fixture', 'decision': 'accept fixture', 'artifact': f'reports/{wp}.md',
+            'criteria': {'source': {'evidence_standard': 'exact file content', 'unknown_allowed': False}}})
+            for wp, number in packages}
         registry['autonomy']['enabled'] = True
         autonomy.persist(workspace, registry)
         for package, number in packages:
@@ -86,6 +91,21 @@ def main():
             assert f'FIXTURE-PASS-{number}' in json.dumps(turn), 'expected fixture result absent'
             actions = autonomy.next_actions(orch.Workspace(root))['actions']
             assert any(action.get('wp') == package and action['kind'] == 'review_research' for action in actions)
+            report = root / 'reports' / f'{package}.md'
+            messages = [item.get('text', '') for item in turn.get('items', []) if item.get('type') == 'agentMessage']
+            assert any(f'FIXTURE-PASS-{number}' in text for text in messages), 'assistant result absent'
+            report.parent.mkdir(exist_ok=True)
+            report.write_text('\n'.join(messages))
+            _, registry = autonomy.registry(orch.Workspace(root))
+            record = registry['research'][package]
+            for task in record['tasks']:
+                record = research.update(workspace, record, 'result', {'id': launch['request_id'] + ':result:' + task['id'],
+                    'task': task['id'], 'evidence': str(report.relative_to(root))})
+            record = research.update(workspace, record, 'verdict', {'id': launch['request_id'] + ':accepted',
+                'verdict': 'accepted', 'criteria': {'source': {'status': 'satisfied', 'reason': 'exact fixture response verified',
+                'evidence': str(report.relative_to(root))}}})
+            registry['research'][package] = record
+            autonomy.persist(workspace, registry)
             for status in ('ACCEPTED', 'DONE'):
                 fixture.cli('--workspace', root, 'set', package, 'status', status,
                             '--evidence', f'Native result verified FIXTURE-PASS-{number}')

@@ -1101,6 +1101,13 @@ def cmd_set(args):
     if column == 'status' and not valid_status(value):
         raise OrchError(f'invalid status {value!r}; allowed: {", ".join(STATUSES)}, '
                         'BLOCKED (reason), CANCELLED (reason)')
+    if column == 'status' and value in ('ACCEPTED', 'DONE'):
+        _, _, meta = wp_context(ws, args.wp)
+        if meta.get('execution') == 'research':
+            import autonomy
+            record = autonomy.registry(ws)[1].get('research', {}).get(args.wp)
+            if not record or record['phase'] != 'accepted':
+                raise OrchError('research acceptance requires a recorded verdict for every frozen criterion')
     columns = TABLES['wp'][1]
     _has_wp(ws, args.wp)
     found = {}
