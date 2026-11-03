@@ -1,4 +1,4 @@
-Research packages follow the finite collection and acceptance contract in [local continuation](../local-continuation.md#bounded-collection-and-acceptance). Freeze scope, submit after each wave and transfer adjacent questions to their owning WP.
+Research packages follow the [research contract](../research.md) for every client. Freeze scope, decide after each wave (accept, accept partially, scoped revise), move adjacent questions to their owning WP; a timer tick ends in a decision.
 
 # Mode: review
 

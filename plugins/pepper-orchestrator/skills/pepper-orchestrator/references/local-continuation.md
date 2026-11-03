@@ -38,8 +38,7 @@ A plan-only request ends with a ready-to-paste prompt for this same chat:
 with the saved continuation setting.” Substitute real values. If the user already
 approved execution, run the available actions immediately.
 
-Mark research packages explicitly with `| Execution | research |` in their first
-metadata table, including older programs whose prose already defines research.
+Mark research packages with `| Execution | research |` ([research contract](research.md)).
 After plan approval, set the first eligible packages READY. Research dependencies
 are accepted reports (ACCEPTED or DONE). Respect the program's resource limits.
 
@@ -61,7 +60,8 @@ verified research report ACCEPTED then DONE and continue with eligible dependenc
 Research reports do not require fictional PR, merge or production stages.
 For code packages follow the established review, delivery and verification gates.
 Run next again immediately after acceptance. Stop only at the goal, an actual
-owner decision, a resource limit or a demonstrated operation failure.
+owner decision, a resource limit or a demonstrated operation failure. A `stalled`
+action is yours to handle: inspect the session, then nudge, restart or reassign it.
 
 ## Every response has an operational next step
 
@@ -77,46 +77,11 @@ Manual mode waits for the requested step and always supplies the next ready prom
 
 ## Bounded collection and acceptance
 
-Continue the current turn toward the frozen deliverable. Every research package
-has one question, the reader's decision, one primary artifact and finite criteria
-with sufficient evidence and explicitly permitted unknowns. Each requirement has
-one owning WP. Corpus/oracle/baseline and experiment preparation budgets belong to
-the experimental package, not a mandatory precondition of static findings.
-
-Use `orch.py research EVENT --wp WP --file JSON_PATH`. `status --wp WP` is read-only.
-The existing sessions registry persists contracts, rounds, outstanding tasks,
-returned results and verdicts across /clear and restart. JSON input files may be
-temporary. The saved registry is the authoritative cycle, not the temporary file.
-
-* `contract` payload contains question, decision, artifact and criteria. Each
-  criterion has evidence_standard and boolean unknown_allowed. The contract is
-  frozen. A scope expansion needs a separately decided package.
-* `start` contains a stable id and tasks with id, criterion, missing_fact and
-  decision. Start the ordinary subagents only after recording the tasks. Native
-  `autonomy launch` records its collection automatically. One initial wave and
-  one scoped correction are the default maximum.
-* `result` contains stable id, task and an evidence path. Save the returned result
-  or native turn transcript in the workspace first, then record it through this
-  same event for either executor type. Register every expected task. Once all
-  results return, next proposes review_research, not another investigation.
-* `verdict` contains stable id, verdict accepted/revise/partial/blocked and an
-  assessment of every frozen criterion with status satisfied/unknown/blocked,
-  reason and evidence path. Unknown is acceptable only where the contract allows
-  it. Independent review may request corrections only against frozen criteria.
-  After the second wave submit the available result or blocked remainder. Do not
-  extend the scope or reset the round counter. Mark a fully accepted research WP
-  ACCEPTED then DONE through the existing state commands.
-* `unblock` identifies a blocked criterion and a new evidence path with a stable
-  id. It returns to review. Other ready packages continue independently.
-
-After every wave make a submission decision. An interesting adjacent question
-becomes a note for its owning WP and does not extend the current collection.
-A graph timeout or unknown experimental budget affects that experiment; submit
-available static conclusions with their limitations. Do not claim acceleration
-without measurement. Commits, cosmetic report edits and interval expiry alone
-never justify another wave or watcher wakeup. Genuine defects require a scoped
-correction. A paused owner remains paused until explicit authorization to resume.
-No instruction to continue authorizes endless research or spending beyond limits.
+Research packages, partial acceptance, the control tick and bounded goals follow the
+client-neutral [research contract](research.md). Continue the current turn toward the frozen
+deliverable. Elapsed time is a control tick that ends in a decision; it never opens a wave
+beyond the recorded budget. A paused owner remains paused until explicit authorization to
+resume. No instruction to continue authorizes endless research or spending beyond limits.
 
 A scoped diagnostic request applies to its response. Later owner instructions
 update the authorized scope without an additional permission ritual.

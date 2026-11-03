@@ -26,9 +26,13 @@ python3 scripts/orch.py --workspace /absolute/program autonomy enable \
 Use the generation returned by claim. Defaults: `session_reuse=auto`, two active
 or reserved module slots, a 600-second action recheck. Overrides on enable/resume:
 `--session-reuse auto|ask|never`, `--max-parallel-sessions N`, `--interval-seconds N`.
-Review/scout/verifier subagents do not occupy module slots. Ordinary observation
-samples every five seconds without model calls. A repeated actionable condition
-may wake the coordinator again after the recheck deadline; empty ticks stay quiet.
+`--stall-minutes N` (default 45) sets when an executor without activity becomes a
+`stalled` action. Review/scout/verifier subagents do not occupy module slots. Ordinary
+observation samples every five seconds without model calls. A changed fact wakes the
+coordinator at once; an unhandled action is raised again after the recheck interval
+(owner-only waits every sixth interval). The coordinator's own commits are not facts.
+Empty ticks stay quiet. Every wakeup is a control tick: follow
+[the research contract](research.md#the-control-tick) and end it in a decision.
 
 ### Codex transport
 
@@ -79,7 +83,7 @@ pair with the program workspace as cwd, or claim is refused.
   `timeout_ms` 1800000. Silent ticks print nothing; each printed line is one actionable
   signal, an observation error or the stop. Monitor expires after at most 30 minutes:
   on the expiry notice run `autonomy resume` again and start the returned command
-  (one model turn per expiry). A second watcher process is refused. Without Monitor,
+  (one model turn per expiry), then run `next --json` as a control tick. A second watcher process is refused. Without Monitor,
   a 10-minute `CronCreate` job that runs `autonomy status`/`next --json` is the fallback;
   check `CronList` on resume before creating one (recurring jobs expire after 7 days).
 - **Compaction.** Slash commands inside messages are never executed. `session compact`
@@ -126,6 +130,14 @@ make `HEAD...base` a lost-work test. Held locks/mandatory integration work still
 block reuse. ACCEPTED alone is insufficient.
 
 ## Coordinator continuation
+
+Research packages (`Execution: research`) follow [the research contract](research.md) with
+either executor: `define_research`, `continue_research` within the round budget,
+`review_research` once results return, `finalize_research` after an accepted or partial
+verdict. For Claude, `continue_research` means the coordinator's own subagents: record
+`research start` before them and `research result` for each answer. `/goal`, `/loop` and
+`ScheduleWakeup` are welcome with a measurable condition and a limit
+([goals and loops](research.md#goals-and-loops-claude-code)).
 
 On resume, READY, review/verification results, lock/dependency changes and watcher
 signals, run `next --json`. Use its compatible wave, then re-evaluate before every

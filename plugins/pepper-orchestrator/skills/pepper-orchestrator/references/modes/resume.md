@@ -1,4 +1,4 @@
-Research packages follow the finite collection and acceptance contract in [local continuation](../local-continuation.md#bounded-collection-and-acceptance). Freeze scope, submit after each wave and transfer adjacent questions to their owning WP.
+Research packages follow the [research contract](../research.md) for every client. Freeze scope, decide after each wave (accept, accept partially, scoped revise), move adjacent questions to their owning WP; a timer tick ends in a decision.
 
 For ordinary local Codex, [local continuation](../local-continuation.md) governs automatic launches, research work and responses. After an execution request, continue available work in the same turn. A plan-only request ends with the exact approval/start prompt.
 
@@ -57,6 +57,8 @@ step. No argument, or the program name when several workspaces exist.
    | trusted delivery | `orch.py delivery show`; for `ACCEPTED` packages with delivery handed over, `orch.py deliver --check <WP>` |
    | verification | `orch.py verify --list`: merged packages without `VERIFIED_TEST` (suggest `verify <WP> --env test` once the deploy run for the merge commit succeeded) and packages verified on test waiting for prod; only `VERIFIED_TEST` packages may go to a release sheet |
    | plugin defects and updates | `orch.py report --status`: recorded `PLUGIN-BUG-<n>` with their Issues; with `gh`, one line when a newer plugin version is on the marketplace (`claude plugin update pepper-orchestrator@pepperskills`) |
+   | research rounds | `orch.py research status --wp <WP>` for each `Execution: research` package: round, open criteria, outstanding tasks; results returned before /clear are recorded, not collected again |
+   | goals and timers | active `/goal`, `/loop` and `CronList` jobs: each needs a measurable condition and a limit from its package ([research contract](../research.md#goals-and-loops-claude-code)); drop those whose package is done |
    | on-demand locks | `orch.py lock list` / `lint`: a lock held longer than `lock_stale_hours` (default 4) is a warning: ask its session whether it still needs it |
    | databases | migration journal and object definitions through a read-only tool, SELECT only |
    | deployed versions | version string in the served bundle, not the browser badge |

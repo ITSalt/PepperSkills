@@ -75,6 +75,13 @@ action in a session; read other sections when a mode points to them.
     or a push to a base branch. Cloud sessions have such tools; the rule is the same as locally.
     Trusted delivery merges only inside `orch.py deliver --apply` and `orch.py release --apply`, never
     by a direct call.
+14. **Manage to a decision.** You decide when evidence is enough; the owner gets product forks and
+    irreversible steps, not "is this sufficient?". Research packages (`Execution: research`) have a
+    frozen contract and at most two waves; after every wave accept, accept partially (remainder
+    moved to the WP that owns it) or send one scoped correction, then move on. Every wakeup, timer
+    or event, is a control tick: progress against criteria, stalled work, decision. `/goal`, `/loop`
+    and `ScheduleWakeup` need a measurable condition and a limit. Follow
+    [the research contract](references/research.md).
 
 Trusted delivery and final live acceptance follow [delivery safety](references/delivery-safety.md),
 shared by Claude and Codex. Automatic verification alone never grants VERIFIED_TEST or PROD.
@@ -232,8 +239,10 @@ files and run Python. Client-specific capabilities are adapters:
 - **Opt-in autonomy** (Claude Code 2.1.236+, local sessions): after `autonomy claim`/`enable`,
   the coordinator itself dispatches READY packages to attached idle module sessions of the
   stream (`next --json`, `dispatch --json`, `SendMessage`, `session sent`/`started`) and wakes on
-  its Monitor watcher instead of asking the owner to type `/dispatch`. New terminals, merge,
-  deploy and permissions stay with the owner. Follow [autonomy](references/autonomy.md).
+  its Monitor watcher instead of asking the owner to type `/dispatch`. The watcher re-raises
+  unhandled actions on its interval and reports `stalled` executors; each wakeup ends in a
+  decision ([research contract](references/research.md)). New terminals, merge, deploy and
+  permissions stay with the owner. Follow [autonomy](references/autonomy.md).
 - **Session start commands** (`claude --name ...`, `claude -w <name>` for a stream worktree):
   elsewhere, the owner creates the worktree (`git worktree add <dir> -b <branch> origin/<base>`)
   and pastes the start prompt from the work package into a new session there.
