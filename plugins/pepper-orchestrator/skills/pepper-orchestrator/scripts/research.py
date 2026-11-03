@@ -1,17 +1,20 @@
 """Finite research rounds shared by foreground coordinators and the scheduler."""
 import json
+import time
 from pathlib import Path
 
 import runtime_commands as runtime
 import state_io
 import streams
 
+MAX_CRITERIA = 8  # A research question that needs more is several packages.
+
 
 def action(record):
     if not record:
         return 'define_research'
     return {'ready': 'continue_research', 'collecting': None, 'review': 'review_research',
-            'revise': 'continue_research', 'partial': None, 'blocked': None,
+            'revise': 'continue_research', 'partial': 'finalize_research', 'blocked': None,
             'accepted': 'finalize_research'}[record['phase']]
 
 
@@ -22,7 +25,23 @@ def evidence(ws, value):
     return str(path.relative_to(ws.root.resolve()))
 
 
-def update(ws, record, event, payload):
+def remainder(ws, wp, verdict, remaining, payload):
+    """Every unresolved criterion of a submitted result names its owner and the condition that resolves it."""
+    owners = payload.get('remainder') or {}
+    if set(owners) != set(remaining):
+        raise streams.StreamError('name the owner of every unresolved criterion in remainder')
+    rows = ws.wp_rows()
+    for key, item in owners.items():
+        if not isinstance(item, dict) or not item.get('condition'):
+            raise streams.StreamError('remainder ' + key + ' needs the condition that resolves it')
+        target = item.get('owner_wp')
+        if verdict == 'partial' and (target not in rows or target == wp):
+            raise streams.StreamError('partial result moves remainder ' + key + ' to another existing WP')
+        if target and target not in rows:
+            raise streams.StreamError('remainder owner ' + target + ' is not a WP of this program')
+
+
+def update(ws, record, event, payload, wp=None):
     """Validate before replacing the caller's transactional registry record."""
     item = json.loads(json.dumps(record)) if record else None
     if event == 'contract':
@@ -35,11 +54,13 @@ def update(ws, record, event, payload):
         if not isinstance(criteria, dict) or not all(isinstance(v, dict) and v.get('evidence_standard') and
                 type(v.get('unknown_allowed')) is bool for v in criteria.values()):
             raise streams.StreamError('each criterion needs evidence_standard and boolean unknown_allowed')
+        if len(criteria) > MAX_CRITERIA:
+            raise streams.StreamError(f'at most {MAX_CRITERIA} criteria; split the question into separate packages')
         artifact = (ws.root / payload['artifact']).resolve()
         if not artifact.is_relative_to(ws.root.resolve()):
             raise streams.StreamError('research artifact must belong to the program workspace')
         return {'contract': payload, 'round': 0, 'phase': 'ready', 'open': list(criteria),
-                'results': {}, 'events': {}, 'verdicts': []}
+                'results': {}, 'events': {}, 'verdicts': [], 'updated_at': int(time.time())}
     if not item:
         raise streams.StreamError('define a research contract first')
     event_id = payload.get('id')
@@ -87,18 +108,24 @@ def update(ws, record, event, payload):
             raise streams.StreamError('verdict contradicts criterion evidence')
         if verdict == 'revise' and (item['round'] >= 2 or not remaining):
             raise streams.StreamError('revision limit reached or no scoped correction remains; submit available result')
-        if verdict in ('partial', 'blocked') and not remaining:
-            raise streams.StreamError('partial or blocked verdict requires an identified remainder')
+        if verdict in ('partial', 'blocked'):
+            if not remaining:
+                raise streams.StreamError('partial or blocked verdict requires an identified remainder')
+            if verdict == 'partial' and len(remaining) == len(assessment):
+                raise streams.StreamError('partial result needs at least one resolved criterion; otherwise blocked')
+            remainder(ws, wp, verdict, remaining, payload)
         item.update(phase=verdict, open=remaining)
         item['verdicts'].append(payload)
     elif event == 'unblock':
-        if item['phase'] not in ('partial', 'blocked') or payload.get('criterion') not in item['open']:
+        # A partial result is closed; its remainder lives in the WP that owns it.
+        if item['phase'] != 'blocked' or payload.get('criterion') not in item['open']:
             raise streams.StreamError('unblock requires a blocked open criterion')
         evidence(ws, payload['evidence'])
         item['phase'] = 'review'  # New evidence requires a decision, never another unbounded collection.
     else:
         raise streams.StreamError('unknown research event')
     item['events'][event_id] = {'event': event, 'payload': payload}
+    item['updated_at'] = int(time.time())  # Stall detection: a collection without new results.
     return item
 
 
@@ -119,7 +146,7 @@ def cmd_research(args):
         _, data = autonomy.registry(ws)
         records = data.setdefault('research', {})
         before = records.get(args.wp)
-        after = update(ws, before, args.event, payload)
+        after = update(ws, before, args.event, payload, wp=args.wp)
         if after != before:
             records[args.wp] = after
             autonomy.persist(ws, data)

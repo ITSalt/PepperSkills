@@ -20,6 +20,7 @@ import claude_adapter
 import codex_adapter
 import codex_transport
 import research
+import stall
 import runtime_commands as runtime
 import state_io
 import streams
@@ -27,6 +28,9 @@ import streams
 
 class AutonomyError(streams.StreamError):
     pass
+
+
+OWNER_REPEAT = 6  # Owner-only waits are re-raised every sixth interval (one hour by default).
 
 
 def digest(value):
@@ -50,6 +54,7 @@ def registry(ws):
     data.setdefault('generation', 0)
     data.setdefault('autonomy', {'enabled': False, 'session_reuse': 'auto',
                                  'interval_seconds': 600, 'max_parallel_sessions': 2})
+    data['autonomy'].setdefault('stall_minutes', 45)
     for wp, old in data['sessions'].items():
         key = old['client'] + ':' + old['thread_id']
         if key not in data['instances']:
@@ -449,7 +454,7 @@ def dependency_cycles(ws):
     return [list(c) for c in sorted(cycles)]
 
 
-def next_actions(ws, observed=None):
+def next_actions(ws, observed=None, now=None):
     _, data = registry(ws)
     version = runtime.state_version(ws)
     observed = observations(ws, data) if observed is None else observed
@@ -540,6 +545,8 @@ def next_actions(ws, observed=None):
                 and ws.wp_rows().get(instance.get('wp'), {}).get('status') in ('DISPATCHING', 'IN_PROGRESS')):
             actions.append({'kind': 'reconcile', 'wp': assignment.get('wp') or instance.get('wp'), 'session': key,
                             'assignment_id': assignment.get('id'), 'state': assignment.get('state')})
+    if settings['enabled'] and not ws.closed:
+        actions.extend(stall.scan(ws, data, observed, time.time() if now is None else now, runtime.api().wp_context))
     if ws.has_table(ws.status, 'owner'):
         for item in ws.table(ws.status, 'owner')[2]:
             if item['closed'] in ('', '—', '-'):
@@ -934,7 +941,7 @@ def watch_tick(ws, state, clock=None):
     if current.get('released') or not current.get('thread_id'):
         raise AutonomyError('no active coordinator; resume after ownership recovery')
     owner(data, current['thread_id'], current['generation'])
-    plan = next_actions(ws)
+    plan = next_actions(ws, now=now)
     signal = state.get('pending')
     if signal:
         # The coordinator consumes the signal explicitly; neither timeout nor an
@@ -942,7 +949,11 @@ def watch_tick(ws, state, clock=None):
         state['coalesced'] = plan['fingerprint']
         return state, None
     actionable = bool(plan['actions']) or any(w.get('kind') == 'observation_error' for w in plan['waiting'])
-    if not actionable or state.get('fingerprint') == plan['fingerprint']:
+    # Proactive control: a changed fact signals at once; an unchanged, still unhandled
+    # action is raised again after the recheck interval. Own commits do not change the
+    # fingerprint. Items waiting only on the owner are repeated less often.
+    repeat = plan['next_check_seconds'] * (OWNER_REPEAT if all(a['kind'] == 'owner' for a in plan['actions']) else 1)
+    if not actionable or (state.get('fingerprint') == plan['fingerprint'] and now < state.get('next_due', 0)):
         return state, None
     live = observe_thread(ws, current['thread_id'])
     if live.get('status', {}).get('type') == 'notLoaded':
@@ -957,12 +968,14 @@ def watch_tick(ws, state, clock=None):
         *codex_adapter.python_command(), str(Path(__file__).with_name('orch.py')),
         '--workspace', str(ws.root), 'autonomy', 'consume', '--signal', sid,
         '--coordinator', current['thread_id'], '--generation', str(current['generation'])], ws.config.get('shell'))
-    return {**state, 'fingerprint': plan['fingerprint'], 'next_due': now + plan['next_check_seconds'],
+    return {**state, 'fingerprint': plan['fingerprint'], 'next_due': now + repeat,
             'pending': {'id': sid, 'state': 'sending', 'generation': current['generation'],
                         'thread': current['thread_id']}}, (
                 f'[{ws.tag}] AUTONOMY signal_id={sid}. Inspect current state, not this stale notification. '
                 f'Run: {consume}\n'
-                'If enabled, execute next actions, continue unfinished research and launch compatible READY packages yourself. '
+                'Control tick: check each active package against its criteria and round budget, handle stalled work, '
+                'then decide: accept, accept partially, scoped revise, or launch compatible READY packages yourself. '
+                'A tick never opens a research wave beyond the recorded budget. '
                 'Reconcile unknown assignments first. Preserve all delivery gates and owner decisions.')
 
 
@@ -1383,12 +1396,12 @@ def cmd_autonomy(args):
                 if ws.config.get('client', 'claude') not in ('codex', 'claude') or (ws.config.get('sessions') or 'local') != 'local':
                     raise AutonomyError('autonomy requires a local Codex or Claude Code program')
                 settings = data['autonomy']
-                for name in ('max_parallel_sessions', 'interval_seconds', 'session_reuse'):
+                for name in ('max_parallel_sessions', 'interval_seconds', 'session_reuse', 'stall_minutes'):
                     value = getattr(args, name, None)
                     if value is not None:
                         settings[name] = value
-                if settings['max_parallel_sessions'] < 1 or settings['interval_seconds'] < 10:
-                    raise AutonomyError('positive parallel limit and interval >= 10 seconds are required')
+                if settings['max_parallel_sessions'] < 1 or settings['interval_seconds'] < 10 or settings['stall_minutes'] < 5:
+                    raise AutonomyError('positive parallel limit, interval >= 10 seconds and stall >= 5 minutes are required')
                 settings['enabled'] = True
             result = data['autonomy']; persist(ws, data)
         if action in ('enable', 'resume'):
@@ -1624,6 +1637,7 @@ def add_parsers(sub, common):
     p.add_argument('--evidence'); p.add_argument('--previous-stopped')
     p.add_argument('--session-reuse', choices=('auto', 'ask', 'never'))
     p.add_argument('--max-parallel-sessions', type=int); p.add_argument('--interval-seconds', type=int)
+    p.add_argument('--stall-minutes', type=int, help='no executor activity for this long raises a stalled action (default 45)')
     p.add_argument('--signal'); p.add_argument('--token')
     p.add_argument('--stdout', action='store_true', help='Claude: print signals for the coordinator Monitor')
     p.set_defaults(func=cmd_autonomy)

@@ -206,8 +206,11 @@ class AutonomyTests(unittest.TestCase):
         state['pending'] = None
         _, message = a.watch_tick(self.ws, state, clock=101)
         self.assertIsNone(message)
+        self.ws.journal('coordinator note', evidence='own commit')  # Own writes are not a new fact.
+        _, message = a.watch_tick(orch.Workspace(self.root), state, clock=650)
+        self.assertIsNone(message)
         _, message = a.watch_tick(self.ws, state, clock=701)
-        self.assertIsNone(message)  # Elapsed time alone does not justify more work.
+        self.assertIsNotNone(message)  # Proactive: an unhandled action is raised again after the interval.
         real = self.live
         with patch.object(a, 'observe_thread', side_effect=lambda ws, tid, history=False:
                           {**real(ws, tid, history), 'status': {'type': 'active', 'activeFlags': []}} if tid == 'coord' else real(ws, tid, history)):

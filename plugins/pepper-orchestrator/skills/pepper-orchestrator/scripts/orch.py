@@ -1106,8 +1106,9 @@ def cmd_set(args):
         if meta.get('execution') == 'research':
             import autonomy
             record = autonomy.registry(ws)[1].get('research', {}).get(args.wp)
-            if not record or record['phase'] != 'accepted':
-                raise OrchError('research acceptance requires a recorded verdict for every frozen criterion')
+            # A partial result is accepted for what it resolved; its remainder belongs to another WP.
+            if not record or record['phase'] not in ('accepted', 'partial'):
+                raise OrchError('research acceptance requires an accepted or partial verdict for every frozen criterion')
     columns = TABLES['wp'][1]
     _has_wp(ws, args.wp)
     found = {}
